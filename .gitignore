@@ -1,0 +1,41 @@
+# Build outputs
+bin/
+obj/
+**/bin/
+**/obj/
+out/
+
+# IDE caches
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Logs and coverage
+*.log
+logs/
+TestResults/
+coverage/
+
+# Environment & secrets
+.env
+*.env
+!.env.example
+**/appsettings.Development.json
+**/appsettings.Production.json
+**/appsettings.Local.json
+**/appsettings.*.local.json
+**/secrets.json
+
+docker-compose.override.yml
+
+# Publish artifacts
+**/publish/
+**/wwwroot/lib/
+
+# OS junk
+.DS_Store
+Thumbs.db

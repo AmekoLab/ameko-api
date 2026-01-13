@@ -1,0 +1,16 @@
+version: "3.8"
+
+services:
+  api:
+    # By default this uses an image set in .env (IMAGE). Reviewers can pull the public image.
+    # To build locally instead, set IMAGE to empty and uncomment the 'build' section below.
+    image: ${IMAGE}
+    ports:
+      - "8080:80"
+    env_file:
+      - .env
+    environment:
+      ConnectionStrings__DefaultConnection: "Server=${DB_HOST};Port=${DB_PORT};Database=${DB_NAME};User=${DB_USER};Password=${DB_PASSWORD};"
+    # build:
+    #   context: ./FPTU.Capstone.AMKCollective.Api
+    #   dockerfile: Dockerfile

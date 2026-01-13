@@ -1,0 +1,23 @@
+using System;
+
+namespace FPTU.Capstone.AMKCollective.Domain.Entities
+{
+    public class KitDesignOption
+    {
+        public Guid Id { get; set; }
+        public Guid BaseKitId { get; set; }
+        public Guid ComponentId { get; set; }
+        public string? LayerImageUrl { get; set; }
+        public string? StepName { get; set; }
+        public bool IsDefault { get; set; } = false;
+
+        // Navigation Properties
+        public virtual Model BaseKit { get; set; } = null!;
+        public virtual Model Component { get; set; } = null!;
+
+        public KitDesignOption()
+        {
+            Id = Guid.NewGuid();
+        }
+    }
+}
