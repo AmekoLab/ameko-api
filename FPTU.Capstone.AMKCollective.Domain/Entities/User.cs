@@ -1,15 +1,49 @@
+﻿using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
+using System.Reflection;
 
 namespace FPTU.Capstone.AMKCollective.Domain.Entities
 {
-    public class User
+    public class User : BaseEntity
     {
-        public Guid Id { get; set; }
-        public string Email { get; set; } = string.Empty;
-        public string FullName { get; set; } = string.Empty;
-        public string? Gender { get; set; }
+        // Role
+        public Guid RoleId { get; set; }
+
+        // Required information
+        public string FirstName { get; set; } = null!;
+        public string LastName { get; set; } = null!;
+        public string Username { get; set; } = null!;
+        public string Email { get; set; } = null!;
+        public string HashedPassword { get; set; } = null!;
+
+        // Personal information
+        public Gender? Gender { get; set; }
+        public DateOnly? DateOfBirth { get; set; }
+        public string? PhoneNumber { get; set; }
+        public string? Image { get; set; }
+
+        // Artisan information
+        public string? StoreAddress { get; set; }
+        public string? Banner { get; set; }
+        public double? SuccessDeliveryRate { get; set; }
+        public string? StoreDescription { get; set; }
+
+        // Status
+        public bool EmailConfirmed { get; set; } = false;
+        public bool PhoneNumberConfirmed { get; set; } = false;
+        public AccountStatus Status { get; set; } = AccountStatus.PendingVerification;
+
+        // Reputation Point 
+        public int YMonthlyAutoCancels { get; set; }  // Số lần hủy tự động trong tháng
+        public int TotalAutoCancels { get; set; }  // Tổng số lần hủy tự động
+        public int ConsecutiveSuccesses { get; set; } // Số đơn hàng thành công s
+                                                      // System
+        public string? VerificationCode { get; set; }
+        public DateTime? VerificationCodeExpiryTime { get; set; }
+        public string? ResetPasswordToken { get; set; }
 
         // Navigation Properties
+        public virtual Role Role { get; set; } = null!;
         public virtual ICollection<Order> CustomerOrders { get; set; } = new List<Order>();
         public virtual ICollection<Voucher> CreatedVouchers { get; set; } = new List<Voucher>();
         public virtual ICollection<VoucherUsageLog> VoucherUsageLogs { get; set; } = new List<VoucherUsageLog>();
@@ -26,10 +60,5 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public virtual ICollection<PostReaction> PostReactions { get; set; } = new List<PostReaction>();
         public virtual ICollection<PostComment> PostComments { get; set; } = new List<PostComment>();
         public virtual ICollection<CommunityPost> CommunityPosts { get; set; } = new List<CommunityPost>();
-
-        public User()
-        {
-            Id = Guid.NewGuid();
-        }
     }
 }

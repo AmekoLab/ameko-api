@@ -20,6 +20,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
 
         protected override void Load(ContainerBuilder builder)
         {
+            builder.RegisterType<UnitOfWork>().As<IUnitOfWork>().InstancePerLifetimeScope();
             // Register DbContext
             var connectionString = _configuration.GetConnectionString("DefaultConnection");
             var serverVersion = new MySqlServerVersion(new Version(8, 0, 36));
@@ -34,15 +35,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
             .InstancePerLifetimeScope();
 
             // Register repositories and services used by the application
-            builder.RegisterType<InMemoryUserRepository>().As<IUserRepository>().InstancePerLifetimeScope();
-            builder.RegisterType<InMemoryUnitOfWork>().As<IUnitOfWork>().InstancePerLifetimeScope();
             builder.RegisterType<ThirdPartyClient>().As<IThirdPartyClient>().SingleInstance();
 
             // Register application services (concrete implementation type is in App project)
-            builder.RegisterAssemblyTypes(typeof(FPTU.Capstone.AMKCollective.Application.Services.UserService).Assembly)
-                .Where(t => t.Name.EndsWith("Service"))
-                .AsImplementedInterfaces()
-                .InstancePerLifetimeScope();
+            // builder.RegisterAssemblyTypes(typeof(FPTU.Capstone.AMKCollective.Application.Services.UserService).Assembly)
+            //     .Where(t => t.Name.EndsWith("Service"))
+            //     .AsImplementedInterfaces()
+            //     .InstancePerLifetimeScope();
         }
     }
 }

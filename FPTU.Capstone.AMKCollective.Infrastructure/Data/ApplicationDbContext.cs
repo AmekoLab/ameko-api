@@ -11,6 +11,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data
 
         // DbSets
         public DbSet<User> Users { get; set; } = null!;
+        public DbSet<Role> Roles { get; set; } = null!;
         public DbSet<Category> Categories { get; set; } = null!;
         public DbSet<Model> Models { get; set; } = null!;
         public DbSet<ShopProfile> ShopProfiles { get; set; } = null!;

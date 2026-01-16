@@ -4,22 +4,23 @@ using FPTU.Capstone.AMKCollective.Application.Interfaces;
 
 namespace FPTU.Capstone.AMKCollective.Application.Services
 {
-    // Application service translates domain entities to DTOs and uses repository
+    // Application service translates domain entities to DTOs and uses UnitOfWork
     public class UserService : IUserService
     {
-        private readonly IUserRepository _userRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
-        public UserService(IUserRepository userRepository)
+        public UserService(IUnitOfWork unitOfWork)
         {
-            _userRepository = userRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public IEnumerable<UserDto> GetAll()
         {
-            var users = _userRepository.GetAll();
+            var users = _unitOfWork.Users.GetAll();
             foreach (var u in users)
             {
-                yield return new UserDto(u.Id, u.Email, u.FullName);
+                var fullName = $"{u.FirstName} {u.LastName}";
+                yield return new UserDto(u.Id, u.Email, fullName);
             }
         }
     }

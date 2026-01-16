@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "GakushūHub.Api": {
+    "Ameko.Api": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,

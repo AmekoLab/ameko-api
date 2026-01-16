@@ -2,9 +2,8 @@ using System;
 
 namespace FPTU.Capstone.AMKCollective.Domain.Entities
 {
-    public class Order
+    public class Order : BaseEntity
     {
-        public Guid Id { get; set; }
         public Guid? OrderGroupId { get; set; }
         public Guid? VoucherId { get; set; }
         public Guid CustomerId { get; set; }
@@ -18,10 +17,5 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public virtual ShopProfile Shop { get; set; } = null!;
         public virtual ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
         public virtual ICollection<Feedback> Feedbacks { get; set; } = new List<Feedback>();
-
-        public Order()
-        {
-            Id = Guid.NewGuid();
-        }
     }
 }

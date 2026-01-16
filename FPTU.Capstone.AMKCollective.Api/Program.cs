@@ -8,6 +8,8 @@ using Microsoft.OpenApi.Models;
 using System.Reflection;
 using Microsoft.AspNetCore.Rewrite;
 using Microsoft.Extensions.Configuration;
+using FPTU.Capstone.AMKCollective.Infrastructure.DI;
+using FPTU.Capstone.AMKCollective.Application.DI;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,7 +29,9 @@ builder.Host.UseServiceProviderFactory(new Autofac.Extensions.DependencyInjectio
 builder.Host.ConfigureContainer<Autofac.ContainerBuilder>(containerBuilder =>
 {
     // register infrastructure Autofac module
-    containerBuilder.RegisterModule(new FPTU.Capstone.AMKCollective.Infrastructure.DI.InfrastructureModule(builder.Configuration));
+        containerBuilder.RegisterModule(new InfrastructureModule(builder.Configuration));
+    // register application Autofac module
+        containerBuilder.RegisterModule(new ApplicationModule());
 });
 
 // DI - wire Application interfaces to Infrastructure implementations
@@ -83,5 +87,6 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
+//app.MapHub<RealTimeHub>("/hub");
 
 app.Run();

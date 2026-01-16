@@ -2,9 +2,8 @@ using System;
 
 namespace FPTU.Capstone.AMKCollective.Domain.Entities
 {
-    public class VoucherUsageLog
+    public class VoucherUsageLog : BaseEntity
     {
-        public Guid Id { get; set; }
         public Guid UserId { get; set; }
         public Guid VoucherId { get; set; }
         public string Code { get; set; } = string.Empty;
@@ -12,10 +11,5 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         // Navigation Properties
         public virtual User User { get; set; } = null!;
         public virtual Voucher Voucher { get; set; } = null!;
-
-        public VoucherUsageLog()
-        {
-            Id = Guid.NewGuid();
-        }
     }
 }

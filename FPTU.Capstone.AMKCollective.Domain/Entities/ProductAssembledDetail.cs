@@ -2,9 +2,8 @@ using System;
 
 namespace FPTU.Capstone.AMKCollective.Domain.Entities
 {
-    public class ProductAssembledDetail
+    public class ProductAssembledDetail : BaseEntity
     {
-        public Guid Id { get; set; }
         public Guid AssembledProductId { get; set; }
         public Guid BaseKitId { get; set; }
         public Guid ComponentId { get; set; }
@@ -14,10 +13,5 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public virtual AssembledProduct AssembledProduct { get; set; } = null!;
         public virtual Model BaseKit { get; set; } = null!;
         public virtual Model Component { get; set; } = null!;
-
-        public ProductAssembledDetail()
-        {
-            Id = Guid.NewGuid();
-        }
     }
 }
