@@ -1,11 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
 using FPTU.Capstone.AMKCollective.Application.Interfaces;
+using FPTU.Capstone.AMKCollective.Application.DTOs;
 
 namespace FPTU.Capstone.AMKCollective.Api.Controllers
 {
-    [ApiController]
     [Route("api/[controller]")]
-    public class UsersController : ControllerBase
+    public class UsersController : BaseApiController
     {
         private readonly IUserService _userService;
 
@@ -14,11 +14,21 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             _userService = userService;
         }
 
+        /// <summary>
+        /// Lấy danh sách tất cả users
+        /// </summary>
         [HttpGet]
         public IActionResult Get()
         {
-            var users = _userService.GetAll();
-            return Ok(users);
+            try
+            {
+                var users = _userService.GetAll();
+                return SuccessResponse(users, "Lấy danh sách users thành công");
+            }
+            catch (Exception ex)
+            {
+                return ErrorResponse<IEnumerable<UserDto>>($"Lỗi: {ex.Message}");
+            }
         }
     }
 }

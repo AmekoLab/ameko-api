@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.Interfaces;
 
@@ -8,20 +9,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
     public class UserService : IUserService
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IMapper _mapper;
 
-        public UserService(IUnitOfWork unitOfWork)
+        public UserService(IUnitOfWork unitOfWork, IMapper mapper)
         {
             _unitOfWork = unitOfWork;
+            _mapper = mapper;
         }
 
         public IEnumerable<UserDto> GetAll()
         {
             var users = _unitOfWork.Users.GetAll();
-            foreach (var u in users)
-            {
-                var fullName = $"{u.FirstName} {u.LastName}";
-                yield return new UserDto(u.Id, u.Email, fullName);
-            }
+            // Sử dụng AutoMapper để map từ Entity sang DTO
+            return _mapper.Map<IEnumerable<UserDto>>(users);
         }
     }
 }

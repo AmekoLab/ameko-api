@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Rewrite;
 using Microsoft.Extensions.Configuration;
 using FPTU.Capstone.AMKCollective.Infrastructure.DI;
 using FPTU.Capstone.AMKCollective.Application.DI;
+using FPTU.Capstone.AMKCollective.Application.Mappings;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +18,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// Register AutoMapper
+builder.Services.AddAutoMapper(typeof(MappingProfile).Assembly);
 
 // Add DbContext to the container (for EF Core migrations)
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
