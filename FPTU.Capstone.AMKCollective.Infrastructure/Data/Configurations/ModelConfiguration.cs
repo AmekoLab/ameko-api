@@ -8,31 +8,85 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
     {
         public void Configure(EntityTypeBuilder<Model> builder)
         {
+            // Table & Key
             builder.ToTable("Models");
-            builder.HasKey(m => m.Id);
+            builder.HasKey(x => x.Id);
 
-            builder.Property(m => m.Name)
+            // BaseEntity fields
+            builder.Property(x => x.CreatedAt)
+                .IsRequired();
+
+            builder.Property(x => x.IsDeleted)
+                .HasDefaultValue(false);
+
+            builder.HasQueryFilter(x => !x.IsDeleted);
+
+            // Core fields
+            builder.Property(x => x.Name)
                 .IsRequired()
                 .HasMaxLength(255);
 
-            builder.Property(m => m.ThumbnailURL)
-                .HasMaxLength(500);
+            builder.Property(x => x.Slug)
+                .IsRequired()
+                .HasMaxLength(255);
 
-            builder.Property(m => m.PartType)
+            builder.Property(x => x.PartType)
                 .HasMaxLength(100);
 
-            builder.Property(m => m.Description)
-                .HasMaxLength(2000);
+            builder.Property(x => x.ThumbnailURL)
+                .HasMaxLength(500);
+
+            builder.Property(x => x.DefaultLayerImageUrl)
+                .HasMaxLength(500);
+
+            builder.Property(x => x.Description)
+                .HasColumnType("text");
+
+            // PostgreSQL JSON
+            builder.Property(x => x.Specifications)
+                .HasColumnType("json");
+
+            builder.Property(x => x.Price)
+                .HasColumnType("decimal(18,2)")
+                .IsRequired();
+
+            builder.Property(x => x.StockQuantity)
+                .IsRequired();
+
+            builder.Property(x => x.IsActive)
+                .HasDefaultValue(true);
+
+            // Indexes 
+
+            builder.HasIndex(x => x.Slug)
+                .IsUnique();
+
+            // Builder / Search filter
+            builder.HasIndex(x => new { x.PartType, x.IsActive });
+
+            builder.HasIndex(x => x.ShopId);
 
             // Relationships
-            builder.HasOne(m => m.Shop)
+            builder.HasOne(x => x.Shop)
                 .WithMany(s => s.Models)
-                .HasForeignKey(m => m.ShopId)
+                .HasForeignKey(x => x.ShopId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            builder.HasOne(m => m.Category)
+            builder.HasOne(x => x.Category)
                 .WithMany(c => c.Models)
-                .HasForeignKey(m => m.CategoryId)
+                .HasForeignKey(x => x.CategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // BaseKit to Options
+            builder.HasMany(x => x.AsBaseKitOptions)
+                .WithOne(o => o.BaseKit)
+                .HasForeignKey(o => o.BaseKitId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Component to Options
+            builder.HasMany(x => x.AsComponentOptions)
+                .WithOne(o => o.Component)
+                .HasForeignKey(o => o.ComponentId)
                 .OnDelete(DeleteBehavior.Restrict);
         }
     }
