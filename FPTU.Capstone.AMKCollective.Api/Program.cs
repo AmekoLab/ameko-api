@@ -11,6 +11,9 @@ using Microsoft.Extensions.Configuration;
 using FPTU.Capstone.AMKCollective.Infrastructure.DI;
 using FPTU.Capstone.AMKCollective.Application.DI;
 using FPTU.Capstone.AMKCollective.Application.Mappings;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,6 +31,28 @@ var serverVersion = new MySqlServerVersion(new Version(8, 0, 36));
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseMySql(connectionString, serverVersion));
 
+// Configure JWT Authentication
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:SecretKey"]!)),
+            ValidateIssuer = true,
+            ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
+            ValidateAudience = true,
+            ValidAudience = builder.Configuration["JwtSettings:Audience"],
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+
+builder.Services.AddAuthorization();
+
+// Configure EmailSettings
+builder.Services.Configure<FPTU.Capstone.AMKCollective.Application.DTOs.Settings.EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
+
 // Use Autofac as the service provider
 builder.Host.UseServiceProviderFactory(new Autofac.Extensions.DependencyInjection.AutofacServiceProviderFactory());
 builder.Host.ConfigureContainer<Autofac.ContainerBuilder>(containerBuilder =>
@@ -39,7 +64,14 @@ builder.Host.ConfigureContainer<Autofac.ContainerBuilder>(containerBuilder =>
 });
 
 // DI - wire Application interfaces to Infrastructure implementations
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+builder.Services.AddScoped<ITokenService, TokenService>();
+
+
 // DI registrations moved to Autofac module in Infrastructure (see InfrastructureModule)
+
 #region Swagger
 //Add Swagger document with Bearer to Authentication and Authorization
 builder.Services.AddSwaggerGen(opt =>
@@ -89,6 +121,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 //app.MapHub<RealTimeHub>("/hub");

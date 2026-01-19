@@ -36,6 +36,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
 
             // Register repositories and services used by the application
             builder.RegisterType<ThirdPartyClient>().As<IThirdPartyClient>().SingleInstance();
+            builder.RegisterType<EmailService>().As<IEmailService>().InstancePerLifetimeScope();
 
             // Register application services (concrete implementation type is in App project)
             // builder.RegisterAssemblyTypes(typeof(FPTU.Capstone.AMKCollective.Application.Services.UserService).Assembly)

@@ -1,5 +1,7 @@
 using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
+using FPTU.Capstone.AMKCollective.Application.DTOs.User;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 
 namespace FPTU.Capstone.AMKCollective.Application.Mappings
@@ -21,6 +23,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                     opt => opt.MapFrom(src => src.FullName.Split(new[] { ' ' })[0]))
                 .ForMember(dest => dest.LastName, 
                     opt => opt.MapFrom(src => string.Join(" ", src.FullName.Split(new[] { ' ' }).Skip(1))));
+
+            CreateMap<User, UserProfileDto>();
+            CreateMap<User, LoginResponse>();
 
             // TODO: Thêm mapping cho các entities khác ở đây
             // Ví dụ:

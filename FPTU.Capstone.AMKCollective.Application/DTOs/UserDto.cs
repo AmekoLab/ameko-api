@@ -2,5 +2,10 @@ using System;
 
 namespace FPTU.Capstone.AMKCollective.Application.DTOs
 {
-    public record UserDto(Guid Id, string Email, string FullName);
+    public class UserDto
+    {
+        public Guid Id { get; set; }
+        public string Email { get; set; } = string.Empty;
+        public string FullName { get; set; } = string.Empty;
+    }
 }
