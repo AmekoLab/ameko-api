@@ -9,24 +9,40 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
         public void Configure(EntityTypeBuilder<KitDesignOption> builder)
         {
             builder.ToTable("KitDesignOptions");
-            builder.HasKey(k => k.Id);
 
-            builder.Property(k => k.LayerImageUrl)
+            builder.HasKey(x => x.Id);
+
+            builder.Property(x => x.LayerImageUrl)
                 .HasMaxLength(500);
 
-            builder.Property(k => k.StepName)
+            builder.Property(x => x.StepName)
                 .HasMaxLength(255);
 
-            // Relationships
-            builder.HasOne(k => k.BaseKit)
-                .WithMany(m => m.KitDesignOptions)
-                .HasForeignKey(k => k.BaseKitId)
+            builder.Property(x => x.IsDefault)
+                .HasDefaultValue(false);
+
+            // ----------------------------
+            // BaseKit relationship
+            // ----------------------------
+            builder.HasOne(x => x.BaseKit)
+                .WithMany(m => m.AsBaseKitOptions)
+                .HasForeignKey(x => x.BaseKitId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            builder.HasOne(k => k.Component)
-                .WithMany()
-                .HasForeignKey(k => k.ComponentId)
+            // ----------------------------
+            // Component relationship
+            // ----------------------------
+            builder.HasOne(x => x.Component)
+                .WithMany(m => m.AsComponentOptions)
+                .HasForeignKey(x => x.ComponentId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // ----------------------------
+            // Indexes (recommend)
+            // ----------------------------
+            builder.HasIndex(x => new { x.BaseKitId, x.StepOrder });
+            builder.HasIndex(x => new { x.BaseKitId, x.ComponentId })
+                .IsUnique();
         }
     }
 }
