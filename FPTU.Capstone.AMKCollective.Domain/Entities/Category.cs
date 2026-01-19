@@ -5,7 +5,11 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
     public class Category : BaseEntity
     {
         public string Name { get; set; } = string.Empty;
+        public string Slug { get; set; } = string.Empty;
+        public string? ThumbnailURL { get; set; }
         public Guid? ParentId { get; set; }
+        public bool IsActive { get; set; } = true;
+        public bool IsDelete { get; set; } = false;
 
         // Navigation Properties
         public virtual Category? Parent { get; set; }

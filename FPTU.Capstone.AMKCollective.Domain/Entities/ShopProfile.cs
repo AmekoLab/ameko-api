@@ -5,8 +5,12 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
     public class ShopProfile : BaseEntity
     {
         public Guid UserId { get; set; }
+        public string ShopName { get; set; } = string.Empty;
+
         public string? Bio { get; set; }
         public string? Location { get; set; }
+        public bool IsActive { get; set; } = true;
+
 
         // Navigation Properties
         public virtual User User { get; set; } = null!;

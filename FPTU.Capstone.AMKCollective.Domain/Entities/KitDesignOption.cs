@@ -8,6 +8,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public Guid ComponentId { get; set; }
         public string? LayerImageUrl { get; set; }
         public string? StepName { get; set; }
+        public int StepOrder { get; set; }
         public bool IsDefault { get; set; } = false;
 
         // Navigation Properties
