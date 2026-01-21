@@ -18,54 +18,68 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             _context = context;
         }
 
-        public IEnumerable<User> GetAll()
+        public async Task<IEnumerable<User>> GetAllAsync()
         {
-            return _context.Users.Include(u => u.Role).ToList();
+            return await _context.Users.Include(u => u.Role).ToListAsync();
         }
 
-        public User? GetByUsername(string username)
+        public async Task<User?> GetByUsernameAsync(string username)
         {
-            return _context.Users.Include(u => u.Role).FirstOrDefault(u => u.Username == username);
+            return await _context.Users
+                .Include(u => u.Role)
+                .Include(u => u.RefreshTokens)
+                .FirstOrDefaultAsync(u => u.Username == username);
         }
 
-        public User? GetByEmail(string email)
+        public async Task<User?> GetByEmailAsync(string email)
         {
-            return _context.Users.Include(u => u.Role).FirstOrDefault(u => u.Email == email);
+            return await _context.Users
+                .Include(u => u.Role)
+                .Include(u => u.RefreshTokens)
+                .FirstOrDefaultAsync(u => u.Email == email);
         }
 
-        public User? GetById(Guid id)
+        public async Task<User?> GetByIdAsync(Guid id)
         {
-            return _context.Users.Include(u => u.Role).FirstOrDefault(u => u.Id == id);
+            return await _context.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.Id == id);
         }
 
-        public void Update(User user)
+        public Task UpdateAsync(User user)
         {
             _context.Users.Update(user);
+            return Task.CompletedTask;
         }
 
-        public void Add(User user)
+        public async Task AddAsync(User user)
         {
-            _context.Users.Add(user);
+            await _context.Users.AddAsync(user);
         }
 
-        public void Delete(User user)
+        public Task DeleteAsync(User user)
         {
             _context.Users.Remove(user);
+            return Task.CompletedTask;
         }
 
-        public Role? GetRoleByName(RoleType roleName)
+        public async Task<Role?> GetRoleByNameAsync(RoleType roleName)
         {
-            return _context.Roles.FirstOrDefault(r => r.Name == roleName);
+            return await _context.Roles.FirstOrDefaultAsync(r => r.Name == roleName);
         }
 
-        public User? GetUserWithRefreshTokens(Guid id)
+        public async Task<User?> GetUserWithRefreshTokensAsync(Guid id)
         {
-            return _context.Users.Include(u => u.Role).Include(u => u.RefreshTokens).FirstOrDefault(u => u.Id == id);
+            return await _context.Users.Include(u => u.Role).Include(u => u.RefreshTokens).FirstOrDefaultAsync(u => u.Id == id);
         }
 
-        public void AddRefreshToken(RefreshToken token)
+        public async Task AddRefreshTokenAsync(RefreshToken token)
         {
-            _context.RefreshTokens.Add(token);
+            await _context.RefreshTokens.AddAsync(token);
+        }
+
+        public async Task RemoveAllRefreshTokensAsync(Guid userId)
+        {
+            var tokens = await _context.RefreshTokens.Where(rt => rt.UserId == userId).ToListAsync();
+            _context.RefreshTokens.RemoveRange(tokens);
         }
     }
 }

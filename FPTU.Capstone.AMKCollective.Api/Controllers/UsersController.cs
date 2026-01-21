@@ -1,19 +1,16 @@
-using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
+﻿using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
 using FPTU.Capstone.AMKCollective.Application.Interfaces;
-
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-
-using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
-using FPTU.Capstone.AMKCollective.Application.DTOs.User;
+using Swashbuckle.AspNetCore.Annotations;
 
 
 namespace FPTU.Capstone.AMKCollective.Api.Controllers
 {
     [ApiController]
 
-    [Route("api/[controller]")]
+    [Route("api/v1/[controller]")]
     public class UsersController : BaseApiController
 
     {
@@ -23,242 +20,367 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         {
             _userService = userService;
         }
-
+        [SwaggerOperation(
+            Summary = "Get all users",
+            Description = "Returns a list of all registered users. Admin role suggested for production." )]
+        [SwaggerResponse(200, "Successfully retrieved list of users", typeof(IEnumerable<UserProfileDto>))]
+        [SwaggerResponse(401, "Unauthorized access")]
         [HttpGet]
-        public IActionResult Get()
+        public async Task<IActionResult> Get()
         {
-            var users = _userService.GetAll();
+            var users = await _userService.GetAllAsync();
             return SuccessResponse(users);
         }
 
-        /// <summary>
-        /// Authenticate user and return token
-        /// </summary>
-        /// <param name="request">Login credentials</param>
-        /// <returns>Login response with token and user info</returns>
-       
+
         [HttpPost("login")]
-        public IActionResult Login([FromBody] LoginRequest request)
+        [SwaggerOperation(
+            Summary = "Authenticate user",
+            Description = "Authenticate user credentials and return access token, refresh token, and user information"
+        )]
+        [SwaggerResponse(200, "Login successful", typeof(LoginResponse))]
+        [SwaggerResponse(401, "Invalid username or password")]
+        public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
-            var response = _userService.Login(request);
-            if (response == null) return UnauthorizedResponse<LoginResponse>("Invalid username or password");
+            var response = await _userService.LoginAsync(request);
+            if (response == null)
+                return UnauthorizedResponse<LoginResponse>("Invalid username or password");
+
             return SuccessResponse(response);
         }
 
-        /// <summary>
-        /// Get user profile by Id
-        /// </summary>
-        /// <param name="id">User ID</param>
-        /// <returns>User profile details</returns>
+
+        #region Profile
+
         [Authorize]
         [HttpGet("profile/{id}")]
-        public IActionResult GetProfile(Guid id)
+        [SwaggerOperation(
+            Summary = "Get user profile",
+            Description = "Retrieve detailed profile information of a user by UserId"
+        )]
+        [SwaggerResponse(200, "Success", typeof(UserProfileDto))]
+        [SwaggerResponse(401, "Unauthorized")]
+        [SwaggerResponse(404, "User not found")]
+        public async Task<IActionResult> GetProfile(Guid id)
         {
-            var profile = _userService.GetProfile(id);
-            if (profile == null) return NotFoundResponse<UserProfileDto>("User not found");
+            var profile = await _userService.GetProfileAsync(id);
+            if (profile == null)
+                return NotFoundResponse<UserProfileDto>("User not found");
+
             return SuccessResponse(profile);
         }
 
-        /// <summary>
-        /// Register a new customer account
-        /// </summary>
-        /// <param name="request">Registration details</param>
-        /// <returns>Status of registration</returns>
+        #endregion
+
+        #region Registration
+
         [HttpPost("register")]
-        public IActionResult Register([FromBody] RegisterRequest request)
+        [SwaggerOperation(
+            Summary = "Register new customer",
+            Description = "Create a new customer account with default role 'Customer'."
+        )]
+        [SwaggerResponse(200, "Registration successful")]
+        [SwaggerResponse(400, "Registration failed due to existing username/email or validation error")]
+        public async Task<IActionResult> Register([FromBody] RegisterRequest request)
         {
-            if (!_userService.Register(request, out string errorMessage))
+            var result = await _userService.RegisterAsync(request);
+            if (!result.Success)
+                return ErrorResponse<object>(result.ErrorMessage);
+
+            return SuccessResponse(new
             {
-                return ErrorResponse<object>(errorMessage);
-            }
-            return SuccessResponse(new 
-            { 
-                request.Username, 
-                request.Email, 
-                request.FirstName, 
+                request.Username,
+                request.Email,
+                request.FirstName,
                 request.LastName,
                 request.Role
             }, "Registration successful");
         }
 
-        /// <summary>
-        /// Change password for the current user
-        /// </summary>
-        /// <param name="userId">User ID (from token in real app)</param>
-        /// <param name="request">Old and new password</param>
-        /// <returns>Status</returns>
-        [HttpPost("change-password/{userId}")] 
-        public IActionResult ChangePassword(Guid userId, [FromBody] ChangePasswordRequest request)
+        #endregion
+
+        #region Password Management
+
+        [Authorize]
+        [HttpPost("change-password/{userId}")]
+        [SwaggerOperation(
+            Summary = "Change password",
+            Description = "Updates the authenticated user's password. Requires the old password for verification. Invalidates all active sessions (Refresh Tokens) upon success for security."
+        )]
+        [SwaggerResponse(200, "Password changed successfully")]
+        [SwaggerResponse(400, "Incorrect old password or invalid new password format")]
+        [SwaggerResponse(401, "Unauthorized - Bearer token required")]
+        public async Task<IActionResult> ChangePassword(Guid userId, [FromBody] ChangePasswordRequest request)
         {
-             if (!_userService.ChangePassword(userId, request, out string errorMessage))
-            {
-                return ErrorResponse<object>(errorMessage);
-            }
+            var result = await _userService.ChangePasswordAsync(userId, request);
+            if (!result.Success)
+                return ErrorResponse<object>(result.ErrorMessage);
+
             return SuccessResponse(new { UserId = userId }, "Password changed successfully");
         }
 
-        /// <summary>
-        /// Logout and revoke refresh token
-        /// </summary>
-        /// <param name="userId">User ID</param>
-        /// <param name="request">Refresh token to revoke</param>
-        /// <returns>Status</returns>
+        #endregion
+
+        #region Logout & Token
+
+        [Authorize]
         [HttpPost("logout/{userId}")]
-        public IActionResult Logout(Guid userId, [FromBody] LogoutRequest request)
+        [SwaggerOperation(
+            Summary = "Logout",
+            Description = "Revokes the provided refresh token to terminate the current session. The user remains logged in on other devices."
+        )]
+        [SwaggerResponse(200, "Logged out successfully")]
+        [SwaggerResponse(400, "Invalid or missing refresh token")]
+        [SwaggerResponse(401, "Unauthorized - Bearer token required")]
+        public async Task<IActionResult> Logout(Guid userId, [FromBody] LogoutRequest request)
         {
-             if (!_userService.Logout(userId, request, out string errorMessage))
-            {
-                return ErrorResponse<object>(errorMessage);
-            }
+            var result = await _userService.LogoutAsync(userId, request);
+            if (!result.Success)
+                return ErrorResponse<object>(result.ErrorMessage);
+
             return SuccessResponse("Logout successful");
         }
 
-        /// <summary>
-        /// Refresh access token using refresh token
-        /// </summary>
-        /// <param name="userId">User ID</param>
-        /// <param name="request">Refresh token</param>
-        /// <returns>New access and refresh token</returns>
         [HttpPost("refresh-token/{userId}")]
-        public IActionResult RefreshToken(Guid userId, [FromBody] RefreshTokenRequest request)
+        [SwaggerOperation(
+            Summary = "Refresh access token",
+            Description = "Generate a new access token and rotating refresh token using a valid, non-expired refresh token."
+        )]
+        [SwaggerResponse(200, "Token refreshed successfully", typeof(RefreshTokenResponse))]
+        [SwaggerResponse(400, "Invalid or expired refresh token")]
+        public async Task<IActionResult> RefreshToken(Guid userId, [FromBody] RefreshTokenRequest request)
         {
-            var response = _userService.RefreshToken(userId, request, out string errorMessage);
-            if (response == null)
-            {
-                return ErrorResponse<object>(errorMessage);
-            }
-            return SuccessResponse(response, "Token refreshed successfully");
+            var result = await _userService.RefreshTokenAsync(userId, request);
+            if (result.Response == null)
+                return ErrorResponse<object>(result.ErrorMessage);
+
+            return SuccessResponse(result.Response, "Token refreshed successfully");
         }
+
+        #endregion
 
         #region Admin Endpoints
 
-        /// <summary>
-        /// Admin: Create a new user (any role)
-        /// </summary>
-        /// <param name="request">User details</param>
-        /// <returns>Created User ID</returns>
-        [HttpPost("admin/users")]
-        public IActionResult CreateUser([FromBody] CreateUserRequest request)
+        [Authorize(Roles = "Admin")]
+        [HttpPost("admin/create-user")]
+        [SwaggerOperation(
+            Summary = "Admin: Create user",
+            Description = "Create a new confirmed user with a specific role, status, and profile information. Requires Admin role."
+        )]
+        [SwaggerResponse(200, "User created successfully")]
+        [SwaggerResponse(400, "Failed to create user (e.g. username already exists)")]
+        [SwaggerResponse(401, "Unauthorized")]
+        [SwaggerResponse(403, "Forbidden - Requires Admin role")]
+        public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest request)
         {
-             var userId = _userService.CreateUser(request, out string errorMessage);
-             if (userId == Guid.Empty)
-             {
-                 return ErrorResponse<object>(errorMessage);
-             }
-             return SuccessResponse(new 
-             { 
-                 UserId = userId,
-                 request.Username, 
-                 request.Email, 
-                 request.FirstName, 
-                 request.LastName,
-                 request.Role,
-                 request.Status,
-                 request.Gender,
-                 request.DateOfBirth,
-                 request.PhoneNumber
-                 // Exclude Password
-             }, "User created successfully");
+            var result = await _userService.CreateUserAsync(request);
+            if (result.UserId == Guid.Empty)
+                return ErrorResponse<object>(result.ErrorMessage);
+
+            return SuccessResponse(new
+            {
+                result.UserId,
+                request.Username,
+                request.Email,
+                request.FirstName,
+                request.LastName,
+                request.Role,
+                request.Status,
+                request.Gender,
+                request.DateOfBirth,
+                request.PhoneNumber
+            }, "User created successfully");
         }
 
-        /// <summary>
-        /// Admin: Update a user
-        /// </summary>
-        /// <param name="id">User ID</param>
-        /// <param name="request">Update details</param>
-        /// <returns>Status</returns>
-        [HttpPut("admin/users/{id}")]
-        public IActionResult AdminUpdateUser(Guid id, [FromBody] UpdateUserAdminRequest request)
+        [Authorize(Roles = "Admin")]
+        [HttpPut("admin/update-user/{id}")]
+        [SwaggerOperation(
+            Summary = "Admin: Update user",
+            Description = "Fully update user information including role and account status. Requires Admin role."
+        )]
+        [SwaggerResponse(200, "User updated successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
+        [SwaggerResponse(403, "Forbidden - Requires Admin role")]
+        [SwaggerResponse(404, "User not found")]
+        public async Task<IActionResult> AdminUpdateUser(Guid id, [FromBody] UpdateUserAdminRequest request)
         {
-            if (!_userService.AdminUpdateUser(id, request, out string errorMessage))
-            {
-                return ErrorResponse<object>(errorMessage);
-            }
+            var result = await _userService.AdminUpdateUserAsync(id, request);
+            if (!result.Success)
+                return ErrorResponse<object>(result.ErrorMessage);
+
             return SuccessResponse(request, "User updated successfully");
         }
 
-        /// <summary>
-        /// Admin: Delete a user
-        /// </summary>
-        /// <param name="id">User ID</param>
-        /// <returns>Status</returns>
-        [HttpDelete("admin/users/{id}")]
-        public IActionResult DeleteUser(Guid id)
+        [Authorize(Roles = "Admin")]
+        [HttpDelete("admi/delete-user/{id}")]
+        [SwaggerOperation(
+            Summary = "Admin: Delete user",
+            Description = "Permanently removes a user record from the system. Requires Admin role."
+        )]
+        [SwaggerResponse(200, "User deleted successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
+        [SwaggerResponse(403, "Forbidden - Requires Admin role")]
+        [SwaggerResponse(404, "User not found")]
+        public async Task<IActionResult> DeleteUser(Guid id)
         {
-            if (!_userService.DeleteUser(id, out string errorMessage))
-            {
-                return ErrorResponse<object>(errorMessage);
-            }
+            var result = await _userService.DeleteUserAsync(id);
+            if (!result.Success)
+                return ErrorResponse<object>(result.ErrorMessage);
+
             return SuccessResponse(new { UserId = id }, "User deleted successfully");
         }
 
-        /// <summary>
-        /// Admin: Ban a user (Set status to Suspended)
-        /// </summary>
-        /// <param name="id">User ID</param>
-        /// <returns>Status</returns>
-        [HttpPost("admin/users/{id}/ban")]
-        public IActionResult BanUser(Guid id)
+        [Authorize(Roles = "Admin")]
+        [HttpPost("admin/ban/{id}")]
+        [SwaggerOperation(
+            Summary = "Admin: Ban user",
+            Description = "Suspends a user account, preventing further logins and invalidating all current sessions. Requires Admin role."
+        )]
+        [SwaggerResponse(200, "User banned successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
+        [SwaggerResponse(403, "Forbidden - Requires Admin role")]
+        [SwaggerResponse(404, "User not found")]
+        public async Task<IActionResult> BanUser(Guid id)
         {
-            if (!_userService.BanUser(id, out string errorMessage))
-            {
-                return ErrorResponse<object>(errorMessage);
-            }
+            var result = await _userService.BanUserAsync(id);
+            if (!result.Success)
+                return ErrorResponse<object>(result.ErrorMessage);
+
             return SuccessResponse(new { UserId = id }, "User banned successfully");
         }
 
         #endregion
 
-        /// <summary>
-        /// Update user profile
-        /// </summary>
-        /// <param name="id">User ID</param>
-        /// <param name="request">Update data</param>
-        /// <returns>Status of update</returns>
+        #region Profile Update
+
+        [Authorize]
         [HttpPut("profile/{id}")]
-        public IActionResult UpdateProfile(Guid id, [FromBody] UpdateProfileRequest request)
+        [SwaggerOperation(
+            Summary = "Update user profile",
+            Description = "Updates personal details (First Name, Last Name, Gender, etc.) for the authenticated user."
+        )]
+        [SwaggerResponse(200, "Profile updated successfully")]
+        [SwaggerResponse(401, "Unauthorized - Bearer token required")]
+        [SwaggerResponse(404, "User not found")]
+        public async Task<IActionResult> UpdateProfile(Guid id, [FromBody] UpdateProfileRequest request)
         {
-            var result = _userService.UpdateProfile(id, request);
-            if (!result) return NotFoundResponse<object>("User not found or update failed");
+            var result = await _userService.UpdateProfileAsync(id, request);
+            if (!result)
+                return NotFoundResponse<object>("User not found or update failed");
+
             return SuccessResponse(request, "Profile updated successfully");
         }
 
+        #endregion
 
+        #region Forgot / Reset Password
 
-        /// <summary>
-        /// Request password reset code via email
-        /// </summary>
-        /// <param name="request">Email</param>
-        /// <returns>Status</returns>
         [HttpPost("forgot-password")]
-        public IActionResult ForgotPassword([FromBody] ForgotPasswordRequest request)
+        [SwaggerOperation(
+            Summary = "Forgot password",
+            Description = "Initiates the password recovery process by sending a 6-digit verification code to the registered email address.\n\n" +
+        "Usage steps:\n\n" +
+        "Step 1: Call POST /forgot-password to send a 6-digit activation code to the user's email.\n\n" +
+        "Step 2: Enter the received 6-digit code and call POST /reset-password to verify and activate the account."
+        )]
+        [SwaggerResponse(200, "Reset code sent successfully")]
+        [SwaggerResponse(400, "Email not found or failed to send email")]
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
         {
-            if (!_userService.ForgotPassword(request, out string errorMessage))
-            {
-                return BadRequest(new { Message = errorMessage });
-            }
-            return Ok(new { Message = "Password reset code sent to email" });
+            var result = await _userService.ForgotPasswordAsync(request);
+            if (!result.Success)
+                return ErrorResponse<object>(result.ErrorMessage);
+
+            return SuccessResponse(new { Message = "Password reset code sent to email" }, "Reset code sent successfully");
         }
 
-        /// <summary>
-        /// Reset password using code
-        /// </summary>
-        /// <param name="request">Email, Code, NewPassword</param>
-        /// <returns>Status</returns>
         [HttpPost("reset-password")]
-        public IActionResult ResetPassword([FromBody] ResetPasswordRequest request)
+        [SwaggerOperation(
+            Summary = "Reset password",        
+            Description = "Completes the password recovery process by verifying the code and setting a new password. Invalidates all active sessions for security.\n\n" +
+        "Usage steps:\n\n" +
+        "Step 1: Call POST /forgot-password to send a 6-digit activation code to the user's email.\n\n" +
+        "Step 2: Enter the received 6-digit code and call POST /reset-password to verify and activate the account."
+        )]
+        [SwaggerResponse(200, "Password reset successfully")]
+        [SwaggerResponse(400, "Invalid email, incorrect code, or weak new password")]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
         {
-            if (!_userService.ResetPassword(request, out string errorMessage))
-            {
-                return BadRequest(new { Message = errorMessage });
-            }
-            return Ok(new { Message = "Password reset successfully" });
+            var result = await _userService.ResetPasswordAsync(request);
+            if (!result.Success)
+                return ErrorResponse<object>(result.ErrorMessage);
+
+            return SuccessResponse(new { Message = "Password reset successfully" }, "Password reset successfully");
         }
 
 
 
+        #endregion
+        
+        #region Account Activation
 
+        [HttpPost("send-activation-code")]
+        [SwaggerOperation(
+    Summary = "Send activation code",
+    Description =
+        "Sends a 6-digit activation code to the user's email to confirm their account.\n\n" +
+        "Usage steps:\n\n" +
+        "Step 1: Call POST /send-activation-code to send a 6-digit activation code to the user's email.\n\n" +
+        "Step 2: Enter the received 6-digit code and call POST /verify-activation-code to verify and activate the account."
+)]
+        [SwaggerResponse(200, "Activation code sent successfully")]
+        [SwaggerResponse(400, "User not found or email sending failed")]
+        public async Task<IActionResult> SendActivationCode([FromBody] string email)
+        {
+            var result = await _userService.SendActivationCodeEmailConfirmedAsync(email);
+            if (!result.Success)
+                return ErrorResponse<object>(result.ErrorMessage);
 
-   
+            return SuccessResponse(new { Email = email }, "Activation code sent successfully");
+        }
+
+        [HttpPost("verify-activation-code")]
+        [SwaggerOperation(
+            Summary = "Verify activation code",
+            Description = "Verifies the 6-digit code sent to the email and activates the account.\n\n" +
+        "Usage steps:\n\n" +
+        "Step 1: Call POST /send-activation-code to send a 6-digit activation code to the user's email.\n\n" +
+        "Step 2: Enter the received 6-digit code and call POST /verify-activation-code to verify and activate the account."
+        )]
+        [SwaggerResponse(200, "Account activated successfully")]
+        [SwaggerResponse(400, "Invalid or expired code")]
+        public async Task<IActionResult> VerifyActivationCode([FromBody] VerifyEmailRequest request)
+        {
+            var result = await _userService.VerifyActivationCodeEmailConfirmedAsync(request);
+            if (!result.Success)
+                return ErrorResponse<object>(result.ErrorMessage);
+
+            return SuccessResponse(new { Email = request.Email }, "Account activated successfully");
+        }
+
+        #endregion
+
+        #region Role Management
+
+        [Authorize]
+        [HttpPost("upgrade-to-shop/{id}")]
+        [SwaggerOperation(
+            Summary = "Upgrade to Shop role",
+            Description = "Upgrades the authenticated user's role from Customer to Shop. Condition: Email must be confirmed."
+        )]
+        [SwaggerResponse(200, "Upgraded to Shop successfully")]
+        [SwaggerResponse(400, "Email not confirmed or user not found")]
+        [SwaggerResponse(401, "Unauthorized")]
+        public async Task<IActionResult> UpgradeToShop(Guid id)
+        {
+            var result = await _userService.UpgradeToShopAsync(id);
+            if (!result.Success)
+                return ErrorResponse<object>(result.ErrorMessage);
+
+            return SuccessResponse(new { UserId = id }, "Upgraded to Shop successfully");
+        }
+
+        #endregion
+
     }
 }

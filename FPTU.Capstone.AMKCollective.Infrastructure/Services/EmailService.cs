@@ -20,8 +20,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             using (var client = new SmtpClient(_emailSettings.SmtpServer, _emailSettings.Port))
             {
+                client.UseDefaultCredentials = false;
                 client.Credentials = new NetworkCredential(_emailSettings.Username, _emailSettings.Password);
                 client.EnableSsl = true;
+                client.DeliveryMethod = SmtpDeliveryMethod.Network;
 
                 var mailMessage = new MailMessage
                 {

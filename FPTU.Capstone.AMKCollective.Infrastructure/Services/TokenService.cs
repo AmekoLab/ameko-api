@@ -25,12 +25,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             var claims = new List<System.Security.Claims.Claim>
             {
                 new System.Security.Claims.Claim(JwtRegisteredClaimNames.NameId, user.Id.ToString()),
-                new System.Security.Claims.Claim(JwtRegisteredClaimNames.UniqueName, user.Username),
+                new System.Security.Claims.Claim(JwtRegisteredClaimNames.Sub, user.Username),
                 new System.Security.Claims.Claim(JwtRegisteredClaimNames.Email, user.Email),
                 new System.Security.Claims.Claim(ClaimTypes.Role, user.Role != null ? user.Role.Name.ToString() : "User")
             };
 
-            var creds = new SigningCredentials(_key, SecurityAlgorithms.HmacSha512Signature);
+            var creds = new SigningCredentials(_key, SecurityAlgorithms.HmacSha256Signature);
 
             var tokenDescriptor = new SecurityTokenDescriptor
             {

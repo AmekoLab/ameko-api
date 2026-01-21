@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
@@ -8,22 +9,25 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces
 {
     public interface IUserService
     {
-        IEnumerable<UserDto> GetAll();
-        LoginResponse? Login(LoginRequest request);
-        UserProfileDto? GetProfile(Guid userId);
-        bool UpdateProfile(Guid userId, UpdateProfileRequest request);
+        Task<IEnumerable<UserDto>> GetAllAsync();
+        Task<LoginResponse?> LoginAsync(LoginRequest request);
+        Task<UserProfileDto?> GetProfileAsync(Guid userId);
+        Task<bool> UpdateProfileAsync(Guid userId, UpdateProfileRequest request);
         
-        bool Register(RegisterRequest request, out string errorMessage);
-        bool ChangePassword(Guid userId, ChangePasswordRequest request, out string errorMessage);
+        Task<(bool Success, string ErrorMessage)> RegisterAsync(RegisterRequest request);
+        Task<(bool Success, string ErrorMessage)> ChangePasswordAsync(Guid userId, ChangePasswordRequest request);
         
-        Guid CreateUser(CreateUserRequest request, out string errorMessage);
-        bool AdminUpdateUser(Guid userId, UpdateUserAdminRequest request, out string errorMessage);
-        bool DeleteUser(Guid userId, out string errorMessage);
-        bool BanUser(Guid userId, out string errorMessage);
-        bool Logout(Guid userId, LogoutRequest request, out string errorMessage);
-        RefreshTokenResponse? RefreshToken(Guid userId, RefreshTokenRequest request, out string errorMessage);
-        bool VerifyEmail(VerifyEmailRequest request, out string errorMessage);
-        bool ForgotPassword(ForgotPasswordRequest request, out string errorMessage);
-        bool ResetPassword(ResetPasswordRequest request, out string errorMessage);
+        Task<(Guid UserId, string ErrorMessage)> CreateUserAsync(CreateUserRequest request);
+        Task<(bool Success, string ErrorMessage)> AdminUpdateUserAsync(Guid userId, UpdateUserAdminRequest request);
+        Task<(bool Success, string ErrorMessage)> DeleteUserAsync(Guid userId);
+        Task<(bool Success, string ErrorMessage)> BanUserAsync(Guid userId);
+        Task<(bool Success, string ErrorMessage)> LogoutAsync(Guid userId, LogoutRequest request);
+        Task<(RefreshTokenResponse? Response, string ErrorMessage)> RefreshTokenAsync(Guid userId, RefreshTokenRequest request);
+        Task<(bool Success, string ErrorMessage)> VerifyActivationCodeEmailConfirmedAsync(VerifyEmailRequest request);
+        Task<(bool Success, string ErrorMessage)> SendActivationCodeEmailConfirmedAsync(string email);
+        Task<(bool Success, string ErrorMessage)> ForgotPasswordAsync(ForgotPasswordRequest request);
+        Task<(bool Success, string ErrorMessage)> ResetPasswordAsync(ResetPasswordRequest request);
+        Task<(bool Success, string ErrorMessage)> UpgradeToShopAsync(Guid userId);
+        Task<bool> RevokeAllTokensAsync(Guid userId);
     }
 }

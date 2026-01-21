@@ -17,7 +17,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Auth
         [Required]
         public string LastName { get; set; } = null!;
         
-        // Optional default role, usually Customer for public register
         public RoleType Role { get; set; } = RoleType.Customer;
     }
 }

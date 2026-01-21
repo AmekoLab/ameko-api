@@ -25,7 +25,21 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                     opt => opt.MapFrom(src => string.Join(" ", src.FullName.Split(new[] { ' ' }).Skip(1))));
 
             CreateMap<User, UserProfileDto>();
-            CreateMap<User, LoginResponse>();
+            CreateMap<User, LoginResponse>()
+                .ForMember(dest => dest.Role, opt => opt.MapFrom(src => src.Role.Name.ToString()));
+            
+            CreateMap<RegisterRequest, User>()
+                .ForMember(dest => dest.HashedPassword, opt => opt.Ignore())
+                .ForMember(dest => dest.Role, opt => opt.Ignore());
+
+            CreateMap<CreateUserRequest, User>()
+                .ForMember(dest => dest.HashedPassword, opt => opt.Ignore())
+                .ForMember(dest => dest.Role, opt => opt.Ignore());
+
+            CreateMap<UpdateUserAdminRequest, User>()
+                .ForMember(dest => dest.Role, opt => opt.Ignore());
+
+            CreateMap<UpdateProfileRequest, User>();
 
             // TODO: Thêm mapping cho các entities khác ở đây
             // Ví dụ:
