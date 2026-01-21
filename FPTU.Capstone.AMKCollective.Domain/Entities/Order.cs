@@ -1,4 +1,6 @@
 using System;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace FPTU.Capstone.AMKCollective.Domain.Entities
 {
@@ -8,7 +10,28 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public Guid? VoucherId { get; set; }
         public Guid CustomerId { get; set; }
         public Guid ShopId { get; set; }
+        [Required]
+        [MaxLength(100)]
+        public string RecipientName { get; set; } = string.Empty;
+        [Required]
+        [MaxLength(20)]
+        public string PhoneNumber { get; set; } = string.Empty;
+        [Required]
+        [MaxLength(500)]
+        public string ShippingAddress { get; set; } = string.Empty;
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal SubTotal { get; set; }
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal ShippingFee { get; set; }
+        [Column(TypeName = "decimal(18,2)")]
         public decimal TotalAmount { get; set; }
+
+        public string OrderStatus { get; set; } = "Pending"; 
+        public string PaymentStatus { get; set; } = "Pending";
+
+        public string? Note { get; set; } 
+        public string? CancelReason { get; set; }
 
         // Navigation Properties
         public virtual OrderGroup? OrderGroup { get; set; }

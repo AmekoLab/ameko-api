@@ -11,11 +11,19 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.ToTable("OrderGroups");
             builder.HasKey(og => og.Id);
 
-            builder.Property(og => og.Amount)
-                .HasPrecision(18, 2);
+            builder.Property(og => og.TotalGroupAmount)
+                .HasPrecision(18, 2)
+                .IsRequired();
 
-            builder.Property(og => og.BalanceBefore)
-                .HasPrecision(18, 2);
+            builder.Property(og => og.PaymentStatus)
+                .HasMaxLength(50)
+                .HasDefaultValue("Pending");
+
+            builder.Property(og => og.StripeSessionId)
+                .HasMaxLength(255); // Session ID Stripe 
+
+            builder.Property(og => og.StripePaymentIntentId)
+                .HasMaxLength(255);
         }
     }
 }

@@ -11,14 +11,41 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.ToTable("Orders");
             builder.HasKey(o => o.Id);
 
-            builder.Property(o => o.TotalAmount)
-                .HasPrecision(18, 2);
+            builder.Property(o => o.RecipientName)
+                .HasMaxLength(100)
+                .IsRequired();
 
-            // Relationships
+            builder.Property(o => o.PhoneNumber)
+                .HasMaxLength(20)
+                .IsRequired();
+
+            builder.Property(o => o.ShippingAddress)
+                .HasMaxLength(500)
+                .IsRequired();
+
+            builder.Property(o => o.Note)
+                .HasMaxLength(500);
+
+            builder.Property(o => o.CancelReason)
+                .HasMaxLength(500);
+
+            builder.Property(o => o.SubTotal).HasPrecision(18, 2);
+            builder.Property(o => o.ShippingFee).HasPrecision(18, 2);
+            builder.Property(o => o.TotalAmount).HasPrecision(18, 2);
+
+            builder.Property(o => o.OrderStatus)
+                .HasMaxLength(50)
+                .HasDefaultValue("Pending");
+
+            builder.Property(o => o.PaymentStatus)
+                .HasMaxLength(50)
+                .HasDefaultValue("Pending");
+
+            //Relationships
             builder.HasOne(o => o.OrderGroup)
                 .WithMany(og => og.Orders)
                 .HasForeignKey(o => o.OrderGroupId)
-                .OnDelete(DeleteBehavior.SetNull);
+                .OnDelete(DeleteBehavior.SetNull); 
 
             builder.HasOne(o => o.Voucher)
                 .WithMany(v => v.Orders)
@@ -28,7 +55,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.HasOne(o => o.Customer)
                 .WithMany(u => u.CustomerOrders)
                 .HasForeignKey(o => o.CustomerId)
-                .OnDelete(DeleteBehavior.Restrict);
+                .OnDelete(DeleteBehavior.Restrict); 
 
             builder.HasOne(o => o.Shop)
                 .WithMany(s => s.Orders)

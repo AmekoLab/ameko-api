@@ -1,6 +1,7 @@
 using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
+using System.Text.Json;
 
 namespace FPTU.Capstone.AMKCollective.Application.Mappings
 {
@@ -55,6 +56,35 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             CreateMap<CreateKitOptionDto, KitDesignOption>();
             //==================KITDESIGN=======================//
 
+            //==================Cart============================//
+            CreateMap<Cart, CartDto>()
+                .ForMember(dest => dest.Items, opt => opt.MapFrom(src => src.CartItems))
+                .ForMember(dest => dest.TotalAmount, opt => opt.MapFrom(src =>
+                    src.CartItems.Sum(i => (i.NegotiatedPrice ?? i.UnitPrice) * i.Quantity)));
+
+            CreateMap<CartItem, CartItemDto>()
+                .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product.Name)) 
+                .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => src.Product.DefaultLayerImageUrl)) 
+                .ForMember(dest => dest.ProductType, opt => opt.MapFrom(src => src.Product.PartType))
+                .ForMember(dest => dest.CustomComponentIds, opt => opt.MapFrom(src =>
+                    string.IsNullOrEmpty(src.CustomConfig)
+                    ? null
+                    : JsonSerializer.Deserialize<List<Guid>>(src.CustomConfig, (JsonSerializerOptions?)null))); // Parse JSON string -> List<Guid>
+              //==================Cart============================//
+              //===================Order===========================//
+
+            CreateMap<Order, OrderDto>()
+                .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Shop.ShopName));
+
+            CreateMap<OrderItem, OrderItemDto>()
+                .ForMember(dest => dest.CustomComponentIds, opt => opt.MapFrom(src => 
+                    string.IsNullOrEmpty(src.DesignConfig) 
+                    ? null 
+                    : JsonSerializer.Deserialize<List<Guid>>(src.DesignConfig, (JsonSerializerOptions?)null)));
+            //===================Order===========================//
+
         }
+
     }
+    
 }
