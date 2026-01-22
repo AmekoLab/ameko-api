@@ -16,9 +16,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         // Repository properties - The repositories will be implemented similarly do not forget to create them please!!!
         public IUserRepository Users => _users ??= new UserRepository(_context);
 
-        public void Commit()
+        public async Task CommitAsync()
         {
-            _context.SaveChanges();
+            await _context.SaveChangesAsync();
         }
 
         public void Rollback()

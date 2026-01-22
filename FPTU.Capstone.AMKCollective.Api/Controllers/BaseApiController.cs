@@ -48,5 +48,13 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         {
             return StatusCode(500, ApiResponse<T>.ErrorResponse(message));
         }
+
+        /// <summary>
+        /// Trả về response lỗi unauthorized
+        /// </summary>
+        protected IActionResult UnauthorizedResponse<T>(string message = "Unauthorized")
+        {
+            return Unauthorized(ApiResponse<T>.ErrorResponse(message));
+        }
     }
 }
