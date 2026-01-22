@@ -11,11 +11,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.ToTable("Orders");
             builder.HasKey(o => o.Id);
 
-            builder.Property(o => o.RecipientName)
+            builder.Property(o => o.ReceiverName)
                 .HasMaxLength(100)
                 .IsRequired();
 
-            builder.Property(o => o.PhoneNumber)
+            builder.Property(o => o.ReceiverPhone)
                 .HasMaxLength(20)
                 .IsRequired();
 

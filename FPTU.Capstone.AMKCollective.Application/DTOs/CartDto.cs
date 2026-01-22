@@ -12,7 +12,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs
         [Required]
         public Guid ProductId { get; set; } 
 
-        [Range(1, 100, ErrorMessage = "Số lượng phải ít nhất là 1")]
+        [Range(1, 100, ErrorMessage = "atleast 1")]
         public int Quantity { get; set; } = 1;
 
         public bool IsCustom { get; set; } = false;

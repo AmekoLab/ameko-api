@@ -1,0 +1,213 @@
+﻿using FPTU.Capstone.AMKCollective.Application.Interfaces;
+using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
+{
+    public class CategoryRepository : ICategoryRepository
+    {
+        private readonly ApplicationDbContext _context;
+    
+    public CategoryRepository(ApplicationDbContext context) {
+            _context = context;
+        }
+        public async Task<Category?> GetByIdAsync(Guid id, bool includeSubCategories = false, CancellationToken cancellationToken = default)
+        {
+            var query = _context.Categories
+                .Where(c => c.Id == id && !c.IsDelete);
+
+            if (includeSubCategories)
+            {
+                query = query.Include(c => c.SubCategories.Where(sc => !sc.IsDelete));
+            }
+
+            return await query.FirstOrDefaultAsync(cancellationToken);
+        }
+
+        public async Task<IEnumerable<Category>> GetAllAsync(bool? isActive = null, Guid? parentId = null, bool includeSubCategories = false, CancellationToken cancellationToken = default)
+        {
+            var query = _context.Categories.Where(c => !c.IsDelete);
+
+            if (isActive.HasValue)
+            {
+                query = query.Where(c => c.IsActive == isActive.Value);
+            }
+
+            if (parentId.HasValue)
+            {
+                query = query.Where(c => c.ParentId == parentId.Value);
+            }
+            else 
+            {
+                query = query.Where(c => c.ParentId == null);
+            }
+
+            if (includeSubCategories)
+            {
+                query = query.Include(c => c.SubCategories.Where(sc => !sc.IsDelete));
+            }
+
+            return await query.OrderBy(c => c.Name).ToListAsync(cancellationToken);
+        }
+
+        public async Task<(IEnumerable<Category> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, bool? isActive = null, Guid? parentId = null, bool includeSubCategories = false, CancellationToken cancellationToken = default)
+        {
+            var query = _context.Categories.Where(c => !c.IsDelete);
+
+            if (isActive.HasValue)
+            {
+                query = query.Where(c => c.IsActive == isActive.Value);
+            }
+
+            if (parentId.HasValue)
+            {
+                query = query.Where(c => c.ParentId == parentId.Value);
+            }
+
+            var totalCount = await query.CountAsync(cancellationToken);
+
+            if (includeSubCategories)
+            {
+                query = query.Include(c => c.SubCategories.Where(sc => !sc.IsDelete));
+            }
+
+            var items = await query
+                .OrderBy(c => c.Name)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            return (items, totalCount);
+        }
+
+        public async Task<Category> CreateAsync(Category category, CancellationToken cancellationToken = default)
+        {
+            category.CreatedAt = DateTime.UtcNow;
+            category.UpdatedAt = DateTime.UtcNow;
+
+            await _context.Categories.AddAsync(category, cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            return category;
+        }
+
+        public async Task<Category> UpdateAsync(Category category, CancellationToken cancellationToken = default)
+        {
+            category.UpdatedAt = DateTime.UtcNow;
+
+            _context.Categories.Update(category);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            return category;
+        }
+
+        public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            var category = await _context.Categories.FindAsync(new object[] { id }, cancellationToken);
+
+            if (category == null)
+                return false;
+
+            category.IsDelete = true;
+            category.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+
+        public async Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            return await _context.Categories
+                .AnyAsync(c => c.Id == id && !c.IsDelete, cancellationToken);
+        }
+
+        public async Task<bool> HasSubCategoriesAsync(Guid categoryId, CancellationToken cancellationToken = default)
+        {
+            return await _context.Categories
+                .AnyAsync(c => c.ParentId == categoryId && !c.IsDelete, cancellationToken);
+        }
+
+        public async Task<bool> HasPartsAsync(Guid categoryId, CancellationToken cancellationToken = default)
+        {
+            return await _context.Models
+                .AnyAsync(m => m.CategoryId == categoryId, cancellationToken);
+        }
+
+        public async Task<IEnumerable<Category>> GetSubCategoriesAsync(Guid parentId, bool includeInactive = false, CancellationToken cancellationToken = default)
+        {
+            var query = _context.Categories
+                .Where(c => c.ParentId == parentId && !c.IsDelete);
+
+            if (!includeInactive)
+            {
+                query = query.Where(c => c.IsActive);
+            }
+
+            return await query.OrderBy(c => c.Name).ToListAsync(cancellationToken);
+        }
+
+        public async Task<IEnumerable<Category>> GetRootCategoriesAsync(bool includeInactive = false, CancellationToken cancellationToken = default)
+        {
+            var query = _context.Categories
+                .Where(c => c.ParentId == null && !c.IsDelete);
+
+            if (!includeInactive)
+            {
+                query = query.Where(c => c.IsActive);
+            }
+
+            return await query
+                .Include(c => c.SubCategories.Where(sc => !sc.IsDelete && (includeInactive || sc.IsActive)))
+                .OrderBy(c => c.Name)
+                .ToListAsync(cancellationToken);
+        }
+
+        public async Task<(IEnumerable<Model> Items, int TotalCount)> GetPartsInCategoryAsync(Guid categoryId, int pageNumber, int pageSize, bool? isActive = null, string? partType = null, Guid? shopId = null, CancellationToken cancellationToken = default)
+        {
+            var query = _context.Models
+                .Include(m => m.Shop)
+                .Where(m => m.CategoryId == categoryId);
+
+            if (isActive.HasValue)
+            {
+                query = query.Where(m => m.Shop.IsActive == isActive.Value);
+            }
+
+            if (!string.IsNullOrEmpty(partType))
+            {
+                query = query.Where(m => m.PartType == partType);
+            }
+
+            if (shopId.HasValue)
+            {
+                query = query.Where(m => m.ShopId == shopId.Value);
+            }
+
+            var totalCount = await query.CountAsync(cancellationToken);
+
+            var items = await query
+                .OrderBy(m => m.Name)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            return (items, totalCount);
+        }
+
+        public async Task<Category?> GetBySlugAsync(string slug, CancellationToken cancellationToken = default)
+        {
+            return await _context.Categories
+                .Where(c => c.Slug == slug && !c.IsDelete && c.IsActive)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+    }
+
+
+}
+

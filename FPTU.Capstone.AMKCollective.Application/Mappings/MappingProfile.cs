@@ -90,18 +90,71 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                     string.IsNullOrEmpty(src.CustomConfig)
                     ? null
                     : JsonSerializer.Deserialize<List<Guid>>(src.CustomConfig, (JsonSerializerOptions?)null))); // Parse JSON string -> List<Guid>
-              //==================Cart============================//
-              //===================Order===========================//
 
+
+            //==================Cart============================//
+            //==================ShopProfile=====================//
+            CreateMap<ShopProfile, ShopDto>();
+
+            CreateMap<ShopProfile, ShopDetailDto>();
+
+            CreateMap<CreateShopRequest, ShopProfile>()
+                .ForMember(dest => dest.Id, opt => opt.Ignore())       
+                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore()) 
+                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.UserId, opt => opt.Ignore())    
+                .ForMember(dest => dest.Status, opt => opt.Ignore())    
+                .ForMember(dest => dest.IsActive, opt => opt.Ignore())  
+                                                                        
+                .ForMember(dest => dest.LogoUrl, opt => opt.Ignore())
+                .ForMember(dest => dest.BannerUrl, opt => opt.Ignore());
+            CreateMap<UpdateShopProfileRequest, ShopProfile>()
+                .ForMember(dest => dest.LogoUrl, opt => opt.Ignore())
+                .ForMember(dest => dest.BannerUrl, opt => opt.Ignore())
+
+                .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
+
+            //==================ShopProfile=====================//
+
+
+            // =========================================================
+            // 1. ORDER GROUP (ORDER GROUP -> DTO)
+            // =========================================================
+            CreateMap<OrderGroup, OrderGroupDto>()
+                .ForMember(dest => dest.PaymentStatus, opt => opt.MapFrom(src => src.PaymentStatus));
+
+            // =========================================================
+            // 2. ORDER (ORDER -> DTO)
+            // =========================================================
             CreateMap<Order, OrderDto>()
-                .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Shop.ShopName));
+                .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Shop.ShopName))
+                .ForMember(dest => dest.OrderStatus, opt => opt.MapFrom(src => src.OrderStatus))
 
+                .ForMember(dest => dest.SubTotal, opt => opt.MapFrom(src => src.SubTotal))
+                .ForMember(dest => dest.ShippingFee, opt => opt.MapFrom(src => src.ShippingFee))
+                .ForMember(dest => dest.DiscountAmount, opt => opt.MapFrom(src => src.DiscountAmount)) // DÒNG QUAN TRỌNG
+                .ForMember(dest => dest.TotalAmount, opt => opt.MapFrom(src => src.TotalAmount));
+
+            // =========================================================
+            // 3. ORDER ITEM (ORDER ITEM -> DTO)
+            // =========================================================
             CreateMap<OrderItem, OrderItemDto>()
-                .ForMember(dest => dest.CustomComponentIds, opt => opt.MapFrom(src => 
-                    string.IsNullOrEmpty(src.DesignConfig) 
-                    ? null 
-                    : JsonSerializer.Deserialize<List<Guid>>(src.DesignConfig, (JsonSerializerOptions?)null)));
-            //===================Order===========================//
+                .ForMember(dest => dest.ProductId, opt => opt.MapFrom(src => src.ProductId))
+                .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.Name : src.ProductName))
+                .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => src.Product != null ? src.Product.ThumbnailURL : src.ProductImage))
+
+                .ForMember(dest => dest.UnitPrice, opt => opt.MapFrom(src => src.UnitPrice))
+                .ForMember(dest => dest.TotalPrice, opt => opt.MapFrom(src => src.TotalPrice))
+                .ForMember(dest => dest.Quantity, opt => opt.MapFrom(src => src.Quantity))
+
+                .ForMember(dest => dest.CustomComponentIds, opt => opt.MapFrom(src =>
+                    string.IsNullOrEmpty(src.DesignConfig)
+                    ? null
+                    : JsonSerializer.Deserialize<List<Guid>>(src.DesignConfig, (JsonSerializerOptions?)null)))
+
+                .ForMember(dest => dest.IsCustom, opt => opt.MapFrom(src => !string.IsNullOrEmpty(src.DesignConfig)));
+
+
 
         }
 

@@ -19,11 +19,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .HasMaxLength(50)
                 .HasDefaultValue("Pending");
 
-            builder.Property(og => og.StripeSessionId)
-                .HasMaxLength(255); // Session ID Stripe 
-
-            builder.Property(og => og.StripePaymentIntentId)
-                .HasMaxLength(255);
+            
         }
     }
 }

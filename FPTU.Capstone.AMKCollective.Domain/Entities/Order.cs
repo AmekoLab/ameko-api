@@ -12,10 +12,10 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public Guid ShopId { get; set; }
         [Required]
         [MaxLength(100)]
-        public string RecipientName { get; set; } = string.Empty;
+        public string ReceiverName { get; set; } = string.Empty;
         [Required]
         [MaxLength(20)]
-        public string PhoneNumber { get; set; } = string.Empty;
+        public string ReceiverPhone { get; set; } = string.Empty;
         [Required]
         [MaxLength(500)]
         public string ShippingAddress { get; set; } = string.Empty;
@@ -26,6 +26,8 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public decimal ShippingFee { get; set; }
         [Column(TypeName = "decimal(18,2)")]
         public decimal TotalAmount { get; set; }
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal DiscountAmount { get; set; } = 0;
 
         public string OrderStatus { get; set; } = "Pending"; 
         public string PaymentStatus { get; set; } = "Pending";
