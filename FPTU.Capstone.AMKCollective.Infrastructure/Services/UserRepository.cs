@@ -18,9 +18,16 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             _context = context;
         }
 
-        public async Task<IEnumerable<User>> GetAllAsync()
+        public async Task<(IEnumerable<User> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize)
         {
-            return await _context.Users.Include(u => u.Role).ToListAsync();
+            var query = _context.Users.Include(u => u.Role).AsQueryable();
+            var totalCount = await query.CountAsync();
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+            
+            return (items, totalCount);
         }
 
         public async Task<User?> GetByUsernameAsync(string username)

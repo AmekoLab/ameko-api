@@ -16,7 +16,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // User mappings
             CreateMap<User, UserDto>()
                 .ForMember(dest => dest.FullName, 
-                    opt => opt.MapFrom(src => $"{src.FirstName} {src.LastName}"));
+                    opt => opt.MapFrom(src => $"{src.FirstName} {src.LastName}"))
+                .ForMember(dest => dest.Role, opt => opt.MapFrom(src => src.Role.Name.ToString()));
             
             CreateMap<UserDto, User>()
                 .ForMember(dest => dest.FirstName, 

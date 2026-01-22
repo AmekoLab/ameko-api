@@ -8,7 +8,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces
 {
     public interface IUserRepository
     {
-        Task<IEnumerable<User>> GetAllAsync();
+        Task<(IEnumerable<User> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize);
         Task<User?> GetByUsernameAsync(string username);
         Task<User?> GetByEmailAsync(string email);
         Task<User?> GetByIdAsync(Guid id);

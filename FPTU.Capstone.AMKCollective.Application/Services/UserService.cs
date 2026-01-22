@@ -27,10 +27,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _tokenService = tokenService;
         }
 
-        public async Task<IEnumerable<UserDto>> GetAllAsync()
+        public async Task<PaginatedResult<UserDto>> GetAllAsync(int pageNumber, int pageSize)
         {
-            var users = await _userRepository.GetAllAsync();
-            return _mapper.Map<IEnumerable<UserDto>>(users);
+            var (users, totalCount) = await _userRepository.GetPagedAsync(pageNumber, pageSize);
+            var userDtos = _mapper.Map<IEnumerable<UserDto>>(users);
+            
+            return new PaginatedResult<UserDto>
+            {
+                Items = userDtos,
+                TotalCount = totalCount,
+                CurrentPage = pageNumber,
+                PageSize = pageSize
+            };
         }
 
         public async Task<LoginResponse?> LoginAsync(LoginRequest request)

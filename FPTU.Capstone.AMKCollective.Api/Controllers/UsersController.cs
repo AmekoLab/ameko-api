@@ -1,4 +1,5 @@
-﻿using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
+﻿using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
 using FPTU.Capstone.AMKCollective.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -22,13 +23,13 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         }
         [SwaggerOperation(
             Summary = "Get all users",
-            Description = "Returns a list of all registered users. Admin role suggested for production." )]
-        [SwaggerResponse(200, "Successfully retrieved list of users", typeof(IEnumerable<UserProfileDto>))]
+            Description = "Returns a paginated list of all registered users. Admin role suggested for production." )]
+        [SwaggerResponse(200, "Successfully retrieved list of users", typeof(PaginatedResult<UserDto>))]
         [SwaggerResponse(401, "Unauthorized access")]
         [HttpGet]
-        public async Task<IActionResult> Get()
+        public async Task<IActionResult> Get([FromQuery] int currentPage = 1, [FromQuery] int pageSize = 10)
         {
-            var users = await _userService.GetAllAsync();
+            var users = await _userService.GetAllAsync(currentPage, pageSize);
             return SuccessResponse(users);
         }
 
@@ -212,7 +213,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         }
 
         [Authorize(Roles = "Admin")]
-        [HttpDelete("admi/delete-user/{id}")]
+        [HttpDelete("admin/delete-user/{id}")]
         [SwaggerOperation(
             Summary = "Admin: Delete user",
             Description = "Permanently removes a user record from the system. Requires Admin role."
