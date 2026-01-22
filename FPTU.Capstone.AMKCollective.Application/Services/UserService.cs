@@ -13,15 +13,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
     public class UserService : IUserService
     {
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IUserRepository _userRepository;
         private readonly IEmailService _emailService;
         private readonly IMapper _mapper;
         private readonly ITokenService _tokenService;
 
-        public UserService(IUnitOfWork unitOfWork, IUserRepository userRepository, IEmailService emailService, IMapper mapper, ITokenService tokenService)
+        public UserService(IUnitOfWork unitOfWork, IEmailService emailService, IMapper mapper, ITokenService tokenService)
         {
             _unitOfWork = unitOfWork;
-            _userRepository = userRepository;
             _emailService = emailService;
             _mapper = mapper;
             _tokenService = tokenService;
@@ -29,7 +27,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<PaginatedResult<UserDto>> GetAllAsync(int pageNumber, int pageSize)
         {
-            var (users, totalCount) = await _userRepository.GetPagedAsync(pageNumber, pageSize);
+            var (users, totalCount) = await _unitOfWork.Users.GetPagedAsync(pageNumber, pageSize);
             var userDtos = _mapper.Map<IEnumerable<UserDto>>(users);
             
             return new PaginatedResult<UserDto>
@@ -43,7 +41,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<LoginResponse?> LoginAsync(LoginRequest request)
         {
-            var user = await _userRepository.GetByEmailAsync(request.Email);
+            var user = await _unitOfWork.Users.GetByEmailAsync(request.Email);
             if (user == null || !VerifyPasswordHash(request.Password, user.HashedPassword))
                 return null;
 
@@ -61,27 +59,27 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<UserProfileDto?> GetProfileAsync(Guid userId)
         {
-            var user = await _userRepository.GetByIdAsync(userId);
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
             return _mapper.Map<UserProfileDto>(user);
         }
 
         public async Task<bool> UpdateProfileAsync(Guid userId, UpdateProfileRequest request)
         {
-            var user = await _userRepository.GetByIdAsync(userId);
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
             if (user == null) return false;
 
             _mapper.Map(request, user);
-            await _userRepository.UpdateAsync(user);
+            await _unitOfWork.Users.UpdateAsync(user);
             await _unitOfWork.CommitAsync();
             return true;
         }
 
         public async Task<(bool Success, string ErrorMessage)> RegisterAsync(RegisterRequest request)
         {
-            if (await _userRepository.GetByUsernameAsync(request.Username) != null)
+            if (await _unitOfWork.Users.GetByUsernameAsync(request.Username) != null)
                 return (false, "Username already exists");
 
-            if (await _userRepository.GetByEmailAsync(request.Email) != null)
+            if (await _unitOfWork.Users.GetByEmailAsync(request.Email) != null)
                 return (false, "Email already exists");
 
             var user = _mapper.Map<User>(request);
@@ -89,10 +87,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             user.Status = AccountStatus.Active; 
 
             var roleName = request.Role != 0 ? request.Role : RoleType.Customer;
-            var role = await _userRepository.GetRoleByNameAsync(roleName);
+            var role = await _unitOfWork.Users.GetRoleByNameAsync(roleName);
             if (role != null) user.Role = role;
 
-            await _userRepository.AddAsync(user);
+            await _unitOfWork.Users.AddAsync(user);
             await _unitOfWork.CommitAsync();
 
             return (true, string.Empty);
@@ -100,14 +98,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<(bool Success, string ErrorMessage)> ChangePasswordAsync(Guid userId, ChangePasswordRequest request)
         {
-            var user = await _userRepository.GetByIdAsync(userId);
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
             if (user == null) return (false, "User not found");
 
             if (!VerifyPasswordHash(request.OldPassword, user.HashedPassword))
                 return (false, "Invalid old password");
 
             user.HashedPassword = CreatePasswordHash(request.NewPassword);
-            await _userRepository.UpdateAsync(user);
+            await _unitOfWork.Users.UpdateAsync(user);
             
             // Security Trigger: Revoke all sessions on password change
             await RevokeAllTokensAsync(userId);
@@ -119,17 +117,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<(Guid UserId, string ErrorMessage)> CreateUserAsync(CreateUserRequest request)
         {
-            if (await _userRepository.GetByUsernameAsync(request.Username) != null)
+            if (await _unitOfWork.Users.GetByUsernameAsync(request.Username) != null)
                 return (Guid.Empty, "Username already exists");
 
             var user = _mapper.Map<User>(request);
             user.HashedPassword = CreatePasswordHash(request.Password);
             user.EmailConfirmed = true;
             
-            var role = await _userRepository.GetRoleByNameAsync(request.Role);
+            var role = await _unitOfWork.Users.GetRoleByNameAsync(request.Role);
             if (role != null) user.Role = role;
 
-            await _userRepository.AddAsync(user);
+            await _unitOfWork.Users.AddAsync(user);
             await _unitOfWork.CommitAsync();
 
             return (user.Id, string.Empty);
@@ -137,17 +135,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<(bool Success, string ErrorMessage)> AdminUpdateUserAsync(Guid userId, UpdateUserAdminRequest request)
         {
-            var user = await _userRepository.GetByIdAsync(userId);
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
             if (user == null) return (false, "User not found");
 
             _mapper.Map(request, user);
             if (request.Role.HasValue)
             {
-                var role = await _userRepository.GetRoleByNameAsync(request.Role.Value);
+                var role = await _unitOfWork.Users.GetRoleByNameAsync(request.Role.Value);
                 if (role != null) user.Role = role;
             }
 
-            await _userRepository.UpdateAsync(user);
+            await _unitOfWork.Users.UpdateAsync(user);
             await _unitOfWork.CommitAsync();
 
             return (true, string.Empty);
@@ -155,10 +153,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<(bool Success, string ErrorMessage)> DeleteUserAsync(Guid userId)
         {
-            var user = await _userRepository.GetByIdAsync(userId);
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
             if (user == null) return (false, "User not found");
 
-            await _userRepository.DeleteAsync(user);
+            await _unitOfWork.Users.DeleteAsync(user);
             await _unitOfWork.CommitAsync();
 
             return (true, string.Empty);
@@ -166,11 +164,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<(bool Success, string ErrorMessage)> BanUserAsync(Guid userId)
         {
-            var user = await _userRepository.GetByIdAsync(userId);
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
             if (user == null) return (false, "User not found");
 
             user.Status = AccountStatus.Suspended;
-            await _userRepository.UpdateAsync(user);
+            await _unitOfWork.Users.UpdateAsync(user);
             
             // Security Trigger: Revoke all sessions on account ban
             await RevokeAllTokensAsync(userId);
@@ -182,7 +180,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<(bool Success, string ErrorMessage)> LogoutAsync(Guid userId, LogoutRequest request)
         {
-            var user = await _userRepository.GetUserWithRefreshTokensAsync(userId);
+            var user = await _unitOfWork.Users.GetUserWithRefreshTokensAsync(userId);
             if (user == null) return (false, "User not found");
 
             var tokenToRemove = user.RefreshTokens.FirstOrDefault(rt => 
@@ -199,7 +197,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<(RefreshTokenResponse? Response, string ErrorMessage)> RefreshTokenAsync(Guid userId, RefreshTokenRequest request)
         {
-            var user = await _userRepository.GetUserWithRefreshTokensAsync(userId);
+            var user = await _unitOfWork.Users.GetUserWithRefreshTokensAsync(userId);
             if (user == null) return (null, "User not found");
 
             var tokenToRemove = user.RefreshTokens.FirstOrDefault(rt => 
@@ -240,20 +238,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
             }
 
-            await _userRepository.AddRefreshTokenAsync(refreshTokenEntity);
+            await _unitOfWork.Users.AddRefreshTokenAsync(refreshTokenEntity);
             return refreshTokenRaw;
         }
 
         public async Task<(bool Success, string ErrorMessage)> SendActivationCodeEmailConfirmedAsync(string email)
         {
-            var user = await _userRepository.GetByEmailAsync(email);
+            var user = await _unitOfWork.Users.GetByEmailAsync(email);
             if (user == null) return (false, "User not found");
 
             var activationCode = new Random().Next(100000, 999999).ToString();
             user.VerificationCode = activationCode;
             user.VerificationCodeExpiryTime = DateTime.UtcNow.AddMinutes(15);
             
-            await _userRepository.UpdateAsync(user);
+            await _unitOfWork.Users.UpdateAsync(user);
             await _unitOfWork.CommitAsync();
 
             await _emailService.SendVerificationEmailAsync(email, activationCode);
@@ -263,7 +261,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<(bool Success, string ErrorMessage)> VerifyActivationCodeEmailConfirmedAsync(VerifyEmailRequest request)
         {
-            var user = await _userRepository.GetByEmailAsync(request.Email);
+            var user = await _unitOfWork.Users.GetByEmailAsync(request.Email);
             if (user == null) return (false, "User not found");
 
             if (user.VerificationCode != request.Code)
@@ -276,7 +274,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             user.VerificationCode = null;
             user.VerificationCodeExpiryTime = null;
             
-            await _userRepository.UpdateAsync(user);
+            await _unitOfWork.Users.UpdateAsync(user);
             await _unitOfWork.CommitAsync();
 
             return (true, string.Empty);
@@ -284,13 +282,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<(bool Success, string ErrorMessage)> ForgotPasswordAsync(ForgotPasswordRequest request)
         {
-            var user = await _userRepository.GetByEmailAsync(request.Email);
+            var user = await _unitOfWork.Users.GetByEmailAsync(request.Email);
             if (user == null) return (false, "Email not found");
 
             var resetCode = new Random().Next(100000, 999999).ToString();
             user.ResetPasswordToken = resetCode;
             
-            await _userRepository.UpdateAsync(user);
+            await _unitOfWork.Users.UpdateAsync(user);
             await _unitOfWork.CommitAsync();
 
             // Send reset email
@@ -301,7 +299,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<(bool Success, string ErrorMessage)> ResetPasswordAsync(ResetPasswordRequest request)
         {
-            var user = await _userRepository.GetByEmailAsync(request.Email);
+            var user = await _unitOfWork.Users.GetByEmailAsync(request.Email);
             if (user == null || user.ResetPasswordToken != request.Code)
                 return (false, "Invalid email or code");
 
@@ -311,7 +309,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // Security Trigger: Revoke all sessions on password reset
             await RevokeAllTokensAsync(user.Id);
             
-            await _userRepository.UpdateAsync(user);
+            await _unitOfWork.Users.UpdateAsync(user);
             await _unitOfWork.CommitAsync();
 
             return (true, string.Empty);
@@ -319,19 +317,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<(bool Success, string ErrorMessage)> UpgradeToShopAsync(Guid userId)
         {
-            var user = await _userRepository.GetByIdAsync(userId);
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
             if (user == null) return (false, "User not found");
 
             if (!user.EmailConfirmed)
                 return (false, "Email must be confirmed before upgrading to Shop");
 
-            var shopRole = await _userRepository.GetRoleByNameAsync(RoleType.Shop);
+            var shopRole = await _unitOfWork.Users.GetRoleByNameAsync(RoleType.Shop);
             if (shopRole == null) return (false, "Shop role not found in system");
 
             user.Role = shopRole;
             user.RoleId = shopRole.Id;
 
-            await _userRepository.UpdateAsync(user);
+            await _unitOfWork.Users.UpdateAsync(user);
             await _unitOfWork.CommitAsync();
 
             return (true, string.Empty);
@@ -339,7 +337,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<bool> RevokeAllTokensAsync(Guid userId)
         {
-            await _userRepository.RemoveAllRefreshTokensAsync(userId);
+            await _unitOfWork.Users.RemoveAllRefreshTokensAsync(userId);
             return true;
         }
 
