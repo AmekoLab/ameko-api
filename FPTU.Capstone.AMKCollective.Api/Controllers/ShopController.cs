@@ -6,6 +6,7 @@ using FPTU.Capstone.AMKCollective.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
 {
@@ -67,7 +68,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var userId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+                var userId = GetUserId();
                 var shop = await _shopService.GetMyShopAsync(userId);
                 return SuccessResponse(shop);
             }
@@ -87,7 +88,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var userId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+                var userId = GetUserId();
 
                 var appRequest = new CreateShopRequest
                 {
@@ -128,7 +129,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var userId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+                var userId = GetUserId();
 
                 //Map API DTO -> App DTO
                 var appRequest = new UpdateShopProfileRequest
@@ -202,6 +203,13 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 _logger.LogError(ex, "Error approving shop {Id}", id);
                 return ServerErrorResponse<string>("Error during approve shop");
             }
+        }
+
+        private Guid GetUserId()
+        {
+            var idClaim = User.FindFirst("id") ?? User.FindFirst(ClaimTypes.NameIdentifier);
+            if (idClaim == null) throw new UnauthorizedAccessException("Invalid Token");
+            return Guid.Parse(idClaim.Value);
         }
 
     }

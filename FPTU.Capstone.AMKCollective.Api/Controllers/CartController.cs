@@ -3,6 +3,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
 {
@@ -29,7 +30,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             try
             {
                 //TODO: wait for auth
-                var userId = Guid.Parse("11111111-1111-1111-1111-111111111111"); 
+                var userId = GetUserId();
                 var cart = await _cartService.GetCartAsync(userId, token);
                 return SuccessResponse(cart);
             }
@@ -48,7 +49,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var userId = Guid.Parse("11111111-1111-1111-1111-111111111111"); await _cartService.AddToCartAsync(userId, request, token);
+                var userId = GetUserId(); 
+                await _cartService.AddToCartAsync(userId, request, token);
 
                 return SuccessResponse("Item added to cart successfully");
             }
@@ -72,7 +74,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var userId = Guid.Parse("11111111-1111-1111-1111-111111111111"); await _cartService.RemoveItemAsync(userId, itemId, token);
+                var userId = GetUserId();
+                await _cartService.RemoveItemAsync(userId, itemId, token);
 
                 return SuccessResponse("Item removed from cart successfully");
             }
@@ -98,7 +101,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var userId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+                var userId = GetUserId();
                 await _cartService.UpdateQuantityAsync(userId, itemId, quantity, token);
 
                 return SuccessResponse("Cart updated successfully");
@@ -112,6 +115,13 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 _logger.LogError(ex, "Error updating cart quantity");
                 return ServerErrorResponse<string>("An error occurred while updating cart");
             }
+        }
+
+        private Guid GetUserId()
+        {
+            var idClaim = User.FindFirst("id") ?? User.FindFirst(ClaimTypes.NameIdentifier);
+            if (idClaim == null) throw new UnauthorizedAccessException("Invalid Token");
+            return Guid.Parse(idClaim.Value);
         }
     }
 }

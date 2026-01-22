@@ -34,8 +34,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             try
             {
                 //TODO: waiting for auth
-                //var userId = GetUserId();
-                var userId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+                var userId = GetUserId();
+                
                 var result = await _orderService.CheckoutAsync(userId, request);
                 return SuccessResponse(result, "Order create successfully. Please proceed with payment.");
             }
@@ -55,8 +55,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         public async Task<IActionResult> GetMyOrders()
         {
             //TODO: waiting for auth
-            //var userId = GetUserId();
-            var userId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+            var userId = GetUserId();
+            
             var orders = await _orderService.GetMyOrdersAsync(userId);
             return SuccessResponse(orders);
         }
@@ -134,6 +134,11 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
-        
+        private Guid GetUserId()
+        {
+            var idClaim = User.FindFirst("id") ?? User.FindFirst(ClaimTypes.NameIdentifier);
+            if (idClaim == null) throw new UnauthorizedAccessException("Invalid Token");
+            return Guid.Parse(idClaim.Value);
+        }
     }
 }

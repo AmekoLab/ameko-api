@@ -4,6 +4,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
 {
@@ -215,5 +216,6 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return ServerErrorResponse<string>("An error occurred while resetting config.");
             }
         }
+        
     }
 }

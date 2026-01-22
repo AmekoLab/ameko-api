@@ -4,6 +4,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
 {
@@ -65,9 +66,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             try
             {
                 var dto = MapToDto(request);
-                //TODO: waiting for auth 
-                var userId = Guid.Parse("11111111-1111-1111-1111-111111111111"); 
-
+            
+                var userId = GetUserId();
                 var result = await _service.CreateAsync(userId, dto);
                 return SuccessResponse(result, "Part created successfully");
             }
@@ -177,6 +177,13 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
 
             return dto;
+        }
+
+        private Guid GetUserId()
+        {
+            var idClaim = User.FindFirst("id") ?? User.FindFirst(ClaimTypes.NameIdentifier);
+            if (idClaim == null) throw new UnauthorizedAccessException("Invalid Token");
+            return Guid.Parse(idClaim.Value);
         }
     }
 }
