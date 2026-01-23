@@ -19,6 +19,59 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             _service = service;
             _logger = logger;
         }
+
+        /// <summary>
+        /// Bắt đầu quy trình Build. Tạo Session mới và trả về bước 1.
+        /// </summary>
+        [HttpPost("start")]
+        [ProducesResponseType(typeof(ApiResponse<BuilderStepResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> StartSession([FromBody] BuilderStartRequest request)
+        {
+            try
+            {
+                var result = await _service.StartBuilderSessionAsync(request);
+                return SuccessResponse(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<string>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error starting builder session for Kit {KitId}", request.BaseKitId);
+                return ServerErrorResponse<string>("Could not start builder session.");
+            }
+        }
+
+        /// <summary>
+        /// Chọn một linh kiện. Backend sẽ lưu lại và trả về bước tiếp theo.
+        /// </summary>
+        [HttpPost("select")]
+        [ProducesResponseType(typeof(ApiResponse<BuilderStepResponse>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> SelectPart([FromBody] BuilderSelectRequest request)
+        {
+            try
+            {
+                var result = await _service.SelectPartAsync(request);
+                return SuccessResponse(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<string>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing step {Step} for Session {SessionId}", request.StepName, request.SessionId);
+                return ServerErrorResponse<string>("An error occurred while processing selection.");
+            }
+        }
+
+
+
+
         // GET: api/builder/config/{baseKitId}
         [HttpGet("config/{baseKitId}")]
         [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]

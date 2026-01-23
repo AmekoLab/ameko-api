@@ -78,5 +78,23 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs
 
         public bool IsCustom { get; set; }
         public List<Guid>? CustomComponentIds { get; set; } // Đã giải nén JSON
+        public List<OrderItemComponentDto> OrderItemComponents { get; set; }
+    }
+
+    public class AddToCartRequest
+    {
+        public Guid ProductId { get; set; }
+        public int Quantity { get; set; }
+        public bool IsCustom { get; set; } = false;
+        public List<Guid>? CustomComponentIds { get; set; }
+        public Guid? BuilderSessionId { get; set; }
+    }
+    public class OrderItemComponentDto
+    {
+        public Guid PartId { get; set; }
+        public string PartName { get; set; }
+        public decimal PartPriceSnapshot { get; set; }
+        public string PartImageUrl { get; set; }
+        public int Quantity { get; set; }
     }
 }

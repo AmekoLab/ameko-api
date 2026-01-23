@@ -76,23 +76,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             CreateMap<CreateKitOptionDto, KitDesignOption>();
             //==================KITDESIGN=======================//
 
-            //==================Cart============================//
-            CreateMap<Cart, CartDto>()
-                .ForMember(dest => dest.Items, opt => opt.MapFrom(src => src.CartItems))
-                .ForMember(dest => dest.TotalAmount, opt => opt.MapFrom(src =>
-                    src.CartItems.Sum(i => (i.NegotiatedPrice ?? i.UnitPrice) * i.Quantity)));
-
-            CreateMap<CartItem, CartItemDto>()
-                .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product.Name)) 
-                .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => src.Product.DefaultLayerImageUrl)) 
-                .ForMember(dest => dest.ProductType, opt => opt.MapFrom(src => src.Product.PartType))
-                .ForMember(dest => dest.CustomComponentIds, opt => opt.MapFrom(src =>
-                    string.IsNullOrEmpty(src.CustomConfig)
-                    ? null
-                    : JsonSerializer.Deserialize<List<Guid>>(src.CustomConfig, (JsonSerializerOptions?)null))); // Parse JSON string -> List<Guid>
-
-
-            //==================Cart============================//
+           
             //==================ShopProfile=====================//
             CreateMap<ShopProfile, ShopDto>();
 
@@ -127,34 +111,38 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // 2. ORDER (ORDER -> DTO)
             // =========================================================
             CreateMap<Order, OrderDto>()
-                .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Shop.ShopName))
-                .ForMember(dest => dest.OrderStatus, opt => opt.MapFrom(src => src.OrderStatus))
+    // [FIX LỖI NULL]: Vì Giỏ hàng (InCart) chưa có ShopId cụ thể, nên src.Shop sẽ bị null.
+    // Nếu không check null, dòng này sẽ gây crash API GetCart.
+                .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Shop != null ? src.Shop.ShopName : "N/A"))
 
+                .ForMember(dest => dest.OrderStatus, opt => opt.MapFrom(src => src.OrderStatus))
                 .ForMember(dest => dest.SubTotal, opt => opt.MapFrom(src => src.SubTotal))
                 .ForMember(dest => dest.ShippingFee, opt => opt.MapFrom(src => src.ShippingFee))
-                .ForMember(dest => dest.DiscountAmount, opt => opt.MapFrom(src => src.DiscountAmount)) // DÒNG QUAN TRỌNG
-                .ForMember(dest => dest.TotalAmount, opt => opt.MapFrom(src => src.TotalAmount));
+                .ForMember(dest => dest.DiscountAmount, opt => opt.MapFrom(src => src.DiscountAmount))
+                .ForMember(dest => dest.TotalAmount, opt => opt.MapFrom(src => src.TotalAmount))
+                //tự map OrderItems nếu tên trùng nhau
+                .ForMember(dest => dest.OrderItems, opt => opt.MapFrom(src => src.OrderItems));
 
             // =========================================================
             // 3. ORDER ITEM (ORDER ITEM -> DTO)
             // =========================================================
             CreateMap<OrderItem, OrderItemDto>()
-                .ForMember(dest => dest.ProductId, opt => opt.MapFrom(src => src.ProductId))
-                .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.Name : src.ProductName))
-                .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => src.Product != null ? src.Product.ThumbnailURL : src.ProductImage))
+               .ForMember(dest => dest.ProductId, opt => opt.MapFrom(src => src.ProductId))
+               .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.Name : src.ProductName))
+               .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => src.Product != null ? src.Product.ThumbnailURL : src.ProductImage))
 
-                .ForMember(dest => dest.UnitPrice, opt => opt.MapFrom(src => src.UnitPrice))
-                .ForMember(dest => dest.TotalPrice, opt => opt.MapFrom(src => src.TotalPrice))
-                .ForMember(dest => dest.Quantity, opt => opt.MapFrom(src => src.Quantity))
+               .ForMember(dest => dest.UnitPrice, opt => opt.MapFrom(src => src.UnitPrice))
+               .ForMember(dest => dest.TotalPrice, opt => opt.MapFrom(src => src.TotalPrice))
+               .ForMember(dest => dest.Quantity, opt => opt.MapFrom(src => src.Quantity))
 
-                .ForMember(dest => dest.CustomComponentIds, opt => opt.MapFrom(src =>
-                    string.IsNullOrEmpty(src.DesignConfig)
-                    ? null
-                    : JsonSerializer.Deserialize<List<Guid>>(src.DesignConfig, (JsonSerializerOptions?)null)))
+               .ForMember(dest => dest.CustomComponentIds, opt => opt.MapFrom(src =>
+                   string.IsNullOrEmpty(src.DesignConfig)
+                   ? null
+                   : JsonSerializer.Deserialize<List<Guid>>(src.DesignConfig, (JsonSerializerOptions?)null)))
+               .ForMember(dest => dest.IsCustom, opt => opt.MapFrom(src => src.IsCustom));
 
-                .ForMember(dest => dest.IsCustom, opt => opt.MapFrom(src => !string.IsNullOrEmpty(src.DesignConfig)));
-
-
+            //order item component
+            CreateMap<OrderItemComponent, OrderItemComponentDto>();
 
         }
 

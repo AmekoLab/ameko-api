@@ -10,27 +10,24 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public Guid? VoucherId { get; set; }
         public Guid CustomerId { get; set; }
         public Guid ShopId { get; set; }
-        [Required]
         [MaxLength(100)]
-        public string ReceiverName { get; set; } = string.Empty;
-        [Required]
+        public string? ReceiverName { get; set; } = string.Empty;
         [MaxLength(20)]
-        public string ReceiverPhone { get; set; } = string.Empty;
-        [Required]
+        public string? ReceiverPhone { get; set; } = string.Empty;
         [MaxLength(500)]
-        public string ShippingAddress { get; set; } = string.Empty;
+        public string? ShippingAddress { get; set; } = string.Empty;
 
         [Column(TypeName = "decimal(18,2)")]
         public decimal SubTotal { get; set; }
         [Column(TypeName = "decimal(18,2)")]
-        public decimal ShippingFee { get; set; }
+        public decimal ShippingFee { get; set; } = 0;
         [Column(TypeName = "decimal(18,2)")]
         public decimal TotalAmount { get; set; }
         [Column(TypeName = "decimal(18,2)")]
         public decimal DiscountAmount { get; set; } = 0;
 
-        public string OrderStatus { get; set; } = "Pending"; 
-        public string PaymentStatus { get; set; } = "Pending";
+        public string OrderStatus { get; set; } = "Pending";  //OrderStatus == "InCart" 
+        public string? PaymentStatus { get; set; } = "Pending";
 
         public string? Note { get; set; } 
         public string? CancelReason { get; set; }

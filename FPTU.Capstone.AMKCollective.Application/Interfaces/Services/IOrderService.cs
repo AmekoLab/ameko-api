@@ -23,5 +23,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task UpdateOrderStatusAsync(Guid shopId, Guid orderId, string newStatus, CancellationToken token = default);
 
         Task<OrderDto> GetShopOrderDetailAsync(Guid shopId, Guid orderId, CancellationToken token = default);
+
+        Task<OrderDto> GetMyCartAsync(Guid userId);
+
+        Task AddToCartAsync(Guid userId, AddToCartRequest request);
+
+        Task RemoveItemFromCartAsync(Guid userId, Guid orderItemId);
     }
 }

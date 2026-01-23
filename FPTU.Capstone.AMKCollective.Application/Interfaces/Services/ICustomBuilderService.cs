@@ -18,5 +18,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 
         Task ResetBuilderConfigAsync(Guid baseKitId);
         Task<bool> IsMatchAsync(Guid baseKitId, Guid componentId);
+
+
+        //SERVER-DRIVEN FLOW
+        // 1. Bắt đầu phiên Build
+        Task<BuilderStepResponse> StartBuilderSessionAsync(BuilderStartRequest request);
+
+        // 2. Chọn linh kiện và lấy bước tiếp theo
+        Task<BuilderStepResponse> SelectPartAsync(BuilderSelectRequest request);
     }
 }

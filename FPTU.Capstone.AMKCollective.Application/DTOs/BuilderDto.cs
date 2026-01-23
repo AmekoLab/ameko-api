@@ -101,4 +101,83 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs
         public Stream? FileStream { get; set; }
         public string? FileName { get; set; }
     }
+
+    /// <summary>
+    /// Request để bắt đầu một session mới (Start Build)
+    /// </summary>
+    public class BuilderStartRequest
+    {
+        [Required]
+        public Guid BaseKitId { get; set; }
+    }
+
+    /// <summary>
+    /// Request khi người dùng chọn 1 linh kiện (mỗi cú click)
+    /// </summary>
+    public class BuilderSelectRequest
+    {
+        [Required]
+        public Guid SessionId { get; set; } //  đang build dở cái nào
+
+        [Required]
+        public Guid SelectedPartId { get; set; } // ID linh kiện vừa chọn
+
+        [Required]
+        public string StepName { get; set; } = string.Empty; // VD: "case", "plate"
+    }
+
+    /// <summary>
+    /// Response tổng trả về cho Frontend 
+    /// </summary>
+    public class BuilderStepResponse
+    {
+        public string Message { get; set; } = "Product selected";
+        public BuilderSessionData Data { get; set; } = new();
+    }
+
+    public class BuilderSessionData
+    {
+        public SessionInfo Session { get; set; } = new();
+        public NextStepInfo NextStep { get; set; } = new();
+    }
+
+    public class SessionInfo
+    {
+        public Guid Id { get; set; } // Session ID
+
+        // Dictionary lưu các món đã chọn. Key = Tên bước (case), Value = Chi tiết món
+        // Dùng object để linh hoạt hoặc dùng class SelectedPartDetail cụ thể
+        public Dictionary<string, SelectedPartDetail> Selection { get; set; } = new();
+
+        public decimal TotalPrice { get; set; }
+        public DateTime UpdatedAt { get; set; }
+
+        public bool IsComplete { get; set; } // Cờ báo hiệu đã xong hết chưa để hiện nút AddToCart
+    }
+
+    /// <summary>
+    /// Chi tiết món hàng đã chọn (để hiển thị bên cột "Đã chọn")
+    /// </summary>
+    public class SelectedPartDetail
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public decimal Price { get; set; }
+        public string ThumbnailUrl { get; set; } = string.Empty;
+    }
+
+    public class NextStepInfo
+    {
+        public StepDetail Step { get; set; } = new();
+
+        // Danh sách sản phẩm khả dụng cho bước tiếp theo (Đã được lọc tương thích)
+        public List<CompatiblePartDto> Products { get; set; } = new();
+    }
+
+    public class StepDetail
+    {
+        public string Name { get; set; } = string.Empty; // VD: "Switch Plate"
+        public string Slug { get; set; } = string.Empty; // VD: "plate"
+        public int StepOrder { get; set; }
+    }
 }

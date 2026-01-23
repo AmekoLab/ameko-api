@@ -14,7 +14,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces
         Task<Model?> GetByIdAsync(Guid id, CancellationToken token = default);
         Task<Model?> GetBySlugAsync(string slug, CancellationToken token = default);
 
-        //check cart/validate builder
         Task<IEnumerable<Model>> GetByIdsAsync(IEnumerable<Guid> ids, CancellationToken token = default);
 
         Task<IEnumerable<Model>> GetCompatiblePartsAsync(Guid baseKitId, string partType, CancellationToken token = default);

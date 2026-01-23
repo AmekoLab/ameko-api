@@ -25,5 +25,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces
         Task DeleteByBaseKitAsync(Guid baseKitId, CancellationToken token = default);
 
         Task<bool> CheckCompatibilityAsync(Guid baseKitId, Guid componentId, CancellationToken token = default);
+
+        Task<IEnumerable<KitDesignOption>> GetCompatibleOptionsForStepAsync(Guid baseKitId, string stepName, string? requiredTag);
     }
 }

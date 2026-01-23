@@ -20,43 +20,100 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             _orderService = orderService;
         }
 
-        // ======================= CUSTOMER (KHÁCH HÀNG) =======================
+        // =================================================================
+        // 1. NHÓM API GIỎ HÀNG (CART) - Thay thế cho CartController cũ
+        // =================================================================
 
         /// <summary>
-        /// Tạo đơn hàng mới và lấy link thanh toán (Checkout)
+        /// Lấy giỏ hàng hiện tại của user
         /// </summary>
-        /// <param name="request">Thông tin giỏ hàng và địa chỉ giao hàng</param>
-        /// <returns>Link thanh toán Stripe và thông tin đơn hàng tổng</returns>
-        [HttpPost("checkout")]
-        [Authorize] // Yêu cầu đăng nhập
-        public async Task<IActionResult> Checkout([FromBody] CheckoutRequest request)
+        [HttpGet("cart")]
+        [Authorize]
+        public async Task<IActionResult> GetMyCart()
         {
+            var userId = GetUserId();
+            var cart = await _orderService.GetMyCartAsync(userId);
+            if (cart == null) return SuccessResponse(new { items = new List<object>(), totalAmount = 0 }, "Cart empty");
+
+            return SuccessResponse(cart);
+        }
+
+        /// <summary>
+        /// Thêm sản phẩm vào giỏ hàng
+        /// </summary>
+        [HttpPost("cart/add")]
+        [Authorize]
+        public async Task<IActionResult> AddToCart([FromBody] AddToCartRequest request)
+        {
+            var userId = GetUserId();
             try
             {
-                //TODO: waiting for auth
-                var userId = GetUserId();
-                
-                var result = await _orderService.CheckoutAsync(userId, request);
-                return SuccessResponse(result, "Order create successfully. Please proceed with payment.");
+                await _orderService.AddToCartAsync(userId, request);
+                return SuccessResponse("Add to cart successfully");
             }
             catch (Exception ex)
             {
-                // Log ex here
                 return ErrorResponse<string>(ex.Message);
             }
         }
 
         /// <summary>
-        /// Lấy danh sách lịch sử mua hàng của tôi
+        /// Xóa 1 món khỏi giỏ hàng
         /// </summary>
-        /// <returns>Danh sách các nhóm đơn hàng</returns>
+        [HttpDelete("cart/{orderItemId}")]
+        [Authorize]
+        public async Task<IActionResult> RemoveFromCart(Guid orderItemId)
+        {
+            var userId = GetUserId();
+            try
+            {
+                await _orderService.RemoveItemFromCartAsync(userId, orderItemId);
+                return SuccessResponse("Removed item in cart");
+            }
+            catch (Exception ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
+        }
+
+        // =================================================================
+        // 2. NHÓM API THANH TOÁN (CHECKOUT)
+        // =================================================================
+
+        /// <summary>
+        /// Chốt đơn (Checkout) - Chuyển từ Giỏ hàng sang Đơn hàng thật & Lấy link thanh toán
+        /// </summary>
+        [HttpPost("checkout")]
+        [Authorize]
+        public async Task<IActionResult> Checkout([FromBody] CheckoutRequest request)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+
+            var userId = GetUserId();
+            try
+            {
+                // Hàm này giờ sẽ lấy data từ Giỏ hàng trong DB chứ không tin tưởng Items từ Request nữa
+                var result = await _orderService.CheckoutAsync(userId, request);
+                return SuccessResponse(result, "Create order sucessfully, please check out");
+            }
+            catch (Exception ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
+        }
+
+        // =================================================================
+        // 3. NHÓM API LỊCH SỬ ĐƠN HÀNG (HISTORY)
+        // =================================================================
+
+        /// <summary>
+        /// Lấy lịch sử mua hàng (Các đơn đã đặt)
+        /// </summary>
         [HttpGet("my-orders")]
         [Authorize]
         public async Task<IActionResult> GetMyOrders()
         {
-            //TODO: waiting for auth
             var userId = GetUserId();
-            
             var orders = await _orderService.GetMyOrdersAsync(userId);
             return SuccessResponse(orders);
         }
@@ -64,16 +121,14 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// <summary>
         /// Xem chi tiết một nhóm đơn hàng (Order Group)
         /// </summary>
-        /// <param name="id">Order Group ID</param>
-        /// <returns>Chi tiết đơn hàng</returns>
-        [HttpGet("{id}")]
+        [HttpGet("group/{orderGroupId}")]
         [Authorize]
-        public async Task<IActionResult> GetOrderGroupDetail(Guid id)
+        public async Task<IActionResult> GetOrderGroupDetail(Guid orderGroupId)
         {
             try
             {
-                var order = await _orderService.GetOrderGroupDetailAsync(id);
-                return SuccessResponse(order);
+                var orderGroup = await _orderService.GetOrderGroupDetailAsync(orderGroupId);
+                return SuccessResponse(orderGroup);
             }
             catch (KeyNotFoundException)
             {
@@ -81,59 +136,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
-        // ======================= SHOP OWNER (CHỦ SHOP) =======================
-
-        /// <summary>
-        /// (Dành cho Shop) Lấy danh sách đơn hàng của Shop
-        /// </summary>
-        /// <param name="status">Lọc theo trạng thái (Pending, Shipping, Completed...)</param>
-        /// <param name="page">Số trang (mặc định 1)</param>
-        /// <param name="size">Số lượng item/trang (mặc định 10)</param>
-        /// <returns>Danh sách đơn hàng thuộc về Shop</returns>
-        [HttpGet("shop/orders")]
-        [Authorize(Roles = "ShopOwner")] // Giả sử bạn có Role này
-        public async Task<IActionResult> GetShopOrders([FromQuery] string? status, [FromQuery] int page = 1, [FromQuery] int size = 10)
-        {
-            // Giả định ShopId được lấy từ Token hoặc Claims của User đang login
-            // Logic lấy ShopId tùy thuộc vào hệ thống Auth của bạn. 
-            // Ở đây mình ví dụ lấy từ Claim "ShopId"
-            var shopIdClaim = User.FindFirst("ShopId")?.Value;
-            if (string.IsNullOrEmpty(shopIdClaim))
-            {
-                return ErrorResponse<string>("user does not have permission");
-            }
-
-            var shopId = Guid.Parse(shopIdClaim);
-            var orders = await _orderService.GetShopOrdersAsync(shopId, status, page, size);
-
-            return SuccessResponse(orders);
-        }
-
-        /// <summary>
-        /// (Dành cho Shop) Cập nhật trạng thái đơn hàng
-        /// </summary>
-        /// <param name="id">Order ID (Đơn con)</param>
-        /// <param name="newStatus">Trạng thái mới (VD: Shipping, Completed)</param>
-        /// <returns>Thông báo thành công</returns>
-        [HttpPut("shop/orders/{id}/status")]
-        [Authorize(Roles = "ShopOwner")]
-        public async Task<IActionResult> UpdateOrderStatus(Guid id, [FromBody] string newStatus)
-        {
-            try
-            {
-                var shopIdClaim = User.FindFirst("ShopId")?.Value;
-                if (string.IsNullOrEmpty(shopIdClaim)) return ErrorResponse<string>("Unauthorized");
-                var shopId = Guid.Parse(shopIdClaim);
-
-                await _orderService.UpdateOrderStatusAsync(shopId, id, newStatus);
-                return SuccessResponse("Cập nhật trạng thái đơn hàng thành công");
-            }
-            catch (KeyNotFoundException)
-            {
-                return NotFoundResponse<string>("Không tìm thấy đơn hàng hoặc bạn không có quyền.");
-            }
-        }
-
+        // --- Helper để lấy UserId từ Token ---
         private Guid GetUserId()
         {
             var idClaim = User.FindFirst("id") ?? User.FindFirst(ClaimTypes.NameIdentifier);

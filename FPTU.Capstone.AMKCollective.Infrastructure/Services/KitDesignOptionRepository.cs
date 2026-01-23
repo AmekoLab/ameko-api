@@ -110,6 +110,26 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Where(x => x.BaseKitId == baseKitId)
                 .ExecuteDeleteAsync(token);
         }
+        public async Task<IEnumerable<KitDesignOption>> GetCompatibleOptionsForStepAsync(Guid baseKitId, string stepName, string? requiredTag)
+        {
+            var query = _context.KitDesignOptions
+                .Include(x => x.Component)
+                .Where(x => x.BaseKitId == baseKitId && x.StepName == stepName)
+                .AsQueryable();
+
+            if (!string.IsNullOrEmpty(requiredTag))
+            {
+                // Logic: Nếu bước trước yêu cầu tag "LAYOUT_65", 
+                // thì linh kiện bước này phải có chứa chuỗi "LAYOUT_65" trong cột Tags
+                // Hoặc linh kiện đó không có Tag (tương thích với tất cả)
+                query = query.Where(x =>
+                    string.IsNullOrEmpty(x.Tags) || // Linh kiện dễ tính, lắp đâu cũng được
+                    x.Tags.Contains(requiredTag)    // Hoặc phải khớp tag
+                );
+            }
+
+            return await query.ToListAsync();
+        }
     }
 }
  

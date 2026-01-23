@@ -18,8 +18,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(og => og.PaymentStatus)
                 .HasMaxLength(50)
                 .HasDefaultValue("Pending");
+            builder.HasOne(og => og.Customer)
+           .WithMany() 
+           .HasForeignKey(og => og.CustomerId)
+           .OnDelete(DeleteBehavior.Restrict);
 
-            
         }
     }
 }

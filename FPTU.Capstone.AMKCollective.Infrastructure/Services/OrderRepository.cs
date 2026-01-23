@@ -58,10 +58,36 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             _context.Orders.Update(order);
             return Task.CompletedTask;
         }
+        public async Task<Order?> GetOrderByStatusAsync(Guid userId, string status)
+        {
+            return await _context.Orders
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.OrderItemComponents)
+                .Include(o => o.OrderItems)      
+                    .ThenInclude(oi => oi.Product)
+                .OrderByDescending(o => o.CreatedAt)
+                .FirstOrDefaultAsync(o => o.CustomerId == userId && o.OrderStatus == status);
+        }
 
         public async Task<int> SaveChangesAsync(CancellationToken token = default)
         {
             return await _context.SaveChangesAsync(token);
+        }
+        public async Task DeleteOrderItemAsync(Guid orderItemId)
+        {
+            var item = await _context.OrderItems.FindAsync(orderItemId);
+            if (item != null)
+            {
+                _context.OrderItems.Remove(item);
+            }
+        }
+        public void DeleteRange(IEnumerable<OrderItem> items)
+        {
+            _context.OrderItems.RemoveRange(items);
+        }
+        public async Task AddAsync(Order order, CancellationToken token = default)
+        {
+            await _context.Orders.AddAsync(order, token);
         }
     }
 }
