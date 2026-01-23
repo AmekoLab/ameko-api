@@ -130,6 +130,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
             return await query.ToListAsync();
         }
+
+        public async Task<KitDesignOption?> GetOptionByComponentIdAsync(Guid baseKitId, Guid componentId)
+        {
+            return await _context.KitDesignOptions
+                .FirstOrDefaultAsync(x => x.BaseKitId == baseKitId && x.ComponentId == componentId);
+        }
     }
 }
  

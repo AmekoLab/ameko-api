@@ -9,7 +9,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public Guid? OrderGroupId { get; set; }
         public Guid? VoucherId { get; set; }
         public Guid CustomerId { get; set; }
-        public Guid ShopId { get; set; }
+        public Guid? ShopId { get; set; }
         [MaxLength(100)]
         public string? ReceiverName { get; set; } = string.Empty;
         [MaxLength(20)]
@@ -36,7 +36,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public virtual OrderGroup? OrderGroup { get; set; }
         public virtual Voucher? Voucher { get; set; }
         public virtual User Customer { get; set; } = null!;
-        public virtual ShopProfile Shop { get; set; } = null!;
+        public virtual ShopProfile? Shop { get; set; } = null!;
         public virtual ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
         public virtual ICollection<Feedback> Feedbacks { get; set; } = new List<Feedback>();
     }

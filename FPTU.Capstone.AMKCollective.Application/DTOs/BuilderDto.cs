@@ -180,4 +180,13 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs
         public string Slug { get; set; } = string.Empty; // VD: "plate"
         public int StepOrder { get; set; }
     }
+    public class BuilderSessionSelectionItem
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; }
+        public decimal Price { get; set; }
+        public string? ThumbnailUrl { get; set; }
+    }
+
+    
 }

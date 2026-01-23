@@ -29,5 +29,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task AddToCartAsync(Guid userId, AddToCartRequest request);
 
         Task RemoveItemFromCartAsync(Guid userId, Guid orderItemId);
+        Task UpdateCartItemQuantityAsync(Guid userId, Guid orderItemId, int newQuantity);
     }
 }

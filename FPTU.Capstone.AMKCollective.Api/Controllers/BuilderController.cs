@@ -30,7 +30,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var result = await _service.StartBuilderSessionAsync(request);
+                var userId = GetUserId();
+                var result = await _service.StartBuilderSessionAsync(request, userId);
                 return SuccessResponse(result);
             }
             catch (KeyNotFoundException ex)
@@ -269,6 +270,27 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return ServerErrorResponse<string>("An error occurred while resetting config.");
             }
         }
-        
+
+        [HttpGet("session/{sessionId}")]
+        public async Task<IActionResult> ResumeSession(Guid sessionId, [FromQuery] string? stepName = null)
+        {
+            try
+            {
+                var result = await _service.GetExistingSessionAsync(sessionId, stepName);
+                return SuccessResponse(result);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFoundResponse<string>("Session expired or not found. Please start over.");
+            }
+        }
+
+        private Guid GetUserId()
+        {
+            var idClaim = User.FindFirst("id") ?? User.FindFirst(ClaimTypes.NameIdentifier);
+            if (idClaim == null) throw new UnauthorizedAccessException("Invalid Token");
+            return Guid.Parse(idClaim.Value);
+        }
+
     }
 }

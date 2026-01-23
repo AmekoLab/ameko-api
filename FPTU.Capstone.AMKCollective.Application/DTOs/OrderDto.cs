@@ -69,6 +69,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs
 
     public class OrderItemDto
     {
+        public Guid Id { get; set; }
         public Guid ProductId { get; set; }
         public string ProductName { get; set; } // Tên SP
         public string ProductImage { get; set; }
@@ -83,7 +84,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs
 
     public class AddToCartRequest
     {
-        public Guid ProductId { get; set; }
+        public Guid? ProductId { get; set; }
         public int Quantity { get; set; }
         public bool IsCustom { get; set; } = false;
         public List<Guid>? CustomComponentIds { get; set; }
@@ -95,6 +96,12 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs
         public string PartName { get; set; }
         public decimal PartPriceSnapshot { get; set; }
         public string PartImageUrl { get; set; }
+        public int Quantity { get; set; }
+    }
+
+    public class UpdateCartItemRequest
+    {
+        public Guid OrderItemId { get; set; }
         public int Quantity { get; set; }
     }
 }

@@ -16,12 +16,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IModelRepository _repo;
         private readonly IMapper _mapper;
         private readonly IStorageService _storage;
+        private readonly IShopRepository _shopRepo;
 
-        public ProductService(IModelRepository repo, IMapper mapper, IStorageService storage)
+        public ProductService(IModelRepository repo, IMapper mapper, IStorageService storage, IShopRepository shopRepo)
         {
             _repo = repo;
             _mapper = mapper;
             _storage = storage;
+            _shopRepo = shopRepo;
         }
         public async Task<(IEnumerable<PartDto> Items, int TotalCount)> GetListAsync(PartQueryParams query)
         {
@@ -41,8 +43,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var entity = _mapper.Map<Model>(request);
 
-           // entity.ShopId = await GetShopIdFromUserId(userId);
-            entity.ShopId = Guid.Parse("24e763a6-f434-11f0-b7bf-0250f80dfa35");
+            entity.ShopId = await GetShopIdFromUserId(userId);
 
             entity.Slug = GenerateSlug(entity.Name);
             entity.IsActive = true;
@@ -94,9 +95,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         private async Task<Guid> GetShopIdFromUserId(Guid userId)
         {
-            //TODO:
-            // return _shopRepo.GetByUserId(userId).Id;
-            return Guid.NewGuid();
+            var shop = await _shopRepo.GetByUserIdAsync(userId);
+            if (shop == null)
+            {
+                throw new Exception("User does not have a valid Shop Profile. Please create a shop first.");
+            }
+
+            return shop.Id;
         }
 
         public async Task<IEnumerable<PartDto>> GetRecommendationsAsync(Guid baseKitId, string partType)

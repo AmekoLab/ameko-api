@@ -48,5 +48,15 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 await _context.SaveChangesAsync();
             }
         }
+
+        public async Task<BuilderSession?> GetActiveSessionByUserIdAsync(Guid userId, Guid baseKitId)
+        {
+            return await _context.BuilderSessions
+                .Where(x => x.UserId == userId
+                         && x.BaseKitId == baseKitId
+                         && x.ExpiresAt > DateTime.UtcNow)
+                .OrderByDescending(x => x.UpdatedAt)
+                .FirstOrDefaultAsync();
+        }
     }
 }

@@ -53,7 +53,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
             catch (Exception ex)
             {
-                return ErrorResponse<string>(ex.Message);
+                var message = ex.InnerException?.Message ?? ex.Message;
+                return ErrorResponse<string>(message);
             }
         }
 
@@ -136,6 +137,22 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
+        [HttpPatch("cart/update")]
+        [Authorize]
+        public async Task<IActionResult> UpdateQuantity([FromBody] UpdateCartItemRequest request)
+        {
+            var userId = GetUserId();
+            try
+            {
+                await _orderService.UpdateCartItemQuantityAsync(userId, request.OrderItemId, request.Quantity);
+                return SuccessResponse("Cập nhật số lượng thành công");
+            }
+            catch (Exception ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
+        }
+
         // --- Helper để lấy UserId từ Token ---
         private Guid GetUserId()
         {
@@ -143,5 +160,6 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             if (idClaim == null) throw new UnauthorizedAccessException("Invalid Token");
             return Guid.Parse(idClaim.Value);
         }
+
     }
 }

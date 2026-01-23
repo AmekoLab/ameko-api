@@ -22,9 +22,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 
         //SERVER-DRIVEN FLOW
         // 1. Bắt đầu phiên Build
-        Task<BuilderStepResponse> StartBuilderSessionAsync(BuilderStartRequest request);
+        Task<BuilderStepResponse> StartBuilderSessionAsync(BuilderStartRequest request, Guid? userId);
 
         // 2. Chọn linh kiện và lấy bước tiếp theo
         Task<BuilderStepResponse> SelectPartAsync(BuilderSelectRequest request);
+
+        Task<BuilderStepResponse> GetExistingSessionAsync(Guid sessionId, string? requestStep = null);
     }
 }

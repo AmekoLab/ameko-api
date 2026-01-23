@@ -57,7 +57,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return (items, totalCount);
         }
 
-        public async Task<Model?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        public async Task<Model?> GetByIdAsync(Guid? id, CancellationToken cancellationToken = default)
         {
             return await _context.Models
                 .Include(x => x.Shop)

@@ -26,6 +26,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                     .ThenInclude(oi => oi.Product) 
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.OrderItemComponents)
+                    .AsSplitQuery()
                 .FirstOrDefaultAsync(o => o.Id == id && !o.IsDeleted, token);
         }
 
@@ -38,6 +39,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                     .ThenInclude(oi => oi.Product)
                 .Where(o => o.CustomerId == userId && !o.IsDeleted)
                 .OrderByDescending(o => o.CreatedAt)
+                .AsSplitQuery()
                 .ToListAsync(token);
         }
 
@@ -45,11 +47,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             return await _context.Orders
                 .AsNoTracking()
-                .Include(o => o.Customer) 
+                .Include(o => o.Customer)
                 .Include(o => o.OrderItems)
-                    .ThenInclude(oi => oi.Product) 
+                    .ThenInclude(oi => oi.Product)
                 .Where(o => o.ShopId == shopId && !o.IsDeleted)
                 .OrderByDescending(o => o.CreatedAt)
+                .AsSplitQuery()
                 .ToListAsync(token);
         }
 
@@ -61,12 +64,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<Order?> GetOrderByStatusAsync(Guid userId, string status)
         {
             return await _context.Orders
+                .AsSplitQuery() 
                 .Include(o => o.OrderItems)
-                    .ThenInclude(oi => oi.OrderItemComponents)
-                .Include(o => o.OrderItems)      
-                    .ThenInclude(oi => oi.Product)
+                .ThenInclude(oi => oi.OrderItemComponents)
+                .Include(o => o.OrderItems)
+                .ThenInclude(oi => oi.Product) 
                 .OrderByDescending(o => o.CreatedAt)
-                .FirstOrDefaultAsync(o => o.CustomerId == userId && o.OrderStatus == status);
+                .FirstOrDefaultAsync(o => o.CustomerId == userId && o.OrderStatus == status && !o.IsDeleted);
         }
 
         public async Task<int> SaveChangesAsync(CancellationToken token = default)

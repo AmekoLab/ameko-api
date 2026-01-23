@@ -127,6 +127,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // 3. ORDER ITEM (ORDER ITEM -> DTO)
             // =========================================================
             CreateMap<OrderItem, OrderItemDto>()
+                .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
                .ForMember(dest => dest.ProductId, opt => opt.MapFrom(src => src.ProductId))
                .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.Name : src.ProductName))
                .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => src.Product != null ? src.Product.ThumbnailURL : src.ProductImage))
@@ -135,10 +136,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                .ForMember(dest => dest.TotalPrice, opt => opt.MapFrom(src => src.TotalPrice))
                .ForMember(dest => dest.Quantity, opt => opt.MapFrom(src => src.Quantity))
 
+      
                .ForMember(dest => dest.CustomComponentIds, opt => opt.MapFrom(src =>
-                   string.IsNullOrEmpty(src.DesignConfig)
-                   ? null
-                   : JsonSerializer.Deserialize<List<Guid>>(src.DesignConfig, (JsonSerializerOptions?)null)))
+                   !string.IsNullOrEmpty(src.DesignConfig) && src.DesignConfig.Trim().StartsWith("[")
+                   ? JsonSerializer.Deserialize<List<Guid>>(src.DesignConfig, (JsonSerializerOptions?)null)
+                   : null)) 
+
                .ForMember(dest => dest.IsCustom, opt => opt.MapFrom(src => src.IsCustom));
 
             //order item component

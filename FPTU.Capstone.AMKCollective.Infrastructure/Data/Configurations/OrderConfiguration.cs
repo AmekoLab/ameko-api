@@ -61,7 +61,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.HasOne(o => o.Shop)
                 .WithMany(s => s.Orders)
                 .HasForeignKey(o => o.ShopId)
-                .OnDelete(DeleteBehavior.Restrict);
+                .OnDelete(DeleteBehavior.Restrict)
+                .IsRequired(false);
         }
     }
 }
