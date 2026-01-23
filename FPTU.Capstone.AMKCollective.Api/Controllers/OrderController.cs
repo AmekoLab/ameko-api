@@ -145,7 +145,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             try
             {
                 await _orderService.UpdateCartItemQuantityAsync(userId, request.OrderItemId, request.Quantity);
-                return SuccessResponse("Cập nhật số lượng thành công");
+                return SuccessResponse("udpate quantity successfully");
             }
             catch (Exception ex)
             {

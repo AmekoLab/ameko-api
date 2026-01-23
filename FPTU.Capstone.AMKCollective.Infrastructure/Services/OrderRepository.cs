@@ -56,6 +56,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .ToListAsync(token);
         }
 
+
+        public async Task AddOrderItemAsync(OrderItem item)
+        {
+            await _context.OrderItems.AddAsync(item);
+        }
         public Task UpdateOrderAsync(Order order, CancellationToken token = default)
         {
             _context.Orders.Update(order);
