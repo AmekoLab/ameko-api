@@ -32,8 +32,15 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         [SwaggerResponse(200, "Unfollowed successfully", typeof(ApiResponse<object>))]
         public async Task<IActionResult> UnfollowUser([FromBody] FollowRequest unfollowRequest)
         {
-            await _followService.UnfollowUser(unfollowRequest);
-            return SuccessResponse("Unfollowed successfully");
+            try
+            {
+                await _followService.UnfollowUser(unfollowRequest);
+                return SuccessResponse("Unfollowed successfully");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
         }
 
         [HttpGet("follower/{followerId}")]
