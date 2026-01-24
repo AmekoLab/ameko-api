@@ -61,7 +61,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Migrations
                     b.ToTable("AssembledProducts", (string)null);
                 });
 
-            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Category", b =>
+            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Cart", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -76,13 +76,63 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("varchar(255)");
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
 
-                    b.Property<Guid?>("ParentId")
+                    b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("char(36)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Carts", (string)null);
+                });
+
+            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.CartItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("AdminNote")
+                        .HasColumnType("longtext");
+
+                    b.Property<Guid>("CartId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("CustomConfig")
+                        .HasColumnType("longtext");
+
+                    b.Property<bool>("IsCustom")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<decimal?>("NegotiatedPrice")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
@@ -92,7 +142,72 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CartId");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("CartItems", (string)null);
+                });
+
+            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Category", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("IsDelete")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<Guid?>("ParentId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("ThumbnailURL")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("IsDelete");
+
+                    b.HasIndex("Name");
+
                     b.HasIndex("ParentId");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
 
                     b.ToTable("Categories", (string)null);
                 });
@@ -311,7 +426,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Migrations
                         .HasColumnType("char(36)");
 
                     b.Property<bool>("IsDefault")
-                        .HasColumnType("tinyint(1)");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false);
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
@@ -324,6 +441,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("varchar(255)");
 
+                    b.Property<int>("StepOrder")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -332,9 +452,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BaseKitId");
-
                     b.HasIndex("ComponentId");
+
+                    b.HasIndex("BaseKitId", "ComponentId")
+                        .IsUnique();
+
+                    b.HasIndex("BaseKitId", "StepOrder");
 
                     b.ToTable("KitDesignOptions", (string)null);
                 });
@@ -397,15 +520,22 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("DefaultLayerImageUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
                     b.Property<string>("Description")
-                        .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
+                        .HasColumnType("text");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("tinyint(1)");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(true);
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("tinyint(1)");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false);
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -416,8 +546,19 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<decimal>("Price")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<Guid>("ShopId")
                         .HasColumnType("char(36)");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("Specifications")
+                        .HasColumnType("json");
 
                     b.Property<int>("StockQuantity")
                         .HasColumnType("int");
@@ -437,6 +578,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Migrations
                     b.HasIndex("CategoryId");
 
                     b.HasIndex("ShopId");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.HasIndex("PartType", "IsActive");
 
                     b.ToTable("Models", (string)null);
                 });
@@ -966,12 +1112,19 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("char(36)");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Location")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
+
+                    b.Property<string>("ShopName")
+                        .IsRequired()
+                        .HasColumnType("longtext");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
@@ -1186,6 +1339,25 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Migrations
                     b.ToTable("VoucherUsageLogs", (string)null);
                 });
 
+            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.CartItem", b =>
+                {
+                    b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.Cart", "Cart")
+                        .WithMany("CartItems")
+                        .HasForeignKey("CartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.Model", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Cart");
+
+                    b.Navigation("Product");
+                });
+
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Category", b =>
                 {
                     b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.Category", "Parent")
@@ -1286,13 +1458,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Migrations
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.KitDesignOption", b =>
                 {
                     b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.Model", "BaseKit")
-                        .WithMany("KitDesignOptions")
+                        .WithMany("AsBaseKitOptions")
                         .HasForeignKey("BaseKitId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.Model", "Component")
-                        .WithMany()
+                        .WithMany("AsComponentOptions")
                         .HasForeignKey("ComponentId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -1568,6 +1740,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Migrations
                     b.Navigation("ProductAssembledDetails");
                 });
 
+            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Cart", b =>
+                {
+                    b.Navigation("CartItems");
+                });
+
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Category", b =>
                 {
                     b.Navigation("Models");
@@ -1591,7 +1768,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Model", b =>
                 {
-                    b.Navigation("KitDesignOptions");
+                    b.Navigation("AsBaseKitOptions");
+
+                    b.Navigation("AsComponentOptions");
 
                     b.Navigation("ProductAssembledDetails");
                 });

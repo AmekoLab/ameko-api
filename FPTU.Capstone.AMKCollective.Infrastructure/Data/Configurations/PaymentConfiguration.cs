@@ -11,19 +11,21 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.ToTable("Payments");
             builder.HasKey(p => p.Id);
 
-            builder.Property(p => p.AddressLine)
-                .HasMaxLength(500);
-
-            builder.Property(p => p.WardName)
+            builder.Property(p => p.Amount)
+                .HasPrecision(18, 2)
+                .IsRequired();
+            builder.Property(p => p.StripeSessionId)
+                .HasMaxLength(255);
+            builder.Property(p => p.StripePaymentIntentId)
                 .HasMaxLength(255);
 
-            // One-to-one relationship with OrderGroup
-            builder.HasOne(p => p.OrderGroup)
-                .WithOne(og => og.Payment)
-                .HasForeignKey<Payment>(p => p.OrderGroupId)
-                .OnDelete(DeleteBehavior.Cascade);
+            builder.HasIndex(p => p.StripeSessionId);
+            builder.HasIndex(p => p.StripePaymentIntentId);
 
-            builder.HasIndex(p => p.OrderGroupId).IsUnique();
+            builder.HasOne(p => p.OrderGroup)
+                .WithMany(og => og.Payments)
+                .HasForeignKey(p => p.OrderGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }

@@ -48,8 +48,10 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs
     public class CreateCategoryRequest
     {
         public string Name { get; set; } = string.Empty;
-        public string Slug { get; set; } = string.Empty;
-        public string? ThumbnailURL { get; set; }
+
+        public Stream? ImageStream { get; set; }
+        public string? ImageFileName { get; set; } 
+
         public Guid? ParentId { get; set; }
         public bool IsActive { get; set; } = true;
     }
@@ -57,8 +59,10 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs
     public class UpdateCategoryRequest
     {
         public string? Name { get; set; }
-        public string? Slug { get; set; }
-        public string? ThumbnailURL { get; set; }
+
+        public Stream? ImageStream { get; set; }
+        public string? ImageFileName { get; set; }
+
         public Guid? ParentId { get; set; }
         public bool? IsActive { get; set; }
     }

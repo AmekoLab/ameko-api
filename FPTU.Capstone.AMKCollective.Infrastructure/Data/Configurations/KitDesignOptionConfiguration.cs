@@ -21,6 +21,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(x => x.IsDefault)
                 .HasDefaultValue(false);
 
+            builder.Property(x => x.Tags)
+                .HasMaxLength(500) 
+                .IsRequired(false);
+
+            builder.Property(x => x.NextStepFilterRule)
+                .HasMaxLength(500) 
+                .IsRequired(false);
+
             // ----------------------------
             // BaseKit relationship
             // ----------------------------

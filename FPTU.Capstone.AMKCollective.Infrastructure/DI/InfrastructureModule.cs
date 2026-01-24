@@ -34,9 +34,21 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
             .AsSelf()
             .InstancePerLifetimeScope();
 
+
+
             // Register repositories and services used by the application
             builder.RegisterType<ThirdPartyClient>().As<IThirdPartyClient>().SingleInstance();
             builder.RegisterType<EmailService>().As<IEmailService>().InstancePerLifetimeScope();
+
+            builder.RegisterAssemblyTypes(typeof(InfrastructureModule).Assembly)
+               .Where(t => t.Name.EndsWith("Repository"))
+               .AsImplementedInterfaces()
+               .InstancePerLifetimeScope();
+
+            builder.RegisterAssemblyTypes(typeof(InfrastructureModule).Assembly)
+               .Where(t => t.Name.EndsWith("Service"))
+               .AsImplementedInterfaces()
+               .InstancePerLifetimeScope();
 
             // Register application services (concrete implementation type is in App project)
             // builder.RegisterAssemblyTypes(typeof(FPTU.Capstone.AMKCollective.Application.Services.UserService).Assembly)

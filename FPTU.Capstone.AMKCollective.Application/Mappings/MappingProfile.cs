@@ -3,6 +3,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
+using System.Text.Json;
 
 namespace FPTU.Capstone.AMKCollective.Application.Mappings
 {
@@ -75,6 +76,79 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             CreateMap<CreateKitOptionDto, KitDesignOption>();
             //==================KITDESIGN=======================//
 
+           
+            //==================ShopProfile=====================//
+            CreateMap<ShopProfile, ShopDto>();
+
+            CreateMap<ShopProfile, ShopDetailDto>();
+
+            CreateMap<CreateShopRequest, ShopProfile>()
+                .ForMember(dest => dest.Id, opt => opt.Ignore())       
+                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore()) 
+                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.UserId, opt => opt.Ignore())    
+                .ForMember(dest => dest.Status, opt => opt.Ignore())    
+                .ForMember(dest => dest.IsActive, opt => opt.Ignore())  
+                                                                        
+                .ForMember(dest => dest.LogoUrl, opt => opt.Ignore())
+                .ForMember(dest => dest.BannerUrl, opt => opt.Ignore());
+            CreateMap<UpdateShopProfileRequest, ShopProfile>()
+                .ForMember(dest => dest.LogoUrl, opt => opt.Ignore())
+                .ForMember(dest => dest.BannerUrl, opt => opt.Ignore())
+
+                .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
+
+            //==================ShopProfile=====================//
+
+
+            // =========================================================
+            // 1. ORDER GROUP (ORDER GROUP -> DTO)
+            // =========================================================
+            CreateMap<OrderGroup, OrderGroupDto>()
+                .ForMember(dest => dest.PaymentStatus, opt => opt.MapFrom(src => src.PaymentStatus));
+
+            // =========================================================
+            // 2. ORDER (ORDER -> DTO)
+            // =========================================================
+            CreateMap<Order, OrderDto>()
+    // [FIX LỖI NULL]: Vì Giỏ hàng (InCart) chưa có ShopId cụ thể, nên src.Shop sẽ bị null.
+    // Nếu không check null, dòng này sẽ gây crash API GetCart.
+                .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Shop != null ? src.Shop.ShopName : "N/A"))
+
+                .ForMember(dest => dest.OrderStatus, opt => opt.MapFrom(src => src.OrderStatus))
+                .ForMember(dest => dest.SubTotal, opt => opt.MapFrom(src => src.SubTotal))
+                .ForMember(dest => dest.ShippingFee, opt => opt.MapFrom(src => src.ShippingFee))
+                .ForMember(dest => dest.DiscountAmount, opt => opt.MapFrom(src => src.DiscountAmount))
+                .ForMember(dest => dest.TotalAmount, opt => opt.MapFrom(src => src.TotalAmount))
+                //tự map OrderItems nếu tên trùng nhau
+                .ForMember(dest => dest.OrderItems, opt => opt.MapFrom(src => src.OrderItems));
+
+            // =========================================================
+            // 3. ORDER ITEM (ORDER ITEM -> DTO)
+            // =========================================================
+            CreateMap<OrderItem, OrderItemDto>()
+                .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
+               .ForMember(dest => dest.ProductId, opt => opt.MapFrom(src => src.ProductId))
+               .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.Name : src.ProductName))
+               .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => src.Product != null ? src.Product.ThumbnailURL : src.ProductImage))
+
+               .ForMember(dest => dest.UnitPrice, opt => opt.MapFrom(src => src.UnitPrice))
+               .ForMember(dest => dest.TotalPrice, opt => opt.MapFrom(src => src.TotalPrice))
+               .ForMember(dest => dest.Quantity, opt => opt.MapFrom(src => src.Quantity))
+
+      
+               .ForMember(dest => dest.CustomComponentIds, opt => opt.MapFrom(src =>
+                   !string.IsNullOrEmpty(src.DesignConfig) && src.DesignConfig.Trim().StartsWith("[")
+                   ? JsonSerializer.Deserialize<List<Guid>>(src.DesignConfig, (JsonSerializerOptions?)null)
+                   : null)) 
+
+               .ForMember(dest => dest.IsCustom, opt => opt.MapFrom(src => src.IsCustom));
+
+            //order item component
+            CreateMap<OrderItemComponent, OrderItemComponentDto>();
+
         }
+
     }
+    
 }

@@ -17,6 +17,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data
         public DbSet<ShopProfile> ShopProfiles { get; set; } = null!;
         public DbSet<AssembledProduct> AssembledProducts { get; set; } = null!;
         public DbSet<KitDesignOption> KitDesignOptions { get; set; } = null!;
+        public DbSet<BuilderSession> BuilderSessions { get; set; }
         public DbSet<ProductAssembledDetail> ProductAssembledDetails { get; set; } = null!;
         public DbSet<Order> Orders { get; set; } = null!;
         public DbSet<OrderGroup> OrderGroups { get; set; } = null!;

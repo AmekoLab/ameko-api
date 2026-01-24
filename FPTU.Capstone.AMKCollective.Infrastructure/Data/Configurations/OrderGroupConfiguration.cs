@@ -11,11 +11,18 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.ToTable("OrderGroups");
             builder.HasKey(og => og.Id);
 
-            builder.Property(og => og.Amount)
-                .HasPrecision(18, 2);
+            builder.Property(og => og.TotalGroupAmount)
+                .HasPrecision(18, 2)
+                .IsRequired();
 
-            builder.Property(og => og.BalanceBefore)
-                .HasPrecision(18, 2);
+            builder.Property(og => og.PaymentStatus)
+                .HasMaxLength(50)
+                .HasDefaultValue("Pending");
+            builder.HasOne(og => og.Customer)
+           .WithMany() 
+           .HasForeignKey(og => og.CustomerId)
+           .OnDelete(DeleteBehavior.Restrict);
+
         }
     }
 }

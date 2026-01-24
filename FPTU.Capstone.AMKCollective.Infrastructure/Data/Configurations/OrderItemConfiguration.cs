@@ -11,37 +11,31 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.ToTable("OrderItems");
             builder.HasKey(oi => oi.Id);
 
-            builder.Property(oi => oi.DesignConfig)
-                .HasColumnType("text");
+            builder.Property(oi => oi.ProductName).HasMaxLength(255).IsRequired();
+            builder.Property(oi => oi.ProductImage).HasMaxLength(500);
 
-            builder.Property(oi => oi.UnitPrice)
-                .HasPrecision(18, 2);
+            builder.Property(oi => oi.UnitPrice).HasPrecision(18, 2);
+            builder.Property(oi => oi.TotalPrice).HasPrecision(18, 2);
+            builder.Property(oi => oi.DiscountAmount).HasPrecision(18, 2);
 
-            builder.Property(oi => oi.TotalPrice)
-                .HasPrecision(18, 2);
-
-            builder.Property(oi => oi.DiscountAmount)
-                .HasPrecision(18, 2);
-
-            builder.Property(oi => oi.ItemStatus)
-                .HasMaxLength(50);
-
-            builder.Property(oi => oi.Notes)
-                .HasMaxLength(1000);
-
-            builder.Property(oi => oi.ItemType)
-                .HasMaxLength(50);
-
-            // Relationships
-            builder.HasOne(oi => oi.AssembledProduct)
-                .WithMany(ap => ap.OrderItems)
-                .HasForeignKey(oi => oi.AssembledProductId)
-                .OnDelete(DeleteBehavior.Restrict);
+            builder.Property(oi => oi.DesignConfig).HasColumnType("json"); 
 
             builder.HasOne(oi => oi.Order)
                 .WithMany(o => o.OrderItems)
                 .HasForeignKey(oi => oi.OrderId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.Cascade); 
+
+            builder.HasOne(oi => oi.AssembledProduct)
+                .WithMany(ap => ap.OrderItems)
+                .HasForeignKey(oi => oi.AssembledProductId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .IsRequired(false);
+
+            builder.HasOne(oi => oi.Product)
+                .WithMany()
+                .HasForeignKey(oi => oi.ProductId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .IsRequired(false);
         }
     }
 }
