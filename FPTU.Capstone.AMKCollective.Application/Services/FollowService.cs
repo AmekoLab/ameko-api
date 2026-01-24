@@ -23,6 +23,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task FollowUser(FollowRequest follow)
         {
+            var existingFollow = await _unitOfWork.Follows.GetFollowRecord(follow.FollowerId, follow.FollowedId);
+            if (existingFollow != null)
+            {
+                // Follow relationship already exists; no-op to avoid unique constraint violation.
+                return;
+            }
             _unitOfWork.Follows.FollowUser(_mapper.Map<Follow>(follow));
             await _unitOfWork.CommitAsync();
         }
