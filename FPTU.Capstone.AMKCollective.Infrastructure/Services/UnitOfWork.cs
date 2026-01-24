@@ -12,6 +12,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         private IKitDesignOptionRepository? _kitDesignOptions;
         private IBuilderSessionRepository? _builderSessions;
         private IShopRepository? _shops;
+        private IFollowRepository? _follows;
 
         public UnitOfWork(ApplicationDbContext context)
         {
@@ -25,6 +26,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public IKitDesignOptionRepository KitDesignOptions => _kitDesignOptions ??= new KitDesignOptionRepository(_context);
         public IBuilderSessionRepository BuilderSessions => _builderSessions ??= new BuilderSessionRepository(_context);
         public IShopRepository Shops => _shops ??= new ShopRepository(_context);
+        public IFollowRepository Follows => _follows ??= new FollowRepository(_context);
 
         public async Task CommitAsync()
         {

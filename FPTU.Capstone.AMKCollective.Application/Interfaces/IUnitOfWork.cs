@@ -10,6 +10,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces
         IKitDesignOptionRepository KitDesignOptions { get; }
         IBuilderSessionRepository BuilderSessions { get; }
         IShopRepository Shops { get; }
+        IFollowRepository Follows { get; }
         Task CommitAsync();
         void Rollback();
     }
