@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace FPTU.Capstone.AMKCollective.Domain.Entities
+namespace FPTU.Capstone.AMKCollective.Infrastructure.Configurations
 {
     public class StripeSettings
     {

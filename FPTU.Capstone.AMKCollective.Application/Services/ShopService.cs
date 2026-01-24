@@ -58,14 +58,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             string logoUrl = null;
             string bannerUrl = null;
 
-            if (request.LogoStream != null)
+            if (request.LogoImage != null)
             {
-                logoUrl = await _storage.UploadAsync(request.LogoStream, request.LogoFileName ?? "logo.jpg", "shop/logos");
-
+                logoUrl = await _storage.UploadAsync(
+                    request.LogoImage.OpenReadStream(), 
+                    request.LogoImage.FileName, 
+                    "shop/logos");
             }
-            if (request.BannerStream != null)
+            if (request.BannerImage != null)
             {
-                bannerUrl = await _storage.UploadAsync(request.BannerStream, request.BannerFileName ?? "banner.jpg", "shops/banners");
+                bannerUrl = await _storage.UploadAsync(
+                    request.BannerImage.OpenReadStream(), 
+                    request.BannerImage.FileName, 
+                    "shops/banners");
             }
 
             var shop = new ShopProfile
@@ -97,7 +102,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             
         }
 
-        public async Task UpdateMyShopAsync(Guid userId, UpdateShopProfileRequest request)
+        public async Task UpdateMyShopAsync(Guid userId, UpdateShopRequest request)
         {
             var shop = await _shopRepo.GetByUserIdAsync(userId);
             if (shop == null)
@@ -106,14 +111,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
                
 
-            if(request.LogoStream != null)
+            if(request.LogoImage != null)
             {
-                shop.LogoUrl = await _storage.UploadAsync(request.LogoStream, request.LogoFileName ?? "logo_upd.jpg", "shops/logos");
-
+                shop.LogoUrl = await _storage.UploadAsync(
+                    request.LogoImage.OpenReadStream(), 
+                    request.LogoImage.FileName, 
+                    "shops/logos");
             }
-            if(request.BannerStream != null)
+            if(request.BannerImage != null)
             {
-                shop.BannerUrl = await _storage.UploadAsync(request.BannerStream, request.BannerFileName ?? "banner_upd.jpg", "shops/banners");
+                shop.BannerUrl = await _storage.UploadAsync(
+                    request.BannerImage.OpenReadStream(), 
+                    request.BannerImage.FileName, 
+                    "shops/banners");
             }
 
             _mapper.Map(request, shop);

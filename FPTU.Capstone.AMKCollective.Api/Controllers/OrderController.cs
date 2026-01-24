@@ -1,5 +1,7 @@
 ﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Order;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Application.Services;
 using Microsoft.AspNetCore.Authorization;

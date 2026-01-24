@@ -1,6 +1,8 @@
 ﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
-using FPTU.Capstone.AMKCollective.API.Contracts;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Category;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Part;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -61,14 +63,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         // POST: api/parts
         [HttpPost]
         [ProducesResponseType(typeof(ApiResponse<PartDto>), StatusCodes.Status200OK)]
-        public async Task<IActionResult> Create([FromForm] CreateUpdatePartApiRequest request)
+        public async Task<IActionResult> Create([FromForm] CreateUpdatePartRequest request)
         {
             try
             {
-                var dto = MapToDto(request);
-            
                 var userId = GetUserId();
-                var result = await _service.CreateAsync(userId, dto);
+                var result = await _service.CreateAsync(userId, request);
                 return SuccessResponse(result, "Part created successfully");
             }
             catch (Exception ex)
@@ -82,12 +82,11 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         [HttpPut("{id}")]
         [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> Update(Guid id, [FromForm] CreateUpdatePartApiRequest request)
+        public async Task<IActionResult> Update(Guid id, [FromForm] CreateUpdatePartRequest request)
         {
             try
             {
-                var dto = MapToDto(request);
-                await _service.UpdateAsync(id, dto);
+                await _service.UpdateAsync(id, request);
                 return SuccessResponse("Part updated successfully");
             }
             catch (KeyNotFoundException)
@@ -149,34 +148,6 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 _logger.LogError(ex, "Error checking stock");
                 return ServerErrorResponse<string>("An error occurred while checking stock");
             }
-        }
-
-        // Helper Mapping
-        private CreateUpdatePartDto MapToDto(CreateUpdatePartApiRequest request)
-        {
-            var dto = new CreateUpdatePartDto
-            {
-                CategoryId = request.CategoryId,
-                Name = request.Name,
-                PartType = request.PartType,
-                Price = request.Price,
-                StockQuantity = request.StockQuantity,
-                Description = request.Description,
-                Specifications = request.Specifications
-            };
-
-            if (request.ThumbnailImage != null)
-            {
-                dto.ImageStream = request.ThumbnailImage.OpenReadStream();
-                dto.ImageFileName = request.ThumbnailImage.FileName;
-            }
-            if (request.LayerImage != null)
-            {
-                dto.LayerImageStream = request.LayerImage.OpenReadStream();
-                dto.LayerImageFileName = request.LayerImage.FileName;
-            }
-
-            return dto;
         }
 
         private Guid GetUserId()

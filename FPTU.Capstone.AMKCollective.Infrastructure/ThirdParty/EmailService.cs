@@ -5,7 +5,7 @@ using System.Net;
 using System.Net.Mail;
 using System.Threading.Tasks;
 
-namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
+namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
 {
     public class EmailService : IEmailService
     {

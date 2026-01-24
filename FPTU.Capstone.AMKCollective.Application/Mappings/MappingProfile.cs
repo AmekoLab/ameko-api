@@ -53,7 +53,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Shop.ShopName))
                 .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.Name));
 
-            CreateMap<CreateUpdatePartDto, Model>()
+            CreateMap<CreateUpdatePartRequest, Model>()
                 .ForMember(dest => dest.ThumbnailURL, opt => opt.Ignore())
                 .ForMember(dest => dest.DefaultLayerImageUrl, opt => opt.Ignore())
                 .ForMember(dest => dest.Slug, opt => opt.Ignore());
@@ -73,7 +73,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                         ? src.LayerImageUrl
                         : src.Component.DefaultLayerImageUrl));
 
-            CreateMap<CreateKitOptionDto, KitDesignOption>();
+            CreateMap<CreateKitOptionRequest, KitDesignOption>()
+                .ForMember(dest => dest.LayerImageUrl, opt => opt.Ignore()); // Handled in service
             //==================KITDESIGN=======================//
 
            
@@ -92,7 +93,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                                                                         
                 .ForMember(dest => dest.LogoUrl, opt => opt.Ignore())
                 .ForMember(dest => dest.BannerUrl, opt => opt.Ignore());
-            CreateMap<UpdateShopProfileRequest, ShopProfile>()
+            CreateMap<UpdateShopRequest, ShopProfile>()
                 .ForMember(dest => dest.LogoUrl, opt => opt.Ignore())
                 .ForMember(dest => dest.BannerUrl, opt => opt.Ignore())
 

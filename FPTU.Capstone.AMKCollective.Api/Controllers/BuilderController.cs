@@ -1,6 +1,7 @@
 ﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
-using FPTU.Capstone.AMKCollective.API.Contracts;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Builder;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -161,22 +162,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var dto = new CreateKitOptionDto
-                {
-                    BaseKitId = request.BaseKitId,
-                    ComponentId = request.ComponentId,
-                    StepName = request.StepName,
-                    StepOrder = request.StepOrder,
-                    IsDefault = request.IsDefault,
-                };
-
-                if (request.LayerImageFile != null)
-                {
-                    dto.FileStream = request.LayerImageFile.OpenReadStream();
-                    dto.FileName = request.LayerImageFile.FileName;
-                }
-
-                await _service.CreateOptionAsync(dto);
+                await _service.CreateOptionAsync(request);
                 return SuccessResponse("Create option successful");
             }
             catch (Exception ex)
@@ -216,29 +202,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                     return ErrorResponse<string>("List is empty");
                 }
 
-                var dtos = new List<CreateKitOptionDto>();
-
-                foreach (var req in requests)
-                {
-                    var dto = new CreateKitOptionDto
-                    {
-                        BaseKitId = req.BaseKitId,
-                        ComponentId = req.ComponentId,
-                        StepName = req.StepName,
-                        StepOrder = req.StepOrder,
-                        IsDefault = req.IsDefault,
-                    };
-
-                    if (req.LayerImageFile != null)
-                    {
-                        dto.FileStream = req.LayerImageFile.OpenReadStream();
-                        dto.FileName = req.LayerImageFile.FileName;
-                    }
-
-                    dtos.Add(dto);
-                }
-
-                await _service.BulkCreateOptionsAsync(dtos);
+                await _service.BulkCreateOptionsAsync(requests);
 
                 return SuccessResponse($"Bulk import successful: {requests.Count} items.");
             }

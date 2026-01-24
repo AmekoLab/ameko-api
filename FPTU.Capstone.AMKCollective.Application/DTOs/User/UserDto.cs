@@ -1,7 +1,8 @@
-using System;
-
-namespace FPTU.Capstone.AMKCollective.Application.DTOs
+namespace FPTU.Capstone.AMKCollective.Application.DTOs.User
 {
+    /// <summary>
+    /// DTO thông tin user cơ bản
+    /// </summary>
     public class UserDto
     {
         public Guid Id { get; set; }

@@ -1,4 +1,4 @@
-namespace FPTU.Capstone.AMKCollective.Application.DTOs
+namespace FPTU.Capstone.AMKCollective.Application.DTOs.Common
 {
     /// <summary>
     /// Mẫu response chuẩn cho tất cả API

@@ -1,6 +1,7 @@
 ﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
-using FPTU.Capstone.AMKCollective.API.Contracts;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Shop;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
@@ -84,31 +85,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         [HttpPost("register")]
         //[Authorize]
-        public async Task<IActionResult> RegisterShop([FromForm] CreateShopApiRequest apiRequest)
+        public async Task<IActionResult> RegisterShop([FromForm] CreateShopRequest request)
         {
             try
             {
                 var userId = GetUserId();
-
-                var appRequest = new CreateShopRequest
-                {
-                    ShopName = apiRequest.ShopName,
-                    Bio = apiRequest.Bio,
-                    Address = apiRequest.Address,
-                    PhoneNumber = apiRequest.PhoneNumber,
-                    ContactEmail = apiRequest.ContactEmail,
-                    CitizenId = apiRequest.CitizenId,
-                    TaxCode = apiRequest.TaxCode,
-                    BankName = apiRequest.BankName,
-                    BankAccountNumber = apiRequest.BankAccountNumber,
-                    BankAccountName = apiRequest.BankAccountName,
-
-                    LogoStream = apiRequest.LogoImage?.OpenReadStream(),
-                    LogoFileName = apiRequest.LogoImage?.FileName,
-                    BannerStream = apiRequest.BannerImage?.OpenReadStream(),
-                    BannerFileName = apiRequest.BannerImage?.FileName
-                };
-                var result = await _shopService.RegisterShopAsync(userId, appRequest);
+                var result = await _shopService.RegisterShopAsync(userId, request);
                 return SuccessResponse(result, "Submit successfully, waiting for approve.");
             }catch (InvalidOperationException ex)
             {
@@ -125,32 +107,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         [HttpPut("profile")]
         //[Authorize]
-        public async Task<IActionResult> UpdateMyShop([FromForm] UpdateShopApiRequest apiRequest)
+        public async Task<IActionResult> UpdateMyShop([FromForm] UpdateShopRequest request)
         {
             try
             {
                 var userId = GetUserId();
-
-                //Map API DTO -> App DTO
-                var appRequest = new UpdateShopProfileRequest
-                {
-                    Bio = apiRequest.Bio,
-                    Address = apiRequest.Address,
-                    PhoneNumber = apiRequest.PhoneNumber,
-                    ContactEmail = apiRequest.ContactEmail,
-                    IsActive = apiRequest.IsActive,
-                    BankName = apiRequest.BankName,
-                    BankAccountNumber = apiRequest.BankAccountNumber,
-                    BankAccountName = apiRequest.BankAccountName,
-
-                    // image
-                    LogoStream = apiRequest.LogoImage?.OpenReadStream(),
-                    LogoFileName = apiRequest.LogoImage?.FileName,
-                    BannerStream = apiRequest.BannerImage?.OpenReadStream(),
-                    BannerFileName = apiRequest.BannerImage?.FileName
-                };
-
-                await _shopService.UpdateMyShopAsync(userId, appRequest);
+                await _shopService.UpdateMyShopAsync(userId, request);
                 return SuccessResponse("Update shop profile successfully");
             }catch(KeyNotFoundException ex)
             {

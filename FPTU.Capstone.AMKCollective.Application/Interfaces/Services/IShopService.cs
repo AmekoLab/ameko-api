@@ -1,4 +1,5 @@
 ﻿using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Shop;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
 using System.Collections.Generic;
@@ -14,7 +15,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<(IEnumerable<ShopDto> Items, int TotalCount)> GetMarketplaceShopAsync(string? searchTerm, int page, int size);
         Task<ShopDetailDto> GetMyShopAsync(Guid userId);
         Task<ShopDto> RegisterShopAsync(Guid userId, CreateShopRequest request);
-        Task UpdateMyShopAsync(Guid userId, UpdateShopProfileRequest request);
+        Task UpdateMyShopAsync(Guid userId, UpdateShopRequest request);
 
         Task<(IEnumerable<ShopDetailDto> Items, int TotalCount)> GetShopForAdminAsync(string? searchTerm, ShopStatus? status, int page, int size);
         Task ApproveShopAsync(Guid userId, ApproveShopRequest request);

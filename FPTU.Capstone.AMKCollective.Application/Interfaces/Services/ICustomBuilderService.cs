@@ -1,4 +1,5 @@
 ﻿using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Builder;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,9 +13,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<BuilderConfigDto> GetBuilderConfigAsync(Guid baseKitId);
         Task<(IEnumerable<CompatiblePartDto> Items, int TotalCount)> SearchPartsInBuilderAsync(CompatiblePartsQuery query);
         Task<bool> ValidateConfigurationAsync(Guid baseKitId, List<Guid> componentIds);//check before add to cart
-        Task CreateOptionAsync(CreateKitOptionDto request);
+        Task CreateOptionAsync(CreateKitOptionRequest request);
         Task DeleteOptionAsync(Guid id);
-        Task BulkCreateOptionsAsync(List<CreateKitOptionDto> requests);
+        Task BulkCreateOptionsAsync(List<CreateKitOptionRequest> requests);
 
         Task ResetBuilderConfigAsync(Guid baseKitId);
         Task<bool> IsMatchAsync(Guid baseKitId, Guid componentId);

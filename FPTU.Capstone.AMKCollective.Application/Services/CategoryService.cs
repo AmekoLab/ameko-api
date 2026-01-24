@@ -10,19 +10,20 @@ using System.Threading.Tasks;
 
 namespace FPTU.Capstone.AMKCollective.Application.Services
 {
-    public class CategoryService :ICategoryService
+    public class CategoryService : ICategoryService
     {
-        private readonly ICategoryRepository _categoryRepository;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IStorageService _storage;
-        public CategoryService(ICategoryRepository categoryRepository, IStorageService storage)
+
+        public CategoryService(IUnitOfWork unitOfWork, IStorageService storage)
         {
-            _categoryRepository = categoryRepository;
+            _unitOfWork = unitOfWork;
             _storage = storage;
         }
 
         public async Task<IEnumerable<CategoryListDto>> GetCategoriesAsync(CategoryQueryParams queryParams, CancellationToken cancellationToken = default)
         {
-            var (categories, totalCount) = await _categoryRepository.GetPagedAsync(
+            var (categories, totalCount) = await _unitOfWork.Categories.GetPagedAsync(
                 queryParams.PageNumber,
                 queryParams.PageSize,
                 queryParams.IsActive,
@@ -53,7 +54,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<CategoryDto?> GetCategoryByIdAsync(Guid id, bool includeSubCategories = false, CancellationToken cancellationToken = default)
         {
-            var category = await _categoryRepository.GetByIdAsync(id, includeSubCategories, cancellationToken);
+            var category = await _unitOfWork.Categories.GetByIdAsync(id, includeSubCategories, cancellationToken);
 
             if (category == null)
                 return null;
@@ -65,7 +66,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             if (request.ParentId.HasValue)
             {
-                var parentExists = await _categoryRepository.ExistsAsync(request.ParentId.Value, cancellationToken);
+                var parentExists = await _unitOfWork.Categories.ExistsAsync(request.ParentId.Value, cancellationToken);
                 if (!parentExists)
                 {
                     throw new ArgumentException("Parent category does not exist.");
@@ -82,22 +83,23 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 ThumbnailURL = null 
             };
 
-            if (request.ImageStream != null)
+            if (request.ThumbnailImage != null)
             {
                 category.ThumbnailURL = await _storage.UploadAsync(
-                    request.ImageStream,
-                    request.ImageFileName ?? $"category_{category.Id}.jpg", 
+                    request.ThumbnailImage.OpenReadStream(),
+                    request.ThumbnailImage.FileName, 
                     "categories" 
                 );
             }
-            var createdCategory = await _categoryRepository.CreateAsync(category, cancellationToken);
+            var createdCategory = await _unitOfWork.Categories.CreateAsync(category, cancellationToken);
+            await _unitOfWork.CommitAsync();
 
             return MapToCategoryDto(createdCategory, false);
         }
 
         public async Task<CategoryDto> UpdateCategoryAsync(Guid id, UpdateCategoryRequest request, CancellationToken cancellationToken = default)
         {
-            var category = await _categoryRepository.GetByIdAsync(id, false, cancellationToken);
+            var category = await _unitOfWork.Categories.GetByIdAsync(id, false, cancellationToken);
 
             if (category == null)
             {
@@ -110,7 +112,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     throw new ArgumentException("Category cannot be its own parent.");
                 }
 
-                var parentExists = await _categoryRepository.ExistsAsync(request.ParentId.Value, cancellationToken);
+                var parentExists = await _unitOfWork.Categories.ExistsAsync(request.ParentId.Value, cancellationToken);
                 if (!parentExists)
                 {
                     throw new ArgumentException("Parent category does not exist.");
@@ -124,53 +126,56 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (request.ParentId.HasValue) category.ParentId = request.ParentId;
             if (request.IsActive.HasValue) category.IsActive = request.IsActive.Value;
-            if (request.ImageStream != null)
+            if (request.ThumbnailImage != null)
             {
                 // (Optional)
                 // _storage.DeleteAsync(category.ThumbnailURL)
 
                 category.ThumbnailURL = await _storage.UploadAsync(
-                    request.ImageStream,
-                    request.ImageFileName ?? $"category_{category.Id}_updated.jpg",
+                    request.ThumbnailImage.OpenReadStream(),
+                    request.ThumbnailImage.FileName,
                     "categories" 
                 );
             }
 
-            var updatedCategory = await _categoryRepository.UpdateAsync(category, cancellationToken);
+            var updatedCategory = await _unitOfWork.Categories.UpdateAsync(category, cancellationToken);
+            await _unitOfWork.CommitAsync();
 
             return MapToCategoryDto(updatedCategory, false);
         }
         public async Task<bool> DeleteCategoryAsync(Guid id, CancellationToken cancellationToken = default)
         {
-            var category = await _categoryRepository.GetByIdAsync(id, false, cancellationToken);
+            var category = await _unitOfWork.Categories.GetByIdAsync(id, false, cancellationToken);
 
             if (category == null)
                 return false;
 
-            var hasSubCategories = await _categoryRepository.HasSubCategoriesAsync(id, cancellationToken);
+            var hasSubCategories = await _unitOfWork.Categories.HasSubCategoriesAsync(id, cancellationToken);
             if (hasSubCategories)
             {
                 throw new InvalidOperationException("Cannot delete category with subcategories.");
             }
 
-            var hasParts = await _categoryRepository.HasPartsAsync(id, cancellationToken);
+            var hasParts = await _unitOfWork.Categories.HasPartsAsync(id, cancellationToken);
             if (hasParts)
             {
                 throw new InvalidOperationException("Cannot delete category with parts.");
             }
 
-            return await _categoryRepository.DeleteAsync(id, cancellationToken);
+            var result = await _unitOfWork.Categories.DeleteAsync(id, cancellationToken);
+            await _unitOfWork.CommitAsync();
+            return result;
         }
 
         public async Task<(IEnumerable<PartInCategoryDto> Items, int TotalCount, int TotalPages)> GetPartsInCategoryAsync(PartQueryParams queryParams, CancellationToken cancellationToken = default)
         {
-            var categoryExists = await _categoryRepository.ExistsAsync(queryParams.CategoryId, cancellationToken);
+            var categoryExists = await _unitOfWork.Categories.ExistsAsync(queryParams.CategoryId, cancellationToken);
             if (!categoryExists)
             {
                 throw new KeyNotFoundException($"Category with id {queryParams.CategoryId} not found.");
             }
 
-            var (parts, totalCount) = await _categoryRepository.GetPartsInCategoryAsync(
+            var (parts, totalCount) = await _unitOfWork.Categories.GetPartsInCategoryAsync(
                 queryParams.CategoryId,
                 queryParams.PageNumber,
                 queryParams.PageSize,
@@ -198,12 +203,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<bool> CategoryExistsAsync(Guid id, CancellationToken cancellationToken = default)
         {
-            return await _categoryRepository.ExistsAsync(id, cancellationToken);
+            return await _unitOfWork.Categories.ExistsAsync(id, cancellationToken);
         }
 
         public async Task<IEnumerable<CategoryListDto>> GetRootCategoriesAsync(bool includeInactive = false, CancellationToken cancellationToken = default)
         {
-            var categories = await _categoryRepository.GetRootCategoriesAsync(includeInactive, cancellationToken);
+            var categories = await _unitOfWork.Categories.GetRootCategoriesAsync(includeInactive, cancellationToken);
 
             return categories.Select(c => new CategoryListDto
             {
@@ -243,7 +248,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         }
         public async Task<CategoryDto?> GetCategoryBySlugAsync(string slug, CancellationToken cancellationToken = default)
         {
-            var category = await _categoryRepository.GetBySlugAsync(slug, cancellationToken);
+            var category = await _unitOfWork.Categories.GetBySlugAsync(slug, cancellationToken);
             if (category == null) return null;
             return MapToCategoryDto(category, false);
         }

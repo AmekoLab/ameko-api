@@ -32,9 +32,9 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             {
                 var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
 
-                var signature = Request.Headers["Stripe-Signature"];
+                var signature = Request.Headers["Stripe-Signature"].ToString();
 
-                await _paymentService.HandleWebhookAsync(json, signature);
+                await _paymentService.HandleWebhookAsync(json, signature ?? string.Empty);
                
                 return Ok();
             }

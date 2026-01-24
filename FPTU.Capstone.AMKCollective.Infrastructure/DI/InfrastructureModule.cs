@@ -45,11 +45,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
                .AsImplementedInterfaces()
                .InstancePerLifetimeScope();
 
-            builder.RegisterAssemblyTypes(typeof(InfrastructureModule).Assembly)
-               .Where(t => t.Name.EndsWith("Service"))
-               .AsImplementedInterfaces()
-               .InstancePerLifetimeScope();
-
             // Register application services (concrete implementation type is in App project)
             // builder.RegisterAssemblyTypes(typeof(FPTU.Capstone.AMKCollective.Application.Services.UserService).Assembly)
             //     .Where(t => t.Name.EndsWith("Service"))
