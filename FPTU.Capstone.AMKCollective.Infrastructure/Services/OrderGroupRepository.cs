@@ -57,5 +57,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             return await _context.SaveChangesAsync(token);
         }
+        public async Task UpdateAsync(OrderGroup orderGroup)
+        {
+            _context.OrderGroups.Update(orderGroup);
+            await Task.CompletedTask;
+        }
     }
 }

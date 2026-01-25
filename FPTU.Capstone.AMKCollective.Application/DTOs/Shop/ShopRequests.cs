@@ -36,6 +36,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Shop
     /// </summary>
     public class UpdateShopRequest
     {
+        public string? ShopName { get; set; }
         public string? Bio { get; set; }
         public string? Address { get; set; }
         public string? PhoneNumber { get; set; }

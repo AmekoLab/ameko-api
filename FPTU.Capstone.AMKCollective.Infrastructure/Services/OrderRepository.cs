@@ -98,5 +98,22 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             await _context.Orders.AddAsync(order, token);
         }
+
+        public async Task<IEnumerable<Order>> GetShopOrdersAsync(Guid shopId, string? status, int page, int size, CancellationToken token = default)
+        {
+            var query = _context.Orders
+                .Include(o => o.OrderItems) 
+                .AsNoTracking() 
+                .Where(o => o.ShopId == shopId);
+            if (!string.IsNullOrEmpty(status))
+            {
+                query = query.Where(o => o.OrderStatus.ToLower() == status.ToLower());
+            }
+            return await query
+                .OrderByDescending(o => o.CreatedAt)
+                .Skip((page - 1) * size)
+                .Take(size)
+                .ToListAsync(token);
+        }
     }
 }

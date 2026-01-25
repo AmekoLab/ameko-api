@@ -1,6 +1,7 @@
 ﻿using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Payment;
 using FPTU.Capstone.AMKCollective.Application.Interfaces;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Infrastructure.Configurations;
@@ -16,78 +17,77 @@ using PaymentMethod = FPTU.Capstone.AMKCollective.Domain.Enums.PaymentMethod;
 
 namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
 {
-    public class StripePaymentService
+    public class StripePaymentService : IPaymentService
     {
-        private readonly IPaymentRepository _paymentRepo;
-        private readonly IOrderGroupRepository _orderGroupRepo;
         private readonly StripeSettings _stripeSettings;
+        private readonly IUnitOfWork _unitOfWork;
 
-        public StripePaymentService(
-            IPaymentRepository paymentRepo,
-            IOrderGroupRepository orderGroupRepo,
-            IOptions<StripeSettings> stripeOptions)
+        public StripePaymentService(IOptions<StripeSettings> stripeSettings, IUnitOfWork unitOfWork)
         {
-            _paymentRepo = paymentRepo;
-            _orderGroupRepo = orderGroupRepo;
-            _stripeSettings = stripeOptions.Value;
-
-            // Set API Key toàn cục
+            _stripeSettings = stripeSettings.Value;
             StripeConfiguration.ApiKey = _stripeSettings.SecretKey;
+            _unitOfWork = unitOfWork;
         }
 
-        public async Task<CheckoutSessionResponse> CreateCheckoutSessionAsync(Guid orderGroupId, CancellationToken token = default)
+        // 1. TẠO CHECKOUT SESSION (Gửi sang Stripe)
+        public async Task<CheckoutSessionResponse> CreateCheckoutSessionAsync(CreateCheckoutSessionRequest request, CancellationToken token = default)
         {
-            var orderGroup = await _orderGroupRepo.GetByIdAsync(orderGroupId, token);
+            var orderGroup = await _unitOfWork.OrderGroups.GetByIdAsync(request.OrderGroupId);
             if (orderGroup == null) throw new KeyNotFoundException("Order Group not found");
 
             var options = new SessionCreateOptions
             {
                 PaymentMethodTypes = new List<string> { "card" },
                 Mode = "payment",
-                // URL trả về (cần cấu hình chính xác theo Frontend của bạn)
-                SuccessUrl = "http://localhost:3000/payment/success?session_id={CHECKOUT_SESSION_ID}",
-                CancelUrl = "http://localhost:3000/payment/failed",
-
-                LineItems = new List<SessionLineItemOptions>
-                {
-                    new SessionLineItemOptions
-                    {
-                        PriceData = new SessionLineItemPriceDataOptions
-                        {
-                            Currency = "vnd",
-                            UnitAmount = (long)orderGroup.TotalGroupAmount,
-                            ProductData = new SessionLineItemPriceDataProductDataOptions
-                            {
-                                Name = $"Thanh toán đơn hàng #{orderGroup.Id.ToString().Substring(0, 8)}",
-                            },
-                        },
-                        Quantity = 1,
-                    },
-                },
+                SuccessUrl = request.SuccessUrl + "?session_id={CHECKOUT_SESSION_ID}",
+                CancelUrl = request.CancelUrl,
                 Metadata = new Dictionary<string, string>
                 {
                     { "OrderGroupId", orderGroup.Id.ToString() }
-                }
+                },
+                LineItems = new List<SessionLineItemOptions>()
             };
+
+            foreach (var order in orderGroup.Orders)
+            {
+                foreach (var item in order.OrderItems)
+                {
+                    options.LineItems.Add(new SessionLineItemOptions
+                    {
+                        PriceData = new SessionLineItemPriceDataOptions
+                        {
+                            UnitAmount = (long)item.UnitPrice,
+                            Currency = "vnd",
+                            ProductData = new SessionLineItemPriceDataProductDataOptions
+                            {
+                                Name = item.ProductName,
+                                Description = item.IsCustom ? "Custom Build" : "Part"
+                            },
+                        },
+                        Quantity = item.Quantity,
+                    });
+                }
+
+                if (order.ShippingFee > 0)
+                {
+                    options.LineItems.Add(new SessionLineItemOptions
+                    {
+                        PriceData = new SessionLineItemPriceDataOptions
+                        {
+                            UnitAmount = (long)order.ShippingFee,
+                            Currency = "vnd",
+                            ProductData = new SessionLineItemPriceDataProductDataOptions
+                            {
+                                Name = $"Shipping Fee (Shop ID: {order.ShopId})"
+                            },
+                        },
+                        Quantity = 1,
+                    });
+                }
+            }
 
             var service = new SessionService();
             Session session = await service.CreateAsync(options, cancellationToken: token);
-
-            var payment = new Payment
-            {
-                Id = Guid.NewGuid(),
-                OrderGroupId = orderGroup.Id,
-                Amount = orderGroup.TotalGroupAmount,
-                Currency = "vnd",
-                StripeSessionId = session.Id,
-                Status = PaymentStatus.Pending,
-                Method = PaymentMethod.CreditCard,
-                Description = "Initiated Stripe Checkout",
-                CreatedAt = DateTime.UtcNow
-            };
-
-            await _paymentRepo.AddAsync(payment, token);
-            await _paymentRepo.SaveChangesAsync(token);
 
             return new CheckoutSessionResponse
             {
@@ -96,30 +96,25 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
             };
         }
 
-        public async Task HandleWebhookAsync(string jsonBody, string signature)
+        public async Task ProcessWebhookAsync(string json, string stripeSignature)
         {
-            var secret = _stripeSettings.WebhookSecret;
-
             try
             {
-                var stripeEvent = EventUtility.ConstructEvent(jsonBody, signature, secret);
+                var stripeEvent = EventUtility.ConstructEvent(
+                    json,
+                    stripeSignature,
+                    _stripeSettings.WebhookSecret
+                );
 
-                if (stripeEvent.Type == "checkout.session.completed")
+                if (stripeEvent.Type == EventTypes.CheckoutSessionCompleted)
                 {
                     var session = stripeEvent.Data.Object as Session;
 
-                    if (session != null)
+                    if (session.Metadata != null && session.Metadata.TryGetValue("OrderGroupId", out var orderGroupIdStr))
                     {
-                        var payment = await _paymentRepo.GetByStripeSessionIdAsync(session.Id);
-
-                        if (payment != null)
+                        if (Guid.TryParse(orderGroupIdStr, out Guid orderGroupId))
                         {
-                            payment.Status = PaymentStatus.Success;
-                            payment.StripePaymentIntentId = session.PaymentIntentId;
-                            payment.PayerEmail = session.CustomerDetails?.Email;
-
-                            await _orderGroupRepo.UpdatePaymentStatusAsync(payment.OrderGroupId, "Paid");
-                            await _paymentRepo.SaveChangesAsync();
+                            await FulfillOrderAsync(orderGroupId, session.PaymentIntentId, session.Id);
                         }
                     }
                 }
@@ -130,10 +125,33 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
             }
         }
 
-        public async Task<List<PaymentDto>> GetPaymentHistoryByOrderGroupAsync(Guid orderGroupId, CancellationToken token = default)
+        // Helper
+        private async Task FulfillOrderAsync(Guid orderGroupId, string transactionId, string sessionId)
         {
-            return new List<PaymentDto>();
+            var orderGroup = await _unitOfWork.OrderGroups.GetByIdAsync(orderGroupId);
+            if (orderGroup != null)
+            {
+                orderGroup.PaymentStatus = "Paid";
+                foreach (var order in orderGroup.Orders)
+                {
+                    order.PaymentStatus = "Paid";
+                }
+                var payment = new FPTU.Capstone.AMKCollective.Domain.Entities.Payment
+                {
+                    Id = Guid.NewGuid(),
+                    OrderGroupId = orderGroupId,
+                    Amount = orderGroup.TotalGroupAmount,
+                    Currency = "vnd",
+                    StripePaymentIntentId = transactionId,
+                    StripeSessionId = sessionId,
+
+                    Method = PaymentMethod.CreditCard,
+                    Status = PaymentStatus.Success,
+                };
+
+                await _unitOfWork.Payments.AddAsync(payment);
+                await _unitOfWork.CommitAsync();
+            }
         }
     }
 }
-  

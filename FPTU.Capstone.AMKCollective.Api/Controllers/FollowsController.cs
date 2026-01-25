@@ -7,7 +7,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
 {
-	using Swashbuckle.AspNetCore.Annotations;
+    using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
+    using Swashbuckle.AspNetCore.Annotations;
     [Route("api/v1/[controller]")]
     [ApiController]
     public class FollowsController : BaseApiController

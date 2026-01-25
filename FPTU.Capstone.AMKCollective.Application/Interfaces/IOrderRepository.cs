@@ -19,5 +19,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces
         public void DeleteRange(IEnumerable<OrderItem> items);
         Task AddAsync(Order order, CancellationToken token = default);
         Task AddOrderItemAsync(OrderItem item);
+
+        Task<IEnumerable<Order>> GetShopOrdersAsync(Guid shopId, string? status, int page, int size, CancellationToken token = default);
     }
 }

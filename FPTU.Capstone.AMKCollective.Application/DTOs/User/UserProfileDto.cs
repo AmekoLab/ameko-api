@@ -24,4 +24,12 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.User
         public bool PhoneNumberConfirmed { get; set; }
         public AccountStatus Status { get; set; }
     }
+
+    public class UserDto
+    {
+        public Guid Id { get; set; }
+        public string Email { get; set; } = string.Empty;
+        public string FullName { get; set; } = string.Empty;
+        public string Role { get; set; } = string.Empty;
+    }
 }

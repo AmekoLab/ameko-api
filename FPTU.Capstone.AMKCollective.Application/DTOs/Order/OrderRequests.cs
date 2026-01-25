@@ -57,4 +57,9 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
         public Guid OrderItemId { get; set; }
         public int Quantity { get; set; }
     }
+
+    public class CancelOrderRequest
+    {
+        public string Reason { get; set; } = string.Empty;
+    }
 }

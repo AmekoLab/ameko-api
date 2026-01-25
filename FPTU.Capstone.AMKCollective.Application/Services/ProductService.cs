@@ -66,23 +66,35 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<PartDto>(entity);
         }
 
-        public async Task UpdateAsync(Guid id, CreateUpdatePartRequest request)
+        public async Task UpdateAsync(Guid id, CreateUpdatePartRequest request) 
         {
             var entity = await _unitOfWork.Models.GetByIdAsync(id);
             if (entity == null) throw new KeyNotFoundException("Product not found");
+            if (!string.IsNullOrEmpty(request.Name) && request.Name != entity.Name)
+            {
+                var newSlug = GenerateSlug(request.Name);
+                var existingProduct = await _unitOfWork.Models.GetBySlugAsync(newSlug);
+                if (existingProduct != null && existingProduct.Id != id)
+                {
+                    newSlug = $"{newSlug}-{Guid.NewGuid().ToString().Substring(0, 4)}";
+                }
+
+                entity.Slug = newSlug;
+            }
+
             _mapper.Map(request, entity);
             if (request.ThumbnailImage != null)
             {
                 entity.ThumbnailURL = await _storage.UploadAsync(
-                    request.ThumbnailImage.OpenReadStream(), 
-                    request.ThumbnailImage.FileName, 
+                    request.ThumbnailImage.OpenReadStream(),
+                    request.ThumbnailImage.FileName,
                     "products");
             }
             if (request.LayerImage != null)
             {
                 entity.DefaultLayerImageUrl = await _storage.UploadAsync(
-                    request.LayerImage.OpenReadStream(), 
-                    request.LayerImage.FileName, 
+                    request.LayerImage.OpenReadStream(),
+                    request.LayerImage.FileName,
                     "layers");
             }
 

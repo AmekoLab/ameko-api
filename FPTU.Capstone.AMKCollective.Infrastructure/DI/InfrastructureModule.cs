@@ -1,11 +1,13 @@
 using Autofac;
 using FPTU.Capstone.AMKCollective.Application.Interfaces;
+using FPTU.Capstone.AMKCollective.Infrastructure.Configurations;
+using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using FPTU.Capstone.AMKCollective.Infrastructure.Services;
 using FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty;
-using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
 {
@@ -33,7 +35,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
             })
             .AsSelf()
             .InstancePerLifetimeScope();
-
+            builder.Register(c =>
+            {
+                var settings = new StripeSettings();
+                _configuration.GetSection("StripeSettings").Bind(settings);
+                return Options.Create(settings);
+            })
+            .As<IOptions<StripeSettings>>()
+            .SingleInstance();
 
 
             // Register repositories and services used by the application
@@ -44,7 +53,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
                .Where(t => t.Name.EndsWith("Repository"))
                .AsImplementedInterfaces()
                .InstancePerLifetimeScope();
-
             // Register application services (concrete implementation type is in App project)
             // builder.RegisterAssemblyTypes(typeof(FPTU.Capstone.AMKCollective.Application.Services.UserService).Assembly)
             //     .Where(t => t.Name.EndsWith("Service"))
