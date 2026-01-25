@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 
 namespace FPTU.Capstone.AMKCollective.Api.Controllers
 {

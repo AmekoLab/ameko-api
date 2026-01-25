@@ -14,25 +14,23 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 {
     public class CustomBuilderService : ICustomBuilderService
     {
-        private readonly IKitDesignOptionRepository _kitRepo;
-        private readonly IModelRepository _modelRepo;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly IStorageService _storageService;
-        private readonly IBuilderSessionRepository _sessionRepo;
-        public CustomBuilderService(IKitDesignOptionRepository kitRepo, IModelRepository modelRepo, IMapper mapper, IStorageService storageService, IBuilderSessionRepository sessionRepo)
+
+        public CustomBuilderService(IUnitOfWork unitOfWork, IMapper mapper, IStorageService storageService)
         {
-            _kitRepo = kitRepo;
-            _modelRepo = modelRepo;
+            _unitOfWork = unitOfWork;
             _mapper = mapper;
             _storageService = storageService;
-            _sessionRepo = sessionRepo;
         }
+
         public async Task<BuilderConfigDto> GetBuilderConfigAsync(Guid baseKitId)
         {
-            var baseKit = await _modelRepo.GetByIdAsync(baseKitId);
+            var baseKit = await _unitOfWork.Models.GetByIdAsync(baseKitId);
             if (baseKit == null) throw new KeyNotFoundException("Base Kit not found");
 
-            var options = await _kitRepo.GetOptionsByBaseKitAsync(baseKitId);
+            var options = await _unitOfWork.KitDesignOptions.GetOptionsByBaseKitAsync(baseKitId);
 
             var steps = options
                 .GroupBy(x => new { x.StepName, x.StepOrder })
@@ -55,7 +53,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         }
         public async Task<(IEnumerable<CompatiblePartDto> Items, int TotalCount)> SearchPartsInBuilderAsync(CompatiblePartsQuery query)
         {
-            var (entities, total) = await _kitRepo.GetCompatiblePartsPagedAsync(query);
+            var (entities, total) = await _unitOfWork.KitDesignOptions.GetCompatiblePartsPagedAsync(query);
             var dtos = _mapper.Map<IEnumerable<CompatiblePartDto>>(entities);
 
             return (dtos, total);
@@ -63,18 +61,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<bool> ValidateConfigurationAsync(Guid baseKitId, List<Guid> componentIds)
         {
             if (componentIds == null || !componentIds.Any()) return false;
-            var validIds = await _kitRepo.GetValidComponentIdsAsync(baseKitId, componentIds);
+            var validIds = await _unitOfWork.KitDesignOptions.GetValidComponentIdsAsync(baseKitId, componentIds);
             return validIds.Count() == componentIds.Count;
         }
-        public async Task CreateOptionAsync(CreateKitOptionDto request)
+        public async Task CreateOptionAsync(CreateKitOptionRequest request)
         {
             var entity = _mapper.Map<KitDesignOption>(request);
 
-            if (request.FileStream != null && request.FileStream.Length > 0)
+            if (request.LayerImageFile != null && request.LayerImageFile.Length > 0)
             {
                 var fileUrl = await _storageService.UploadAsync(
-                    request.FileStream,
-                    request.FileName ?? $"layer_{Guid.NewGuid()}.png",
+                    request.LayerImageFile.OpenReadStream(),
+                    request.LayerImageFile.FileName,
                     "builder-layers"
                 );
 
@@ -82,25 +80,27 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
             if (entity.Id == Guid.Empty) entity.Id = Guid.NewGuid();
 
-            await _kitRepo.CreateAsync(entity);
+            await _unitOfWork.KitDesignOptions.CreateAsync(entity);
+            await _unitOfWork.CommitAsync();
         }
 
         public async Task DeleteOptionAsync(Guid id)
         {
-            await _kitRepo.DeleteAsync(id);
+            await _unitOfWork.KitDesignOptions.DeleteAsync(id);
+            await _unitOfWork.CommitAsync();
         }
 
-        public async Task BulkCreateOptionsAsync(List<CreateKitOptionDto> requests)
+        public async Task BulkCreateOptionsAsync(List<CreateKitOptionRequest> requests)
         {
             var entitiesToInsert = new List<KitDesignOption>();
             foreach (var req in requests)
             {
                 var entity = _mapper.Map<KitDesignOption>(req);
-                if (req.FileStream != null && req.FileStream.Length > 0)
+                if (req.LayerImageFile != null && req.LayerImageFile.Length > 0)
                 {
                     var fileUrl = await _storageService.UploadAsync(
-                        req.FileStream,
-                        req.FileName ?? $"bulk_layer_{Guid.NewGuid()}.png",
+                        req.LayerImageFile.OpenReadStream(),
+                        req.LayerImageFile.FileName,
                         "builder-layers"
                     );
                     entity.LayerImageUrl = fileUrl;
@@ -111,20 +111,22 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (entitiesToInsert.Any())
             {
-                await _kitRepo.CreateBatchAsync(entitiesToInsert);
+                await _unitOfWork.KitDesignOptions.CreateBatchAsync(entitiesToInsert);
+                await _unitOfWork.CommitAsync();
             }
         }
 
         public async Task ResetBuilderConfigAsync(Guid baseKitId)
         {
-            bool exists = await _modelRepo.ExistsAsync(baseKitId);
+            bool exists = await _unitOfWork.Models.ExistsAsync(baseKitId);
             if (!exists) throw new KeyNotFoundException("Base Kit not found");
 
-            await _kitRepo.DeleteByBaseKitAsync(baseKitId);
+            await _unitOfWork.KitDesignOptions.DeleteByBaseKitAsync(baseKitId);
+            await _unitOfWork.CommitAsync();
         }
         public async Task<bool> IsMatchAsync(Guid baseKitId, Guid componentId)
         {
-            return await _kitRepo.CheckCompatibilityAsync(baseKitId, componentId);
+            return await _unitOfWork.KitDesignOptions.CheckCompatibilityAsync(baseKitId, componentId);
         }
 
         // ===================================SERVER-DRIVEN BUILDER======================================//
@@ -133,13 +135,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<BuilderStepResponse> StartBuilderSessionAsync(BuilderStartRequest request, Guid? userId)
         {
             // 1. Validate Base Kit
-            var baseKit = await _modelRepo.GetByIdAsync(request.BaseKitId);
+            var baseKit = await _unitOfWork.Models.GetByIdAsync(request.BaseKitId);
             if (baseKit == null) throw new KeyNotFoundException("Base Kit not found");
             BuilderSession session;
 
             if (userId.HasValue)
             {
-                var existingSession = await _sessionRepo.GetActiveSessionByUserIdAsync(userId.Value, request.BaseKitId);
+                var existingSession = await _unitOfWork.BuilderSessions.GetActiveSessionByUserIdAsync(userId.Value, request.BaseKitId);
 
                 if (existingSession != null)
                 {
@@ -159,9 +161,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 ExpiresAt = DateTime.UtcNow.AddHours(48) // Tăng thời gian lên 48h
             };
 
-            await _sessionRepo.CreateSessionAsync(session);
+            await _unitOfWork.BuilderSessions.CreateSessionAsync(session);
+            await _unitOfWork.CommitAsync();
             // 3. Lấy linh kiện cho bước đầu tiên (Case)
-            var firstStepOptions = await _kitRepo.GetCompatibleOptionsForStepAsync(request.BaseKitId, "case", null);
+            var firstStepOptions = await _unitOfWork.KitDesignOptions.GetCompatibleOptionsForStepAsync(request.BaseKitId, "case", null);
 
             // 4. Trả về Response
             return ConstructResponse(session, "case", 1, _mapper.Map<List<CompatiblePartDto>>(firstStepOptions));
@@ -170,12 +173,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<BuilderStepResponse> SelectPartAsync(BuilderSelectRequest request)
         {
             // 1. Lấy Session
-            var session = await _sessionRepo.GetSessionByIdAsync(request.SessionId);
+            var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.SessionId);
             if (session == null) throw new KeyNotFoundException("Session expired or not found");
 
             // 2. Validate: Lấy thông tin linh kiện vừa chọn
             // (Lưu ý: Dùng null ở tham số requiredTag vì ta đang validate cái user chọn, ko phải lọc list)
-            var stepOptions = await _kitRepo.GetCompatibleOptionsForStepAsync(session.BaseKitId, request.StepName, null);
+            var stepOptions = await _unitOfWork.KitDesignOptions.GetCompatibleOptionsForStepAsync(session.BaseKitId, request.StepName, null);
             var selectedOption = stepOptions.FirstOrDefault(x => x.ComponentId == request.SelectedPartId);
 
             if (selectedOption == null) throw new KeyNotFoundException("Selected part is not valid for this kit");
@@ -212,7 +215,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var (nextStepName, nextStepOrder) = GetNextStepInfo(request.StepName);
 
             session.CurrentStep = nextStepName; // Cập nhật bước hiện tại của user là bước tiếp theo
-            await _sessionRepo.UpdateSessionAsync(session);
+            await _unitOfWork.BuilderSessions.UpdateSessionAsync(session);
+            await _unitOfWork.CommitAsync();
 
             // 5. Lấy danh sách sản phẩm cho bước BƯỚC TIẾP THEO (có Lọc Tag)
             List<CompatiblePartDto> nextProducts = new();
@@ -222,7 +226,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 // Ví dụ: Vừa chọn Case 65% (rule: plate:LAYOUT_65) -> Lọc Plate theo tag LAYOUT_65
                 string? requiredTag = ParseTagFromRule(selectedOption.NextStepFilterRule, nextStepName);
 
-                var nextOptions = await _kitRepo.GetCompatibleOptionsForStepAsync(session.BaseKitId, nextStepName, requiredTag);
+                var nextOptions = await _unitOfWork.KitDesignOptions.GetCompatibleOptionsForStepAsync(session.BaseKitId, nextStepName, requiredTag);
                 nextProducts = _mapper.Map<List<CompatiblePartDto>>(nextOptions);
             }
 
@@ -231,7 +235,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<BuilderStepResponse> GetExistingSessionAsync(Guid sessionId, string? requestStep = null)
         {
             // 1. Tìm Session
-            var session = await _sessionRepo.GetSessionByIdAsync(sessionId);
+            var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(sessionId);
             if (session == null || session.ExpiresAt < DateTime.UtcNow)
             {
                 throw new KeyNotFoundException("Session not found or expired");
@@ -258,7 +262,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (previousPart != null)
             {
                 // Gọi DB lấy Rule của món cũ
-                var prevOption = await _kitRepo.GetOptionByComponentIdAsync(session.BaseKitId, previousPart.Id);
+                var prevOption = await _unitOfWork.KitDesignOptions.GetOptionByComponentIdAsync(session.BaseKitId, previousPart.Id);
 
                 if (prevOption != null)
                 {
@@ -267,7 +271,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             // 5. Query DB lấy sản phẩm (đã lọc)
-            var availableProducts = await _kitRepo.GetCompatibleOptionsForStepAsync(session.BaseKitId, stepToProcess, requiredTag);
+            var availableProducts = await _unitOfWork.KitDesignOptions.GetCompatibleOptionsForStepAsync(session.BaseKitId, stepToProcess, requiredTag);
             var productDtos = _mapper.Map<List<CompatiblePartDto>>(availableProducts);
 
             // 6. Trả về Response

@@ -1,6 +1,8 @@
 ﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
-using FPTU.Capstone.AMKCollective.API.Contracts;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Category;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Part;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -118,21 +120,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         [HttpPost]
         [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status200OK)] 
         public async Task<IActionResult> CreateCategory(
-            [FromForm] CreateCategoryApiRequest apiRequest,
+            [FromForm] CreateCategoryRequest request,
             CancellationToken cancellationToken)
         {
             try
             {
-                var appRequest = new CreateCategoryRequest
-                {
-                    Name = apiRequest.Name,
-                    ParentId = apiRequest.ParentId,
-                    IsActive = apiRequest.IsActive,
-                    ImageStream = apiRequest.ThumbnailImage?.OpenReadStream(),
-                    ImageFileName = apiRequest.ThumbnailImage?.FileName
-                };
-
-                var category = await _categoryService.CreateCategoryAsync(appRequest, cancellationToken);
+                var category = await _categoryService.CreateCategoryAsync(request, cancellationToken);
                 return SuccessResponse(category, "Category created successfully");
             }
             catch (ArgumentException ex)
@@ -149,21 +142,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         [HttpPatch("{id:guid}")]
         public async Task<IActionResult> UpdateCategory(
             Guid id,
-            [FromForm] UpdateCategoryApiRequest apiRequest,
+            [FromForm] UpdateCategoryRequest request,
             CancellationToken cancellationToken)
         {
             try
             {
-                var appRequest = new UpdateCategoryRequest
-                {
-                    Name = apiRequest.Name,
-                    ParentId = apiRequest.ParentId,
-                    IsActive = apiRequest.IsActive,
-                    ImageStream = apiRequest.ThumbnailImage?.OpenReadStream(),
-                    ImageFileName = apiRequest.ThumbnailImage?.FileName
-                };
-
-                var category = await _categoryService.UpdateCategoryAsync(id, appRequest, cancellationToken);
+                var category = await _categoryService.UpdateCategoryAsync(id, request, cancellationToken);
                 return SuccessResponse(category);
             }
             catch (KeyNotFoundException ex)

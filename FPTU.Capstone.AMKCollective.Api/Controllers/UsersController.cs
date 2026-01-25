@@ -1,5 +1,6 @@
 ﻿using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
 using FPTU.Capstone.AMKCollective.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;

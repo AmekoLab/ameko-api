@@ -1,6 +1,7 @@
 using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Follow;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using System.Text.Json;
@@ -15,17 +16,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
         public MappingProfile()
         {
             // User mappings
-            CreateMap<User, UserDto>()
-                .ForMember(dest => dest.FullName, 
-                    opt => opt.MapFrom(src => $"{src.FirstName} {src.LastName}"))
-                .ForMember(dest => dest.Role, opt => opt.MapFrom(src => src.Role.Name.ToString()));
-            
-            CreateMap<UserDto, User>()
-                .ForMember(dest => dest.FirstName, 
-                    opt => opt.MapFrom(src => src.FullName.Split(new[] { ' ' })[0]))
-                .ForMember(dest => dest.LastName, 
-                    opt => opt.MapFrom(src => string.Join(" ", src.FullName.Split(new[] { ' ' }).Skip(1))));
-
             CreateMap<User, UserProfileDto>();
             CreateMap<User, LoginResponse>()
                 .ForMember(dest => dest.Role, opt => opt.MapFrom(src => src.Role.Name.ToString()));
@@ -43,17 +33,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
 
             CreateMap<UpdateProfileRequest, User>();
 
+            //==================FOLLOW=======================//
+            CreateMap<FollowRequest, Follow>();
+            CreateMap<Follow, FollowResponse>();
+
             // TODO: Thêm mapping cho các entities khác ở đây
-            // Ví dụ:
-            // CreateMap<Order, OrderDto>();
-            // CreateMap<Product, ProductDto>();
 
             //==================MODEL=======================//
             CreateMap<Model, PartDto>()
                 .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Shop.ShopName))
                 .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.Name));
 
-            CreateMap<CreateUpdatePartDto, Model>()
+            CreateMap<CreateUpdatePartRequest, Model>()
                 .ForMember(dest => dest.ThumbnailURL, opt => opt.Ignore())
                 .ForMember(dest => dest.DefaultLayerImageUrl, opt => opt.Ignore())
                 .ForMember(dest => dest.Slug, opt => opt.Ignore());
@@ -73,7 +64,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                         ? src.LayerImageUrl
                         : src.Component.DefaultLayerImageUrl));
 
-            CreateMap<CreateKitOptionDto, KitDesignOption>();
+            CreateMap<CreateKitOptionRequest, KitDesignOption>()
+                .ForMember(dest => dest.LayerImageUrl, opt => opt.Ignore()); // Handled in service
             //==================KITDESIGN=======================//
 
            
@@ -92,7 +84,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                                                                         
                 .ForMember(dest => dest.LogoUrl, opt => opt.Ignore())
                 .ForMember(dest => dest.BannerUrl, opt => opt.Ignore());
-            CreateMap<UpdateShopProfileRequest, ShopProfile>()
+            CreateMap<UpdateShopRequest, ShopProfile>()
                 .ForMember(dest => dest.LogoUrl, opt => opt.Ignore())
                 .ForMember(dest => dest.BannerUrl, opt => opt.Ignore())
 

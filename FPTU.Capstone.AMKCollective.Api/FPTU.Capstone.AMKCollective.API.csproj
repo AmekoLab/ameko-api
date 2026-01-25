@@ -23,4 +23,7 @@
     <ProjectReference Include="..\FPTU.Capstone.AMKCollective.Application\FPTU.Capstone.AMKCollective.Application.csproj" />
     <ProjectReference Include="..\FPTU.Capstone.AMKCollective.Infrastructure\FPTU.Capstone.AMKCollective.Infrastructure.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Extensions\" />
+  </ItemGroup>
 </Project>
