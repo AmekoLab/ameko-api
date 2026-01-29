@@ -248,7 +248,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // Clear Cart
             // Lưu ý: Cần đảm bảo Repo có DeleteRange hoặc implement logic xóa
-            _unitOfWork.Orders.DeleteRange(cartOrder.OrderItems);
+            // _unitOfWork.Orders.DeleteRange(cartOrder.OrderItems);
+            _unitOfWork.Orders.Delete(cartOrder);
 
             await _unitOfWork.CommitAsync();
 

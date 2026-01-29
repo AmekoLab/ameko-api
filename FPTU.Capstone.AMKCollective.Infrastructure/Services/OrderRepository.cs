@@ -115,5 +115,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Take(size)
                 .ToListAsync(token);
         }
+        public void Delete(Order order)
+        {
+            _context.Orders.Remove(order);
+        }
     }
 }

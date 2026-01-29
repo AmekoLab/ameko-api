@@ -7,6 +7,7 @@ using FPTU.Capstone.AMKCollective.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Swashbuckle.AspNetCore.Annotations;
 using System.Security.Claims;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
@@ -24,6 +25,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // 1. Checkout
         [HttpPost("checkout")]
+        [SwaggerOperation(
+    Summary = "Process Checkout",
+    Description = "Finalizes the order based on items in the cart or immediate purchase requests."
+)]
+        [SwaggerResponse(200, "Checkout initiated successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
         public async Task<IActionResult> Checkout([FromBody] CheckoutRequest request)
         {
             var userId = GetCurrentUserId();
@@ -33,6 +40,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // 2. Thêm vào giỏ
         [HttpPost("cart")]
+        [SwaggerOperation(
+    Summary = "Add Item to Cart",
+    Description = "Adds a product or a custom built keyboard to the user's shopping cart."
+)]
+        [SwaggerResponse(200, "Item added to cart")]
+        [SwaggerResponse(401, "Unauthorized")]
         public async Task<IActionResult> AddToCart([FromBody] AddToCartRequest request)
         {
             var userId = GetCurrentUserId();
@@ -42,6 +55,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // 3. Lấy giỏ hàng
         [HttpGet("cart")]
+        [SwaggerOperation(
+    Summary = "Get My Cart",
+    Description = "Retrieves the current user's shopping cart details."
+)]
+        [SwaggerResponse(200, "Cart retrieved successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
         public async Task<IActionResult> GetMyCart()
         {
             var userId = GetCurrentUserId();
@@ -51,6 +70,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // 4. Xóa item khỏi giỏ
         [HttpDelete("cart/{itemId}")]
+        [SwaggerOperation(
+    Summary = "Remove Item from Cart",
+    Description = "Removes a specific item from the shopping cart."
+)]
+        [SwaggerResponse(200, "Item removed successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
         public async Task<IActionResult> RemoveFromCart(Guid itemId)
         {
             var userId = GetCurrentUserId();
@@ -61,6 +86,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // 5. Cập nhật số lượng
         [HttpPut("cart/{itemId}")]
+        [SwaggerOperation(
+    Summary = "Update Cart Item Quantity",
+    Description = "Updates the quantity of a specific item in the cart."
+)]
+        [SwaggerResponse(200, "Cart updated successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
         public async Task<IActionResult> UpdateCartItem(Guid itemId, [FromBody] UpdateCartItemRequest request)
         {
             var userId = GetCurrentUserId();
@@ -71,6 +102,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // 6. Lấy lịch sử đơn hàng
         [HttpGet("my-orders")]
+        [SwaggerOperation(
+    Summary = "Get Order History",
+    Description = "Retrieves a list of all orders placed by the current user."
+)]
+        [SwaggerResponse(200, "Orders retrieved successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
         public async Task<IActionResult> GetMyOrders()
         {
             var userId = GetCurrentUserId();
@@ -81,6 +118,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // 7. Chi tiết Group Order
         [HttpGet("groups/{groupId}")]
+        [SwaggerOperation(
+    Summary = "Get Order Group Detail",
+    Description = "Retrieves details of a group order (for Group Buy)."
+)]
+        [SwaggerResponse(200, "Group details retrieved")]
+        [SwaggerResponse(404, "Group not found")]
         public async Task<IActionResult> GetOrderGroupDetail(Guid groupId)
         {
             var group = await _orderService.GetOrderGroupDetailAsync(groupId);
@@ -89,6 +132,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // 8. Hủy đơn
         [HttpPost("{orderId}/cancel")]
+        [SwaggerOperation(
+    Summary = "Cancel Order",
+    Description = "Cancels a pending order if it meets the cancellation criteria."
+)]
+        [SwaggerResponse(200, "Order cancelled successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
         public async Task<IActionResult> CancelOrder(Guid orderId, [FromBody] CancelOrderRequest request)
         {
             var userId = GetCurrentUserId();

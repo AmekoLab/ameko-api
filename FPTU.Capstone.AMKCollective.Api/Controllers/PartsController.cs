@@ -6,6 +6,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs.Part;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Swashbuckle.AspNetCore.Annotations;
 using System.Security.Claims;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
@@ -23,6 +24,11 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         //Filter and paging
         //GET: api/parts?pageNumber=36&partType=CASE&searchTerm=whut
         [HttpGet]
+        [SwaggerOperation(
+    Summary = "Search and Filter Parts",
+    Description = "Retrieves a paginated list of parts with optional filtering by type, search term, etc."
+)]
+        [SwaggerResponse(200, "List of parts retrieved", typeof(PaginatedResult<PartDto>))]
         public async Task<IActionResult> GetList([FromQuery] PartQueryParams query)
         {
             try
@@ -40,8 +46,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // GET: api/parts/detail/case-tkl-a-67
         [HttpGet("detail/{slug}")]
-        [ProducesResponseType(typeof(ApiResponse<PartDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [SwaggerOperation(
+    Summary = "Get Part Details",
+    Description = "Retrieves detailed information about a specific part using its slug."
+)]
+        [SwaggerResponse(200, "Part details retrieved", typeof(ApiResponse<PartDto>))]
+        [SwaggerResponse(404, "Part not found")]
         public async Task<IActionResult> GetBySlug(string slug)
         {
             try
@@ -62,7 +72,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // POST: api/parts
         [HttpPost]
-        [ProducesResponseType(typeof(ApiResponse<PartDto>), StatusCodes.Status200OK)]
+        [SwaggerOperation(
+    Summary = "Create Part (Shop/Admin)",
+    Description = "Creates a new part/product listing."
+)]
+        [SwaggerResponse(200, "Part created successfully", typeof(ApiResponse<PartDto>))]
+        [SwaggerResponse(401, "Unauthorized")]
         public async Task<IActionResult> Create([FromForm] CreateUpdatePartRequest request)
         {
             try
@@ -80,8 +95,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // PUT: api/parts/{id}
         [HttpPut("{id}")]
-        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [SwaggerOperation(
+    Summary = "Update Part (Shop/Admin)",
+    Description = "Updates an existing part's information."
+)]
+        [SwaggerResponse(200, "Part updated successfully")]
+        [SwaggerResponse(404, "Part not found")]
         public async Task<IActionResult> Update(Guid id, [FromForm] CreateUpdatePartRequest request)
         {
             try
@@ -102,7 +121,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // DELETE: api/parts/{id}
         [HttpDelete("{id}")]
-        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status200OK)]
+        [SwaggerOperation(
+    Summary = "Delete Part (Shop/Admin)",
+    Description = "Soft deletes a part."
+)]
+        [SwaggerResponse(200, "Part deleted successfully")]
+        [SwaggerResponse(404, "Part not found")]
         public async Task<IActionResult> Delete(Guid id)
         {
             try
@@ -118,7 +142,11 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
         // GET: api/parts/recommendations
         [HttpGet("recommendations")]
-        [ProducesResponseType(typeof(ApiResponse<IEnumerable<PartDto>>), StatusCodes.Status200OK)]
+        [SwaggerOperation(
+    Summary = "Get Recommended Parts",
+    Description = "Suggests compatible parts based on a base kit and part type."
+)]
+        [SwaggerResponse(200, "Recommendations retrieved", typeof(ApiResponse<IEnumerable<PartDto>>))]
         public async Task<IActionResult> GetRecommendations(Guid baseKitId, string partType)
         {
             try
@@ -135,7 +163,11 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // POST: api/parts/check-stock
         [HttpPost("check-stock")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+        [SwaggerOperation(
+    Summary = "Check Stock Availability",
+    Description = "Checks if the requested list of product IDs are in stock."
+)]
+        [SwaggerResponse(200, "Stock status retrieved")]
         public async Task<IActionResult> CheckStock([FromBody] CheckStockRequest request)
         {
             try

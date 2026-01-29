@@ -4,6 +4,7 @@ using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Swashbuckle.AspNetCore.Annotations;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
 {
@@ -19,6 +20,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpPost("create-checkout-session")]
+        [SwaggerOperation(
+    Summary = "Create Checkout Session",
+    Description = "Creates a Stripe checkout session for payment processing."
+)]
+        [SwaggerResponse(200, "Session created successfully")]
+        [SwaggerResponse(400, "Invalid request data")]
         public async Task<IActionResult> CreateCheckoutSession([FromBody] CreateCheckoutSessionRequest request)
         {
             if (!ModelState.IsValid)
@@ -31,6 +38,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpPost("webhook")]
+        [SwaggerOperation(
+    Summary = "Stripe Webhook",
+    Description = "Endpoint for Stripe to send asynchronous payment events (Do not call manually)."
+)]
+        [SwaggerResponse(200, "Webhook processed")]
+        [SwaggerResponse(400, "Invalid signature or payload")]
         public async Task<IActionResult> StripeWebhook()
         {
             var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
@@ -45,7 +58,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 await _paymentService.ProcessWebhookAsync(json, signature);
 
                 // Webhook của Stripe chỉ cần Status 200. 
-                // Có thể dùng SuccessResponse hoặc Ok() đều được, nhưng Ok() nhẹ hơn.
+                // Có thể dùng SuccessResponse hoặc Ok() đều được
                 return SuccessResponse();
             }
             catch (System.Exception ex)
