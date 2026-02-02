@@ -245,10 +245,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             await _unitOfWork.OrderGroups.CreateAsync(orderGroup);
-
-            // Clear Cart
-            // Lưu ý: Cần đảm bảo Repo có DeleteRange hoặc implement logic xóa
-            // _unitOfWork.Orders.DeleteRange(cartOrder.OrderItems);
+             //_unitOfWork.Orders.DeleteRange(cartOrder.OrderItems);
             _unitOfWork.Orders.Delete(cartOrder);
 
             await _unitOfWork.CommitAsync();
@@ -309,13 +306,23 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 if (product != null)
                 {
                     product.StockQuantity += item.Quantity;
-                    await _unitOfWork.Models.UpdateAsync(product);
+                    //await _unitOfWork.Models.UpdateAsync(product);
+                }
+            }
+            if (order.PaymentStatus == "Paid")
+            {
+                if (order.OrderGroupId.HasValue)
+                {
+                    await _paymentService.RefundPaymentAsync(order.OrderGroupId.Value);
+                    order.PaymentStatus = "Refunded";
+                    var group = await _unitOfWork.OrderGroups.GetByIdAsync(order.OrderGroupId.Value);
+                    if (group != null) group.PaymentStatus = "Refunded";
                 }
             }
 
             order.OrderStatus = "Cancelled";
             order.CancelReason = reason;
-            await _unitOfWork.Orders.UpdateOrderAsync(order);
+            //await _unitOfWork.Orders.UpdateOrderAsync(order);
             await _unitOfWork.CommitAsync();
         }
 

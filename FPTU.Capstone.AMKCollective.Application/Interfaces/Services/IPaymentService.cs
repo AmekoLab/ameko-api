@@ -12,5 +12,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<CheckoutSessionResponse> CreateCheckoutSessionAsync(CreateCheckoutSessionRequest request, CancellationToken token = default);
 
         Task ProcessWebhookAsync(string json, string stripeSignature);
+
+        Task RefundPaymentAsync(Guid orderGroupId);
     }
 }

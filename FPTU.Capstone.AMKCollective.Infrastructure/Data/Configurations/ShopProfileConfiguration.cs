@@ -37,7 +37,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .HasMaxLength(50);
 
             builder.Property(s => s.Status)
-                .HasDefaultValue(ShopStatus.Pending)
+                .HasDefaultValue(ShopStatus.PendingApproval)
                 .HasConversion<int>();
             builder.Property(s => s.IsActive)
                 .HasDefaultValue(true);

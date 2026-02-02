@@ -146,11 +146,48 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                     StripeSessionId = sessionId,
 
                     Method = PaymentMethod.CreditCard,
-                    Status = PaymentStatus.Success,
+                    Status = PaymentStatus.Paid,
                 };
 
                 await _unitOfWork.Payments.AddAsync(payment);
                 await _unitOfWork.CommitAsync();
+            }
+        }
+
+        public async Task RefundPaymentAsync(Guid orderGroupId)
+        {
+            var payment = await _unitOfWork.Payments.GetPaymentByOrderGroupIdAsync(orderGroupId);
+
+            if (payment == null)
+                throw new KeyNotFoundException("Order not found.");
+
+            if (string.IsNullOrEmpty(payment.StripePaymentIntentId))
+                throw new InvalidOperationException("Order do not have PaymentIntentId to refund");
+
+            if (payment.Status == PaymentStatus.Refunded)
+                throw new InvalidOperationException("Order was refund before.");
+
+            try
+            {
+                var refundOptions = new RefundCreateOptions
+                {
+                    PaymentIntent = payment.StripePaymentIntentId, 
+                    Reason = RefundReasons.RequestedByCustomer,                                                               
+                };
+
+                var service = new RefundService();
+                var refund = await service.CreateAsync(refundOptions);
+
+                if (refund.Status == "succeeded" || refund.Status == "pending")
+                {
+                    payment.Status = PaymentStatus.Refunded;
+                    payment.Description = $"Refunded via Stripe. Refund ID: {refund.Id}";
+                    await _unitOfWork.CommitAsync();
+                }
+            }
+            catch (StripeException e)
+            {
+                throw new Exception($"Stripe Refund Failed: {e.Message}");
             }
         }
     }

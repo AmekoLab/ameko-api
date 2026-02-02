@@ -112,7 +112,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 BankAccountName = request.BankAccountName,
                 LogoUrl = logoUrl,
                 BannerUrl = bannerUrl,
-                Status = ShopStatus.Pending,
+                Status = ShopStatus.PendingApproval,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
             };
