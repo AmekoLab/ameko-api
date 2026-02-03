@@ -1,13 +1,13 @@
 ﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Follow;
-using FPTU.Capstone.AMKCollective.Application.Interfaces;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
 {
-    using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
+    using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
     using Swashbuckle.AspNetCore.Annotations;
     [Route("api/v1/[controller]")]
     [ApiController]

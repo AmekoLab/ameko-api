@@ -1,4 +1,3 @@
-using FPTU.Capstone.AMKCollective.Application.Interfaces;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Application.Services;
 using Microsoft.Extensions.DependencyInjection;

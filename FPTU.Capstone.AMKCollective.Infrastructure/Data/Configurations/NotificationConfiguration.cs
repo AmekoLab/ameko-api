@@ -11,6 +11,20 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.ToTable("Notifications");
             builder.HasKey(n => n.Id);
 
+            // Auto-increment for int PK
+            builder.Property(n => n.Id)
+                .ValueGeneratedOnAdd();
+
+            builder.Property(n => n.Title)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            builder.Property(n => n.Message)
+                .HasMaxLength(1000);
+
+            builder.Property(n => n.Type)
+                .HasMaxLength(50);
+
             // Relationships
             builder.HasOne(n => n.User)
                 .WithMany(u => u.Notifications)

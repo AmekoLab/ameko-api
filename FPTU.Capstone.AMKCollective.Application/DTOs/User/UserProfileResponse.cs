@@ -3,7 +3,7 @@ using System;
 
 namespace FPTU.Capstone.AMKCollective.Application.DTOs.User
 {
-    public class UserProfileDto
+    public class UserProfileResponse
     {
         public Guid Id { get; set; }
         public string FirstName { get; set; } = null!;

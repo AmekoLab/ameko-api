@@ -11,6 +11,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.ToTable("CommunityAttachments");
             builder.HasKey(ca => ca.Id);
 
+            // Auto-increment for int PK
+            builder.Property(ca => ca.Id)
+                .ValueGeneratedOnAdd();
+
             builder.Property(ca => ca.FileUrl)
                 .IsRequired()
                 .HasMaxLength(500);

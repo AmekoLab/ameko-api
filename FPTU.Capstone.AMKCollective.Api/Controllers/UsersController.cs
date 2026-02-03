@@ -2,7 +2,7 @@
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
-using FPTU.Capstone.AMKCollective.Application.Interfaces;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Swashbuckle.AspNetCore.Annotations;
@@ -25,7 +25,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [SwaggerOperation(
             Summary = "Get all users",
             Description = "Returns a paginated list of all registered users. Admin role suggested for production." )]
-        [SwaggerResponse(200, "Successfully retrieved list of users", typeof(PaginatedResult<UserDto>))]
+        [SwaggerResponse(200, "Successfully retrieved list of users", typeof(PaginatedResult<UserResponse>))]
         [SwaggerResponse(401, "Unauthorized access")]
         [HttpGet]
         public async Task<IActionResult> Get([FromQuery] int currentPage = 1, [FromQuery] int pageSize = 10)
@@ -60,14 +60,14 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             Summary = "Get user profile",
             Description = "Retrieve detailed profile information of a user by UserId"
         )]
-        [SwaggerResponse(200, "Success", typeof(UserProfileDto))]
+        [SwaggerResponse(200, "Success", typeof(UserProfileResponse))]
         [SwaggerResponse(401, "Unauthorized")]
         [SwaggerResponse(404, "User not found")]
         public async Task<IActionResult> GetProfile(Guid id)
         {
             var profile = await _userService.GetProfileAsync(id);
             if (profile == null)
-                return NotFoundResponse<UserProfileDto>("User not found");
+                return NotFoundResponse<UserProfileResponse>("User not found");
 
             return SuccessResponse(profile);
         }
