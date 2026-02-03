@@ -11,6 +11,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.ToTable("CommunityPosts");
             builder.HasKey(cp => cp.Id);
 
+            // Auto-increment for int PK
+            builder.Property(cp => cp.Id)
+                .ValueGeneratedOnAdd();
+
             builder.Property(cp => cp.Title)
                 .IsRequired()
                 .HasMaxLength(500);

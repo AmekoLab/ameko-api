@@ -1,5 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Application.Interfaces;
-using FPTU.Capstone.AMKCollective.Domain.Entities;
+﻿using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
@@ -7,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 
 
 namespace FPTU.Capstone.AMKCollective.Infrastructure.Services

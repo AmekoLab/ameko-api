@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 
-namespace FPTU.Capstone.AMKCollective.Application.Interfaces
+namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
 {
     public interface IUserRepository
     {

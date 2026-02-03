@@ -1,11 +1,12 @@
 using Autofac;
-using FPTU.Capstone.AMKCollective.Application.Interfaces;
 using FPTU.Capstone.AMKCollective.Infrastructure.Services;
 using FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 
 namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
 {

@@ -11,6 +11,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.ToTable("Messages");
             builder.HasKey(m => m.Id);
 
+            // Auto-increment for int PK
+            builder.Property(m => m.Id)
+                .ValueGeneratedOnAdd();
+
             builder.Property(m => m.Content)
                 .IsRequired()
                 .HasColumnType("text");
