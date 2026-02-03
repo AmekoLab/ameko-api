@@ -2,7 +2,8 @@
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
-using FPTU.Capstone.AMKCollective.Application.Interfaces;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System.Security.Cryptography;
@@ -25,12 +26,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _tokenService = tokenService;
         }
 
-        public async Task<PaginatedResult<UserDto>> GetAllAsync(int pageNumber, int pageSize)
+        public async Task<PaginatedResult<UserResponse>> GetAllAsync(int pageNumber, int pageSize)
         {
             var (users, totalCount) = await _unitOfWork.Users.GetPagedAsync(pageNumber, pageSize);
-            var userDtos = _mapper.Map<IEnumerable<UserDto>>(users);
+            var userDtos = _mapper.Map<IEnumerable<UserResponse>>(users);
             
-            return new PaginatedResult<UserDto>
+            return new PaginatedResult<UserResponse>
             {
                 Items = userDtos,
                 TotalCount = totalCount,
@@ -57,10 +58,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return response;
         }
 
-        public async Task<UserProfileDto?> GetProfileAsync(Guid userId)
+        public async Task<UserProfileResponse?> GetProfileAsync(Guid userId)
         {
             var user = await _unitOfWork.Users.GetByIdAsync(userId);
-            return _mapper.Map<UserProfileDto>(user);
+            return _mapper.Map<UserProfileResponse>(user);
         }
 
         public async Task<bool> UpdateProfileAsync(Guid userId, UpdateProfileRequest request)

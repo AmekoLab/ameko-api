@@ -1,6 +1,5 @@
 ﻿using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
-using FPTU.Capstone.AMKCollective.Application.Interfaces;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using System;
 using System.Collections.Generic;
@@ -9,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 
 namespace FPTU.Capstone.AMKCollective.Application.Services
 {

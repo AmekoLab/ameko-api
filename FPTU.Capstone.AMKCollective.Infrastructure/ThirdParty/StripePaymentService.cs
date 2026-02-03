@@ -1,6 +1,6 @@
 ﻿using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Payment;
-using FPTU.Capstone.AMKCollective.Application.Interfaces;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Infrastructure.Configurations;

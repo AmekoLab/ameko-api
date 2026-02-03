@@ -179,9 +179,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.CommunityAttachment", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
@@ -201,8 +203,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<Guid>("PostId")
-                        .HasColumnType("char(36)");
+                    b.Property<int>("PostId")
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
@@ -219,9 +221,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.CommunityPost", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
@@ -437,9 +441,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Message", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Content")
                         .IsRequired()
@@ -562,9 +568,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Notification", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
@@ -577,6 +585,19 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
                     b.Property<bool>("IsRead")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Type")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
@@ -936,9 +957,15 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.PostComment", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
@@ -949,8 +976,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<Guid>("PostId")
-                        .HasColumnType("char(36)");
+                    b.Property<int>("PostId")
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
@@ -972,9 +999,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.PostReaction", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
@@ -985,8 +1014,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<Guid>("PostId")
-                        .HasColumnType("char(36)");
+                    b.Property<int>("PostId")
+                        .HasColumnType("int");
 
                     b.Property<string>("Type")
                         .IsRequired()

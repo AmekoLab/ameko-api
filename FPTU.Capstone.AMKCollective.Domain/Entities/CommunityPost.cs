@@ -2,7 +2,10 @@ using System;
 
 namespace FPTU.Capstone.AMKCollective.Domain.Entities
 {
-    public class CommunityPost : BaseEntity
+    /// <summary>
+    /// Community post entity with int PK for better performance (high-volume inserts).
+    /// </summary>
+    public class CommunityPost : BaseEntityInt
     {
         public Guid UserId { get; set; }
         public string Title { get; set; } = string.Empty;

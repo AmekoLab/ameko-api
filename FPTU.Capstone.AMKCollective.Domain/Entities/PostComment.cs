@@ -2,10 +2,14 @@ using System;
 
 namespace FPTU.Capstone.AMKCollective.Domain.Entities
 {
-    public class PostComment : BaseEntity
+    /// <summary>
+    /// Post comment entity with int PK for better performance (high-volume inserts).
+    /// </summary>
+    public class PostComment : BaseEntityInt
     {
-        public Guid PostId { get; set; }
-        public Guid UserId { get; set; }
+        public int PostId { get; set; }  // FK to CommunityPost (int)
+        public Guid UserId { get; set; } // FK to User (Guid)
+        public string Content { get; set; } = string.Empty;
 
         // Navigation Properties
         public virtual CommunityPost Post { get; set; } = null!;

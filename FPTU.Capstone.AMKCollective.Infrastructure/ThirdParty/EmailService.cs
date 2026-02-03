@@ -1,5 +1,5 @@
 using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
-using FPTU.Capstone.AMKCollective.Application.Interfaces;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.Extensions.Options;
 using System.Net;
 using System.Net.Mail;

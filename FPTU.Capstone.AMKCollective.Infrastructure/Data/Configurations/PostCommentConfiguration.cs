@@ -11,6 +11,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.ToTable("PostComments");
             builder.HasKey(pc => pc.Id);
 
+            // Auto-increment for int PK
+            builder.Property(pc => pc.Id)
+                .ValueGeneratedOnAdd();
+
+            builder.Property(pc => pc.Content)
+                .IsRequired()
+                .HasColumnType("text");
+
             // Relationships
             builder.HasOne(pc => pc.Post)
                 .WithMany(cp => cp.PostComments)

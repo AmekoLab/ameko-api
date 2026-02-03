@@ -5,13 +5,13 @@ using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
 
-namespace FPTU.Capstone.AMKCollective.Application.Interfaces
+namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 {
     public interface IUserService
     {
-        Task<PaginatedResult<UserDto>> GetAllAsync(int pageNumber, int pageSize);
+        Task<PaginatedResult<UserResponse>> GetAllAsync(int pageNumber, int pageSize);
         Task<LoginResponse?> LoginAsync(LoginRequest request);
-        Task<UserProfileDto?> GetProfileAsync(Guid userId);
+        Task<UserProfileResponse?> GetProfileAsync(Guid userId);
         Task<bool> UpdateProfileAsync(Guid userId, UpdateProfileRequest request);
         
         Task<(bool Success, string ErrorMessage)> RegisterAsync(RegisterRequest request);

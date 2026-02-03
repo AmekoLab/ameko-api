@@ -37,6 +37,7 @@ internal class Program
         builder.Services.AddDbContext<ApplicationDbContext>(options =>
             options.UseMySql(connectionString, serverVersion));
 
+        #region JWT Authentication
         // Configure JWT Authentication
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
@@ -55,10 +56,29 @@ internal class Program
             });
 
         builder.Services.AddAuthorization();
+        #endregion
 
+        #region Configure Settings  
         // Configure EmailSettings
         builder.Services.Configure<FPTU.Capstone.AMKCollective.Application.DTOs.Settings.EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
+        #endregion
 
+        #region CORS
+        // Configure CORS
+        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+
+        builder.Services.AddCors(options =>
+        {
+            options.AddPolicy("AllowFrontend", policy =>
+            {
+                policy.WithOrigins(allowedOrigins)
+                      .AllowAnyHeader()
+                      .AllowAnyMethod();
+            });
+        });
+        #endregion
+
+        #region Dependency Injection (Autofac DI Configuration)
         // Use Autofac as the service provider
         builder.Host.UseServiceProviderFactory(new Autofac.Extensions.DependencyInjection.AutofacServiceProviderFactory());
         builder.Host.ConfigureContainer<ContainerBuilder>(containerBuilder =>
@@ -72,7 +92,7 @@ internal class Program
         // DI - wire Application interfaces to Infrastructure implementations
         builder.Services.AddApplicationServices();
         builder.Services.AddInfrastructureServices();
-
+        #endregion
 
         // DI registrations moved to Autofac module in Infrastructure (see InfrastructureModule)
 
@@ -112,6 +132,9 @@ internal class Program
                         new string []{}
                     }
                         });
+            var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+            var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+            opt.IncludeXmlComments(xmlPath);
         });
         #endregion
 
@@ -128,13 +151,10 @@ internal class Program
         app.UseHttpsRedirection();
         app.UseAuthentication();
         app.UseAuthorization();
+        app.UseCors("AllowFrontend");
         app.MapControllers();
         //app.MapHub<RealTimeHub>("/hub");
 
         app.Run();
     }
 }
-
-#region Swagger
-
-#endregion

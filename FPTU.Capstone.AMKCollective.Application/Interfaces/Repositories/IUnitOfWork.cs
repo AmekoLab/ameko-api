@@ -1,6 +1,6 @@
 using System.Threading.Tasks;
 
-namespace FPTU.Capstone.AMKCollective.Application.Interfaces
+namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
 {
     public interface IUnitOfWork
     {

@@ -11,6 +11,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.ToTable("PostReactions");
             builder.HasKey(pr => pr.Id);
 
+            // Auto-increment for int PK
+            builder.Property(pr => pr.Id)
+                .ValueGeneratedOnAdd();
+
             builder.Property(pr => pr.Type)
                 .IsRequired()
                 .HasMaxLength(50);

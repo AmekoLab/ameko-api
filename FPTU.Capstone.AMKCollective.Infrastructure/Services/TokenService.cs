@@ -1,4 +1,4 @@
-using FPTU.Capstone.AMKCollective.Application.Interfaces;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;

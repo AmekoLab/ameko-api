@@ -2,10 +2,13 @@ using System;
 
 namespace FPTU.Capstone.AMKCollective.Domain.Entities
 {
-    public class PostReaction : BaseEntity
+    /// <summary>
+    /// Post reaction entity with int PK for better performance (high-volume inserts).
+    /// </summary>
+    public class PostReaction : BaseEntityInt
     {
-        public Guid PostId { get; set; }
-        public Guid UserId { get; set; }
+        public int PostId { get; set; }  // FK to CommunityPost (int)
+        public Guid UserId { get; set; } // FK to User (Guid)
         public string Type { get; set; } = string.Empty;
 
         // Navigation Properties
