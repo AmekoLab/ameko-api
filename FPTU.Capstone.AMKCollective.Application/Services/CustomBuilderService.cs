@@ -202,9 +202,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // Tính lại tổng tiền
             decimal newTotal = session.BaseKit.Price;
+
             foreach (var item in currentSelection.Values)
             {
-                newTotal += item.Price;
+                int qtyNeeded = GetRecipeQuantity(session.BaseKit.Specifications, item.Name);
+                newTotal += (item.Price * qtyNeeded);
             }
 
             session.SelectedItemsJson = JsonSerializer.Serialize(currentSelection);
@@ -362,6 +364,29 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     }
                 }
             };
+        }
+
+        private int GetRecipeQuantity(string? specifications, string partName)
+        {
+            if (string.IsNullOrEmpty(specifications)) return 1;
+            try
+            {
+                using (var doc = JsonDocument.Parse(specifications))
+                {
+                    if (doc.RootElement.TryGetProperty("recipe", out var recipe))
+                    {
+                        foreach (var prop in recipe.EnumerateObject())
+                        {
+                            if (partName.ToLower().Contains(prop.Name.ToLower()) && prop.Value.ValueKind == JsonValueKind.Number)
+                            {
+                                return prop.Value.GetInt32();
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+            return 1; 
         }
     }
 }

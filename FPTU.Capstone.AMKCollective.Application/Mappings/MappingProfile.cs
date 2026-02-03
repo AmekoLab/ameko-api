@@ -42,7 +42,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             //==================MODEL=======================//
             CreateMap<Model, PartDto>()
                 .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Shop.ShopName))
-                .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.Name));
+                .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.Name))
+                .ForMember(dest => dest.RecipeSwitchCount, opt => opt.MapFrom(src =>
+                    GetRecipeValue(src.Specifications, "switch")))
+                .ForMember(dest => dest.RecipeStabilizerCount, opt => opt.MapFrom(src =>
+                    GetRecipeValue(src.Specifications, "stabilizer")));
 
             CreateMap<CreateUpdatePartRequest, Model>()
                 .ForMember(dest => dest.ThumbnailURL, opt => opt.Ignore())
@@ -139,6 +143,36 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             //order item component
             CreateMap<OrderItemComponent, OrderItemComponentDto>();
 
+        }
+
+
+        //HELPER
+        private int GetRecipeValue(string? jsonSpecs, string key)
+        {
+            if (string.IsNullOrEmpty(jsonSpecs)) return 0;
+            try
+            {
+                using (var doc = JsonDocument.Parse(jsonSpecs))
+                {
+                    if (doc.RootElement.TryGetProperty("recipe", out var recipe))
+                    {
+                        // Tìm property có tên chứa key (ví dụ "switch" trong "switch")
+                        // Loop qua các property để tìm flexible (vd case sensitive)
+                        foreach (var prop in recipe.EnumerateObject())
+                        {
+                            if (prop.Name.ToLower().Contains(key.ToLower()) && prop.Value.ValueKind == JsonValueKind.Number)
+                            {
+                                return prop.Value.GetInt32();
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore parsing errors
+            }
+            return 0;
         }
 
     }

@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace FPTU.Capstone.AMKCollective.Application.Services
@@ -44,9 +45,28 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var entity = _mapper.Map<Model>(request);
 
             entity.ShopId = await GetShopIdFromUserId(userId);
-
             entity.Slug = GenerateSlug(entity.Name);
             entity.IsActive = true;
+            if ((request.RecipeSwitchCount.HasValue && request.RecipeSwitchCount > 0) ||
+                (request.RecipeStabilizerCount.HasValue && request.RecipeStabilizerCount > 0))
+            {
+                var recipeDict = new Dictionary<string, int>();
+
+                if (request.RecipeSwitchCount.HasValue && request.RecipeSwitchCount > 0)
+                {
+                    recipeDict.Add("switch", request.RecipeSwitchCount.Value);
+                }
+
+                if (request.RecipeStabilizerCount.HasValue && request.RecipeStabilizerCount > 0)
+                {
+                    recipeDict.Add("stabilizer", request.RecipeStabilizerCount.Value);
+                }
+                var specData = new
+                {
+                    recipe = recipeDict
+                };
+                entity.Specifications = JsonSerializer.Serialize(specData);
+            }
             if (request.ThumbnailImage != null)
             {
                 entity.ThumbnailURL = await _storage.UploadAsync(
@@ -61,12 +81,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     request.LayerImage.FileName,
                     "layers");
             }
+
             await _unitOfWork.Models.CreateAsync(entity);
             await _unitOfWork.CommitAsync();
+
             return _mapper.Map<PartDto>(entity);
         }
 
-        public async Task UpdateAsync(Guid id, CreateUpdatePartRequest request) 
+        public async Task UpdateAsync(Guid id, CreateUpdatePartRequest request)
         {
             var entity = await _unitOfWork.Models.GetByIdAsync(id);
             if (entity == null) throw new KeyNotFoundException("Product not found");
@@ -78,11 +100,33 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 {
                     newSlug = $"{newSlug}-{Guid.NewGuid().ToString().Substring(0, 4)}";
                 }
-
                 entity.Slug = newSlug;
             }
 
             _mapper.Map(request, entity);
+            if ((request.RecipeSwitchCount.HasValue && request.RecipeSwitchCount > 0) ||
+                (request.RecipeStabilizerCount.HasValue && request.RecipeStabilizerCount > 0))
+            {
+                var recipeDict = new Dictionary<string, int>();
+
+                if (request.RecipeSwitchCount.HasValue && request.RecipeSwitchCount > 0)
+                {
+                    recipeDict.Add("switch", request.RecipeSwitchCount.Value);
+                }
+
+                if (request.RecipeStabilizerCount.HasValue && request.RecipeStabilizerCount > 0)
+                {
+                    recipeDict.Add("stabilizer", request.RecipeStabilizerCount.Value);
+                }
+
+                var specData = new
+                {
+                    recipe = recipeDict
+                };
+
+                entity.Specifications = JsonSerializer.Serialize(specData);
+            }
+            // ---------------------------------------------------------------------
             if (request.ThumbnailImage != null)
             {
                 entity.ThumbnailURL = await _storage.UploadAsync(

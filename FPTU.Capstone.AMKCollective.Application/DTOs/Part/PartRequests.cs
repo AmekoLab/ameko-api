@@ -17,6 +17,9 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Part
         public string? Description { get; set; }
         public string? Specifications { get; set; } // JSON string
 
+        public int? RecipeSwitchCount { get; set; }
+        public int? RecipeStabilizerCount { get; set; }
+
         public IFormFile? ThumbnailImage { get; set; }
         public IFormFile? LayerImage { get; set; }
     }

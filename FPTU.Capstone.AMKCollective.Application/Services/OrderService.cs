@@ -153,7 +153,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, "InCart");
             if (cartOrder == null || !cartOrder.OrderItems.Any())
                 throw new InvalidOperationException("Cart is empty.");
-
             var orderGroup = new OrderGroup
             {
                 Id = Guid.NewGuid(),
@@ -163,13 +162,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 TotalGroupAmount = 0,
                 Orders = new List<Order>()
             };
-
             var itemsByShop = cartOrder.OrderItems.GroupBy(i => i.Product?.ShopId ?? Guid.Empty);
 
             foreach (var shopGroup in itemsByShop)
             {
                 if (shopGroup.Key == Guid.Empty) continue;
-
                 var order = new Order
                 {
                     Id = Guid.NewGuid(),
@@ -192,15 +189,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 {
                     var product = await _unitOfWork.Models.GetByIdAsync(cartItem.ProductId);
                     if (product == null) throw new InvalidOperationException($"Product {cartItem.ProductName} missing.");
-
                     if (product.StockQuantity < cartItem.Quantity)
                         throw new InvalidOperationException($"Out of stock: {product.Name}");
-
-                    // Deduct Stock
                     product.StockQuantity -= cartItem.Quantity;
                     await _unitOfWork.Models.UpdateAsync(product);
-
-                    // Create Order Item
                     var orderItem = new OrderItem
                     {
                         Id = Guid.NewGuid(),
@@ -215,11 +207,45 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         DesignConfig = cartItem.DesignConfig,
                         OrderItemComponents = new List<OrderItemComponent>()
                     };
-
-                    if (cartItem.OrderItemComponents != null)
+                    if (cartItem.OrderItemComponents != null && cartItem.OrderItemComponents.Any())
                     {
                         foreach (var comp in cartItem.OrderItemComponents)
                         {
+                            var partEntity = await _unitOfWork.Models.GetByIdAsync(comp.PartId);
+                            if (partEntity == null) throw new InvalidOperationException($"Component {comp.PartName} not found.");
+                            int requiredQtyPerKit = 1; 
+                            if (!string.IsNullOrEmpty(product.Specifications))
+                            {
+                                try
+                                {
+                                    using (JsonDocument doc = JsonDocument.Parse(product.Specifications))
+                                    {
+                                        var root = doc.RootElement;
+                                        if (root.TryGetProperty("recipe", out JsonElement recipe))
+                                        {
+                                            string partNameLower = partEntity.Name.ToLower();
+                                            foreach (var property in recipe.EnumerateObject())
+                                            {
+                                                if (partNameLower.Contains(property.Name.ToLower()))
+                                                {
+                                                    requiredQtyPerKit = property.Value.GetInt32();
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                catch
+                                {
+                                }
+                            }                         
+                            int totalPartNeeded = requiredQtyPerKit * cartItem.Quantity;
+                            if (partEntity.StockQuantity < totalPartNeeded)
+                            {
+                                throw new InvalidOperationException($"Không đủ linh kiện '{partEntity.Name}'. Cần: {totalPartNeeded}, Còn: {partEntity.StockQuantity}");
+                            }
+                            partEntity.StockQuantity -= totalPartNeeded;
+                            await _unitOfWork.Models.UpdateAsync(partEntity);
                             orderItem.OrderItemComponents.Add(new OrderItemComponent
                             {
                                 Id = Guid.NewGuid(),
@@ -228,7 +254,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                                 PartName = comp.PartName,
                                 PartPriceSnapshot = comp.PartPriceSnapshot,
                                 PartImageUrl = comp.PartImageUrl,
-                                Quantity = comp.Quantity
+                                Quantity = requiredQtyPerKit 
                             });
                         }
                     }
@@ -243,31 +269,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 orderGroup.Orders.Add(order);
                 orderGroup.TotalGroupAmount += order.TotalAmount;
             }
-
             await _unitOfWork.OrderGroups.CreateAsync(orderGroup);
-             //_unitOfWork.Orders.DeleteRange(cartOrder.OrderItems);
             _unitOfWork.Orders.Delete(cartOrder);
-
             await _unitOfWork.CommitAsync();
-
             var paymentRequest = new CreateCheckoutSessionRequest
             {
                 OrderGroupId = orderGroup.Id,
-                // Lấy URL từ Request của Frontend gửi lên
-                // Nếu Frontend không gửi (string rỗng) thì dùng link mặc định (Localhost)
-                SuccessUrl = !string.IsNullOrEmpty(request.SuccessUrl)
-                     ? request.SuccessUrl
-                     : "http://localhost:3000/payment/success",
-
-                CancelUrl = !string.IsNullOrEmpty(request.CancelUrl)
-                    ? request.CancelUrl
-                    : "http://localhost:3000/payment/cancel"
+                //TODO: waiting front-end URL
+                SuccessUrl = !string.IsNullOrEmpty(request.SuccessUrl) ? request.SuccessUrl : "http://localhost:3000/payment/success",
+                CancelUrl = !string.IsNullOrEmpty(request.CancelUrl) ? request.CancelUrl : "http://localhost:3000/payment/cancel"
             };
-
-            // Gọi Payment Service với object vừa tạo
             var paymentRes = await _paymentService.CreateCheckoutSessionAsync(paymentRequest, token);
-            // [FIX END]
-
             return new CheckoutResponse
             {
                 OrderGroupId = orderGroup.Id,
@@ -405,8 +417,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private async Task AddCustomItemToCartAsync(Order cartOrder, AddToCartRequest request, Model baseKit)
         {
             var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.BuilderSessionId.Value);
+            if (session == null) throw new KeyNotFoundException("Session expired.");
 
-            // Check trùng bằng SessionId
+            // Parse các món đã chọn trong session
+            var selectedParts = JsonSerializer.Deserialize<Dictionary<string, SelectedPartDetail>>(session.SelectedItemsJson);
+
+            // Check trùng
+            // check IsCustom và DesignConfig chứa SessionId
             var existingItem = cartOrder.OrderItems.FirstOrDefault(oi =>
                 oi.IsCustom == true &&
                 oi.DesignConfig != null &&
@@ -414,13 +431,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (existingItem != null)
             {
-                if (existingItem.Quantity + request.Quantity > baseKit.StockQuantity)
-                    throw new InvalidOperationException($"Insufficient stock.");
+                // Nếu đã có -> Cộng thêm số lượng bàn phím
                 existingItem.Quantity += request.Quantity;
                 existingItem.TotalPrice = existingItem.Quantity * existingItem.UnitPrice;
             }
             else
             {
+                // Nếu chưa -> Tạo mới
                 var newItem = new OrderItem
                 {
                     Id = Guid.NewGuid(),
@@ -428,6 +445,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     ProductId = baseKit.Id,
                     ProductName = $"{baseKit.Name} (Custom Build)",
                     ProductImage = baseKit.ThumbnailURL ?? "",
+                    // Giá khởi điểm là giá Kit
                     UnitPrice = baseKit.Price,
                     Quantity = request.Quantity,
                     IsCustom = true,
@@ -435,10 +453,55 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     OrderItemComponents = new List<OrderItemComponent>()
                 };
 
-                // Parse components JSON... (Logic như cũ)
-                // Để ngắn gọn tôi skip đoạn parse JSON chi tiết, logic giữ nguyên như bài trước
+                //Loop qua từng linh kiện để tính tiền và số lượng
+                if (selectedParts != null)
+                {
+                    foreach (var part in selectedParts.Values)
+                    {
+                        // 1. Tính số lượng theo Recipe (dùng lại logic parse JSON)
+                        int qtyRecipe = 1;
+                        if (!string.IsNullOrEmpty(baseKit.Specifications))
+                        {
+                            try
+                            {
+                                using (var doc = JsonDocument.Parse(baseKit.Specifications))
+                                {
+                                    if (doc.RootElement.TryGetProperty("recipe", out var r))
+                                    {
+                                        foreach (var p in r.EnumerateObject())
+                                        {
+                                            if (part.Name.ToLower().Contains(p.Name.ToLower()))
+                                            {
+                                                qtyRecipe = p.Value.GetInt32(); break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
 
+                        // 2. Cộng tiền vào UnitPrice của Bàn phím
+                        // Giá 1 bàn phím = Giá Kit + (Giá Switch * 61) + (Giá Keycap * 1)...
+                        newItem.UnitPrice += (part.Price * qtyRecipe);
+
+                        // 3. Thêm vào danh sách linh kiện con (để hiển thị trong cart nếu cần)
+                        newItem.OrderItemComponents.Add(new OrderItemComponent
+                        {
+                            Id = Guid.NewGuid(),
+                            OrderItemId = newItem.Id,
+                            PartId = part.Id,
+                            PartName = part.Name,
+                            PartPriceSnapshot = part.Price,
+                            PartImageUrl = part.ThumbnailUrl,
+                            Quantity = qtyRecipe // Lưu số lượng
+                        });
+                    }
+                }
+
+                // Tính tổng tiền cuối cùng = Đơn giá (đã cộng full) * Số lượng bàn phím mua
                 newItem.TotalPrice = newItem.UnitPrice * newItem.Quantity;
+
                 cartOrder.OrderItems.Add(newItem);
             }
         }

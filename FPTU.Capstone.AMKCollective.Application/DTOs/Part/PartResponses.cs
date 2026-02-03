@@ -15,6 +15,9 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Part
         public string? DefaultLayerImageUrl { get; set; }
         public string? Description { get; set; }
         public string? Specifications { get; set; } // JSON
+        public int RecipeSwitchCount { get; set; }
+        public int RecipeStabilizerCount { get; set; }
+
 
         public Guid ShopId { get; set; }
         public string ShopName { get; set; } = string.Empty;
