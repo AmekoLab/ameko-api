@@ -39,7 +39,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
 
         public PaymentType Type { get; set; } = PaymentType.OrderPayment; 
         // Navigation Properties
-        public virtual OrderGroup? OrderGroup { get; set; } = null!;
-        public virtual User User { get; set; }
+        public virtual OrderGroup? OrderGroup { get; set; }
+        public virtual User? User { get; set; }
     }
 }

@@ -15,7 +15,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public OrderIssueType Type { get; set; } // Cancel, Return, Warranty
         public OrderIssueStatus Status { get; set; } // Pending, InProgress...
 
-        public string Reason { get; set; } // Lý do chọn từ Dropdown
+        public string? Reason { get; set; } // Lý do chọn từ Dropdown
         public string? Description { get; set; } // Mô tả chi tiết
         public string? EvidenceUrl { get; set; } // Link ảnh/video bằng chứng (có thể ngăn cách bằng dấu phẩy)
 
@@ -25,11 +25,11 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public string? AdminNote { get; set; } // Ghi chú của Admin
 
         // Navigation Properties
-        public virtual Order Order { get; set; }
-        public virtual User User { get; set; }
+        public virtual Order? Order { get; set; }
+        public virtual User? User { get; set; }
 
         // Relationship 1-n với Log
-        public virtual ICollection<OrderIssueLog> Logs { get; set; }
+        public virtual ICollection<OrderIssueLog> Logs { get; set; } = new List<OrderIssueLog>();
     }
 }
 
