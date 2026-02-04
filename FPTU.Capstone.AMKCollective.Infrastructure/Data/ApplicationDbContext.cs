@@ -36,6 +36,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data
         public DbSet<PostReaction> PostReactions { get; set; } = null!;
         public DbSet<PostComment> PostComments { get; set; } = null!;
         public DbSet<CommunityAttachment> CommunityAttachments { get; set; } = null!;
+        public DbSet<Wallet> Wallets { get; set; } = null!;
+        public DbSet<OrderIssue> OrderIssues { get; set; } = null!;
+        public DbSet<OrderIssueLog> OrderIssueLogs { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

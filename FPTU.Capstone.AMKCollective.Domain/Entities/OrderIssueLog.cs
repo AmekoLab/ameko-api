@@ -23,7 +23,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public bool? AdminDecision { get; set; } // True = Chấp nhận trả, False = Từ chối
 
         // Navigation Properties
-        public virtual OrderIssue OrderIssue { get; set; }
-        public virtual User ActionBy { get; set; }
+        public virtual OrderIssue? OrderIssue { get; set; }
+        public virtual User? ActionBy { get; set; }
     }
 }

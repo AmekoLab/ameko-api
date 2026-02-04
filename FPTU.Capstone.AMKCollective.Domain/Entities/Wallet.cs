@@ -22,7 +22,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public bool IsActive { get; set; } = true;
 
         // Navigation Properties
-        public virtual User User { get; set; }
+        public virtual User? User { get; set; }
     }
 }
 
