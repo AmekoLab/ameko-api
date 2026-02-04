@@ -7,6 +7,7 @@ using FPTU.Capstone.AMKCollective.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Swashbuckle.AspNetCore.Annotations;
 using System.Security.Claims;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
@@ -26,6 +27,11 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         [HttpGet]
         [AllowAnonymous]
+        [SwaggerOperation(
+    Summary = "List Marketplace Shops",
+    Description = "Retrieves a paginated list of active shops in the marketplace."
+)]
+        [SwaggerResponse(200, "Shops retrieved successfully", typeof(ApiResponse<object>))]
         public async Task<IActionResult> GetMarketplaceShops([FromQuery] string? searchTerm, [FromQuery] int page =1, [FromQuery] int size = 10)
         {
             try
@@ -46,6 +52,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         [HttpGet("{id:guid}")]
         [AllowAnonymous]
+        [SwaggerOperation(
+    Summary = "Get Shop Public Profile",
+    Description = "Retrieves public details of a specific shop by ID."
+)]
+        [SwaggerResponse(200, "Shop profile retrieved")]
+        [SwaggerResponse(404, "Shop not found")]
         public async Task<IActionResult> GetShopPublicProfile(Guid id)
         {
             try
@@ -65,6 +77,13 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         [HttpGet("my-shop")]
         //[Authorize]
+        [SwaggerOperation(
+    Summary = "Get My Shop",
+    Description = "Retrieves the shop profile associated with the current authenticated user."
+)]
+        [SwaggerResponse(200, "Shop profile retrieved")]
+        [SwaggerResponse(401, "Unauthorized")]
+        [SwaggerResponse(404, "Shop not found for this user")]
         public async Task<IActionResult> GetMyShop()
         {
             try
@@ -85,6 +104,13 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         [HttpPost("register")]
         //[Authorize]
+        [SwaggerOperation(
+    Summary = "Register New Shop",
+    Description = "Submit a request to upgrade the current user account to a Shop account."
+)]
+        [SwaggerResponse(200, "Registration submitted successfully")]
+        [SwaggerResponse(400, "Validation error")]
+        [SwaggerResponse(401, "Unauthorized")]
         public async Task<IActionResult> RegisterShop([FromForm] CreateShopRequest request)
         {
             try
@@ -107,6 +133,13 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         [HttpPut("profile")]
         //[Authorize]
+        [SwaggerOperation(
+    Summary = "Update Shop Profile",
+    Description = "Updates the details of the authenticated user's shop."
+)]
+        [SwaggerResponse(200, "Shop updated successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
+        [SwaggerResponse(404, "Shop not found")]
         public async Task<IActionResult> UpdateMyShop([FromForm] UpdateShopRequest request)
         {
             try
@@ -126,8 +159,14 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpGet("admin/list")]
-       // [Authorize(Roles ="Admin")]
-       public async Task<IActionResult> GetShopForAdmin([FromQuery] string? searchTerm, 
+        // [Authorize(Roles ="Admin")]
+        [SwaggerOperation(
+    Summary = "Admin: List All Shops",
+    Description = "Retrieves a list of all shops with status filtering for administrative purposes."
+)]
+        [SwaggerResponse(200, "List retrieved successfully")]
+        [SwaggerResponse(403, "Forbidden - Requires Admin role")]
+        public async Task<IActionResult> GetShopForAdmin([FromQuery] string? searchTerm, 
           [FromQuery] ShopStatus? status,
           [FromQuery] int page = 1,
           [FromQuery] int size = 20)
@@ -150,6 +189,13 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         [HttpPost("admin/{id:guid}/approve")]
         //[Authorize(Roles="Admin")]
+        [SwaggerOperation(
+    Summary = "Admin: Approve/Reject Shop",
+    Description = "Approve or reject a shop registration request."
+)]
+        [SwaggerResponse(200, "Status updated successfully")]
+        [SwaggerResponse(403, "Forbidden - Requires Admin role")]
+        [SwaggerResponse(404, "Shop not found")]
         public async Task<IActionResult> ApproveShop(Guid id, [FromBody] ApproveShopRequest request)
         {
             try

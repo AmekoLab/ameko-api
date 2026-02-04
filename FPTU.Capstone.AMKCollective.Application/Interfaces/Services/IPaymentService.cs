@@ -9,11 +9,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 {
     public interface IPaymentService
     {
-        //URL: redirect user to checkout
-        Task<CheckoutSessionResponse> CreateCheckoutSessionAsync(Guid orderGroupId, CancellationToken token = default);
-        
-        Task HandleWebhookAsync(string jsonBody, string signature);
+        Task<CheckoutSessionResponse> CreateCheckoutSessionAsync(CreateCheckoutSessionRequest request, CancellationToken token = default);
 
-        Task<List<PaymentDto>> GetPaymentHistoryByOrderGroupAsync(Guid orderGroup, CancellationToken token = default);
+        Task ProcessWebhookAsync(string json, string stripeSignature);
+
+        Task RefundPaymentAsync(Guid orderGroupId);
     }
 }

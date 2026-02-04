@@ -3,6 +3,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -15,111 +16,267 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 {
     public class OrderService : IOrderService
     {
-        private readonly IOrderGroupRepository _orderGroupRepo;
-        private readonly IOrderRepository _orderRepo;
-        private readonly IPaymentService _paymentService;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
-        private readonly IModelRepository _productRepo;
-        private readonly IBuilderSessionRepository _builderSessionRepo; 
-        public OrderService(IOrderGroupRepository orderGroupRepo, IOrderRepository orderRepo, IPaymentService paymentService, IMapper mapper, IModelRepository productRepo, IBuilderSessionRepository builderSessionRepo)
-        {
-            _orderGroupRepo = orderGroupRepo;
-            _orderRepo = orderRepo;
-            _paymentService = paymentService;
-            _mapper = mapper;
-            _productRepo = productRepo;
-            _builderSessionRepo = builderSessionRepo;
-        }
-        public async Task<CheckoutResponse> CheckoutAsync(Guid userId, CheckoutRequest request, CancellationToken token = default)
-        {
-            // 1. LẤY GIỎ HÀNG TỪ DB
-            var cartOrder = await _orderRepo.GetOrderByStatusAsync(userId, "InCart");
+        private readonly IPaymentService _paymentService;
 
-            if (cartOrder == null || !cartOrder.OrderItems.Any())
+        public OrderService(IUnitOfWork unitOfWork, IMapper mapper, IPaymentService paymentService)
+        {
+            _unitOfWork = unitOfWork;
+            _mapper = mapper;
+            _paymentService = paymentService;
+        }
+
+        // =================================================================
+        // 1. SHOPPING CART (ADD, GET, REMOVE, UPDATE)
+        // =================================================================
+
+        public async Task AddToCartAsync(Guid userId, AddToCartRequest request, CancellationToken token = default)
+        {
+            if (request.Quantity <= 0) request.Quantity = 1;
+
+            Model product = null;
+
+            // 1. Lấy Product
+            if (request.BuilderSessionId.HasValue)
             {
-                throw new Exception("Cart empty cannot checkout");
+                var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.BuilderSessionId.Value);
+                if (session == null) throw new KeyNotFoundException("Builder session not found.");
+                product = await _unitOfWork.Models.GetByIdAsync(session.BaseKitId);
+            }
+            else
+            {
+                if (request.ProductId == null) throw new ArgumentNullException(nameof(request.ProductId));
+                product = await _unitOfWork.Models.GetByIdAsync(request.ProductId.Value);
             }
 
-            // 2. TẠO ORDER GROUP (Đơn hàng tổng)
+            // 2. Validate
+            if (product == null) throw new KeyNotFoundException("Product not found.");
+            if (!product.IsActive) throw new InvalidOperationException("Product is inactive.");
+            if (product.Shop != null && (product.Shop.Status != ShopStatus.Active || !product.Shop.IsActive))
+                throw new InvalidOperationException("Shop unavailable.");
+            if (product.StockQuantity < request.Quantity)
+                throw new InvalidOperationException($"Insufficient stock. Available: {product.StockQuantity}");
+
+            // 3. Get/Create Cart
+            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
+            if (cartOrder == null)
+            {
+                cartOrder = new Order
+                {
+                    Id = Guid.NewGuid(),
+                    CustomerId = userId,
+                    OrderStatus = OrderStatus.InCart,
+                    PaymentStatus = PaymentStatus.Pending,
+                    TotalAmount = 0,
+                    CreatedAt = DateTime.UtcNow,
+                    OrderItems = new List<OrderItem>()
+                };
+                await _unitOfWork.Orders.AddAsync(cartOrder);
+            }
+
+            // 4. Add Item logic
+            if (request.BuilderSessionId.HasValue)
+                await AddCustomItemToCartAsync(cartOrder, request, product);
+            else
+                await AddNormalItemToCartAsync(cartOrder, request, product);
+
+            cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
+            await _unitOfWork.CommitAsync();
+        }
+
+        public async Task<OrderResponse> GetMyCartAsync(Guid userId, CancellationToken token = default)
+        {
+            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
+            if (cartOrder == null) return null; // Hoặc trả về new OrderDto rỗng
+            return _mapper.Map<OrderResponse>(cartOrder);
+        }
+
+        public async Task RemoveItemFromCartAsync(Guid userId, Guid orderItemId, CancellationToken token = default)
+        {
+            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
+            if (cartOrder == null) throw new KeyNotFoundException("Cart is empty.");
+
+            var item = cartOrder.OrderItems.FirstOrDefault(i => i.Id == orderItemId);
+            if (item == null) throw new KeyNotFoundException("Item not found in cart.");
+
+            // Xóa item
+            // Lưu ý: Nếu EF Core Tracking enabled, chỉ cần Remove khỏi List và SaveChanges
+            cartOrder.OrderItems.Remove(item);
+
+            // Nếu cần gọi repo delete explicit:
+            // await _unitOfWork.Orders.DeleteOrderItemAsync(item); (Nếu có hàm này)
+
+            // Recalculate Total
+            cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
+            await _unitOfWork.CommitAsync();
+        }
+
+        public async Task UpdateCartItemQuantityAsync(Guid userId, Guid orderItemId, int newQuantity, CancellationToken token = default)
+        {
+            if (newQuantity <= 0)
+            {
+                await RemoveItemFromCartAsync(userId, orderItemId, token);
+                return;
+            }
+
+            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
+            if (cartOrder == null) throw new KeyNotFoundException("Cart is empty.");
+
+            var item = cartOrder.OrderItems.FirstOrDefault(i => i.Id == orderItemId);
+            if (item == null) throw new KeyNotFoundException("Item not found.");
+
+            // Check Stock Realtime
+            var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
+            if (product != null)
+            {
+                if (product.StockQuantity < newQuantity)
+                    throw new InvalidOperationException($"Insufficient stock. Available: {product.StockQuantity}");
+
+                // Update Price Realtime (Tránh lỗi giá cũ)
+                item.UnitPrice = product.Price;
+            }
+
+            item.Quantity = newQuantity;
+            item.TotalPrice = item.Quantity * item.UnitPrice;
+
+            cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
+            await _unitOfWork.CommitAsync();
+        }
+
+        // =================================================================
+        // 2. CHECKOUT & CUSTOMER ORDERS
+        // =================================================================
+
+        public async Task<CheckoutResponse> CheckoutAsync(Guid userId, CheckoutRequest request, CancellationToken token = default)
+        {
+            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
+            if (cartOrder == null || !cartOrder.OrderItems.Any())
+                throw new InvalidOperationException("Cart is empty.");
+
+            string successUrl = request.SuccessUrl;
+            string cancelUrl = request.CancelUrl;
+
+            if (string.IsNullOrEmpty(successUrl) || !successUrl.StartsWith("http"))
+                successUrl = "http://localhost:3000/payment/success";
+
+            if (string.IsNullOrEmpty(cancelUrl) || !cancelUrl.StartsWith("http"))
+                cancelUrl = "http://localhost:3000/payment/cancel";
+
             var orderGroup = new OrderGroup
             {
                 Id = Guid.NewGuid(),
                 CustomerId = userId,
-                PaymentStatus = "Pending",
+                PaymentStatus = PaymentStatus.Pending,
                 CreatedAt = DateTime.UtcNow,
                 TotalGroupAmount = 0,
                 Orders = new List<Order>()
             };
 
-            // 3. NHÓM THEO SHOP
-            // Group các món hàng theo ShopId để tạo các đơn con tương ứng
-            var itemsByShop = cartOrder.OrderItems.GroupBy(i =>
-            {
-                return (i.Product?.ShopId == null || i.Product.ShopId == Guid.Empty)
-                        ? (Guid?)null
-                        : i.Product.ShopId;
-            });
+            var itemsByShop = cartOrder.OrderItems.GroupBy(i => i.Product?.ShopId ?? Guid.Empty);
 
             foreach (var shopGroup in itemsByShop)
             {
-                var shopId = shopGroup.Key;
+                if (shopGroup.Key == Guid.Empty) continue;
 
-
-                // Tạo đơn con (Order)
                 var order = new Order
                 {
                     Id = Guid.NewGuid(),
                     OrderGroupId = orderGroup.Id,
                     CustomerId = userId,
-
-                    ShopId = shopId,
+                    ShopId = shopGroup.Key,
                     ReceiverName = request.ReceiverName,
                     ReceiverPhone = request.ReceiverPhone,
                     ShippingAddress = request.ShippingAddress,
                     Note = request.Note,
-                    OrderStatus = "Pending",
-                    PaymentStatus = "Pending",
+                    OrderStatus = OrderStatus.Pending,
+                    PaymentStatus = PaymentStatus.Pending,
                     CreatedAt = DateTime.UtcNow,
                     OrderItems = new List<OrderItem>()
                 };
+
                 decimal subTotal = 0;
 
                 foreach (var cartItem in shopGroup)
                 {
-                    // Tạo OrderItem mới (Snapshot từ giỏ hàng)
+                    var product = await _unitOfWork.Models.GetByIdAsync(cartItem.ProductId);
+
+                    if (product == null) throw new InvalidOperationException($"Product {cartItem.ProductName} missing.");
+                    if (product.StockQuantity < cartItem.Quantity)
+                        throw new InvalidOperationException($"Out of stock: {product.Name}");
+
+                    product.StockQuantity -= cartItem.Quantity;
+                    await _unitOfWork.Models.UpdateAsync(product);
+
                     var orderItem = new OrderItem
                     {
                         Id = Guid.NewGuid(),
                         OrderId = order.Id,
                         ProductId = cartItem.ProductId,
                         ProductName = cartItem.ProductName,
-                        ProductImage = cartItem.ProductImage?? string.Empty,
+                        ProductImage = cartItem.ProductImage,
                         UnitPrice = cartItem.UnitPrice,
                         Quantity = cartItem.Quantity,
                         TotalPrice = cartItem.TotalPrice,
-
                         IsCustom = cartItem.IsCustom,
                         DesignConfig = cartItem.DesignConfig,
                         OrderItemComponents = new List<OrderItemComponent>()
                     };
 
-                    // Copy linh kiện (Components) nếu là hàng Custom
                     if (cartItem.OrderItemComponents != null && cartItem.OrderItemComponents.Any())
                     {
                         foreach (var comp in cartItem.OrderItemComponents)
                         {
-                            // LƯU Ý: Ở đây copy dữ liệu từ `comp` (item trong giỏ) sang đơn mới
+                            var partEntity = await _unitOfWork.Models.GetByIdAsync(comp.PartId);
+                            if (partEntity == null) throw new InvalidOperationException($"Component {comp.PartName} not found.");
+
+                            int requiredQtyPerKit = 1;
+                            if (!string.IsNullOrEmpty(product.Specifications))
+                            {
+                                try
+                                {
+                                    using (JsonDocument doc = JsonDocument.Parse(product.Specifications))
+                                    {
+                                        if (doc.RootElement.TryGetProperty("recipe", out JsonElement recipe))
+                                        {
+                                            if (partEntity.Category != null)
+                                            {
+                                                string partCategorySlug = partEntity.Category.Slug.ToLower();
+                                                foreach (var property in recipe.EnumerateObject())
+                                                {
+                                                    if (partCategorySlug == property.Name.ToLower())
+                                                    {
+                                                        requiredQtyPerKit = property.Value.GetInt32();
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                catch { /* Ignore JSON errors */ }
+                            }
+                            // -------------------------------------
+
+                            int totalPartNeeded = requiredQtyPerKit * cartItem.Quantity;
+
+                            if (partEntity.StockQuantity < totalPartNeeded)
+                            {
+                                throw new InvalidOperationException($"Không đủ linh kiện '{partEntity.Name}'. Cần: {totalPartNeeded}, Còn: {partEntity.StockQuantity}");
+                            }
+
+                            partEntity.StockQuantity -= totalPartNeeded;
+                            await _unitOfWork.Models.UpdateAsync(partEntity);
+
                             orderItem.OrderItemComponents.Add(new OrderItemComponent
                             {
                                 Id = Guid.NewGuid(),
                                 OrderItemId = orderItem.Id,
-
-                                // Copy chính xác tên field từ Entity OrderItemComponent
                                 PartId = comp.PartId,
                                 PartName = comp.PartName,
                                 PartPriceSnapshot = comp.PartPriceSnapshot,
-                                PartImageUrl = comp.PartImageUrl ?? string.Empty,
-                                Quantity = comp.Quantity
+                                PartImageUrl = comp.PartImageUrl,
+                                Quantity = requiredQtyPerKit 
                             });
                         }
                     }
@@ -128,311 +285,237 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     subTotal += orderItem.TotalPrice;
                 }
 
-                // Tính toán tổng tiền cho đơn hàng con
                 order.SubTotal = subTotal;
-                order.ShippingFee = 30000; // Hardcode phí ship (Logic thực tế nên tính dynamic)
-                order.DiscountAmount = 0;
-
-                order.TotalAmount = order.SubTotal + order.ShippingFee - order.DiscountAmount;
-                if (order.TotalAmount < 0) order.TotalAmount = 0;
+                order.ShippingFee = 30000;
+                order.TotalAmount = order.SubTotal + order.ShippingFee;
 
                 orderGroup.Orders.Add(order);
                 orderGroup.TotalGroupAmount += order.TotalAmount;
             }
-
-            // 4. LƯU ĐƠN HÀNG THẬT VÀO DB
-            await _orderGroupRepo.CreateAsync(orderGroup, token);
-
-            // 5. XÓA GIỎ HÀNG (QUAN TRỌNG)
-            // Sau khi đã tạo đơn thành công, xóa sạch các món trong giỏ hàng InCart
-            _orderRepo.DeleteRange(cartOrder.OrderItems);
-
-            // (Tùy chọn: Reset tổng tiền giỏ hàng về 0 nếu cần giữ xác Order InCart)
-            cartOrder.TotalAmount = 0;
-
-            // Lưu tất cả thay đổi (Tạo OrderGroup + Xóa Cart Items)
-            await _orderRepo.SaveChangesAsync(token);
-
-            // 6. TẠO LINK THANH TOÁN STRIPE
-            var paymentResponse = await _paymentService.CreateCheckoutSessionAsync(orderGroup.Id, token);
-
-            return new CheckoutResponse
+            await _unitOfWork.OrderGroups.CreateAsync(orderGroup);
+            await _unitOfWork.CommitAsync();
+            try
             {
-                OrderGroupId = orderGroup.Id,
-                TotalAmount = orderGroup.TotalGroupAmount,
-                PaymentUrl = paymentResponse.PaymentUrl,
-            };
-        }
+                var paymentRequest = new CreateCheckoutSessionRequest
+                {
+                    OrderGroupId = orderGroup.Id,
+                    SuccessUrl = successUrl, 
+                    CancelUrl = cancelUrl
+                };
 
-        public async Task<List<OrderGroupDto>> GetMyOrdersAsync(Guid userId, CancellationToken token = default)
-        {
-            var orderGroup = await _orderGroupRepo.GetByUserIdAsync(userId, token);
-            return _mapper.Map<List<OrderGroupDto>>(orderGroup);
-        }
+                var paymentRes = await _paymentService.CreateCheckoutSessionAsync(paymentRequest, token);
 
-        public async Task<OrderGroupDto> GetOrderGroupDetailAsync(Guid orderGroupId, CancellationToken token = default)
-        {
-            var orderGroup = await _orderGroupRepo.GetByIdAsync(orderGroupId, token);
-            if (orderGroup == null)
-            {
-                throw new KeyNotFoundException("Order not found");
+                _unitOfWork.Orders.Delete(cartOrder);
+                await _unitOfWork.CommitAsync(); 
 
+                return new CheckoutResponse
+                {
+                    OrderGroupId = orderGroup.Id,
+                    TotalAmount = orderGroup.TotalGroupAmount,
+                    PaymentUrl = paymentRes.PaymentUrl
+                };
             }
-            return _mapper.Map<OrderGroupDto>(orderGroup);
-        }
-
-        public Task CancelOrderAsync(Guid userId, Guid orderId, string reason, CancellationToken token = default)
-        {
-            //TODO: implement
-            //logic check status -> update status -> save
-            throw new NotImplementedException();
-
-        }
-
-        public async Task<List<OrderDto>> GetShopOrdersAsync(Guid shopId, string? status, int page, int size, CancellationToken token = default)
-        {
-            var orders = await _orderRepo.GetOrdersByShopIdAsync(shopId, token);
-            if (!string.IsNullOrEmpty(status))
+            catch (Exception ex)
             {
-                orders = orders.Where(o => o.OrderStatus.Equals(status, StringComparison.OrdinalIgnoreCase));
+                
+                throw new InvalidOperationException($"Payment error: {ex.Message}. please try again.");
             }
-            var pagedOrders = orders
-                .Skip((page - 1) * size)
-                .Take(size)
-                .ToList();
-
-            return _mapper.Map<List<OrderDto>>(pagedOrders);
-
         }
 
-        public async Task UpdateOrderStatusAsync(Guid shopId, Guid orderId, string newStatus, CancellationToken token = default)
+        public async Task<List<OrderResponse>> GetMyOrdersAsync(Guid userId, CancellationToken token = default)
         {
-            var order = await _orderRepo.GetByIdAsync(orderId, token);
-            if (order == null || order.ShopId != shopId)
+            // Gọi Repo lấy Order lẻ (Hàm này bạn đã có trong OrderRepository, nhớ kiểm tra vụ .ThenInclude nhé)
+            var orders = await _unitOfWork.Orders.GetOrdersByUserIdAsync(userId, token);
+
+            // Map sang OrderDto (Lúc này danh sách sẽ phẳng, dễ hiển thị)
+            return _mapper.Map<List<OrderResponse>>(orders);
+        }
+
+        public async Task<List<OrderGroupResponse>> GetMyOrderGroupsAsync(Guid userId, CancellationToken token = default)
+        {
+            // Logic cũ giữ nguyên
+            var groups = await _unitOfWork.OrderGroups.GetByUserIdAsync(userId);
+            return _mapper.Map<List<OrderGroupResponse>>(groups);
+        }
+
+        public async Task<OrderGroupResponse> GetOrderGroupDetailAsync(Guid orderGroupId, CancellationToken token = default)
+        {
+            var group = await _unitOfWork.OrderGroups.GetByIdAsync(orderGroupId);
+            if (group == null) throw new KeyNotFoundException("Order group not found.");
+            return _mapper.Map<OrderGroupResponse>(group);
+        }
+
+        public async Task CancelOrderAsync(Guid userId, Guid orderId, string reason, CancellationToken token = default)
+        {
+            var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
+            if (order == null) throw new KeyNotFoundException("Order not found");
+            if (order.CustomerId != userId) throw new UnauthorizedAccessException("Access denied.");
+
+            if (order.OrderStatus != OrderStatus.Pending && order.PaymentStatus != PaymentStatus.Pending)
+                throw new InvalidOperationException("Cannot cancel processed order.");
+
+            // Refund Stock
+            foreach (var item in order.OrderItems)
             {
-                throw new KeyNotFoundException("Order not found");
+                var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
+                if (product != null)
+                {
+                    product.StockQuantity += item.Quantity;
+                    //await _unitOfWork.Models.UpdateAsync(product);
+                }
+            }
+            if (order.PaymentStatus == PaymentStatus.Paid)
+            {
+                if (order.OrderGroupId.HasValue)
+                {
+                    await _paymentService.RefundPaymentAsync(order.OrderGroupId.Value);
+                    order.PaymentStatus = PaymentStatus.Refunded;
+                    var group = await _unitOfWork.OrderGroups.GetByIdAsync(order.OrderGroupId.Value);
+                    if (group != null) group.PaymentStatus = PaymentStatus.Refunded;
+                }
+            }
+
+            order.OrderStatus = OrderStatus.Cancelled;
+            order.CancelReason = reason;
+            //await _unitOfWork.Orders.UpdateOrderAsync(order);
+            await _unitOfWork.CommitAsync();
+        }
+
+        // =================================================================
+        // 3. SELLER / SHOP OWNER
+        // =================================================================
+
+        public async Task<List<OrderResponse>> GetShopOrdersAsync(Guid shopId, OrderStatus? status, int page, int size, CancellationToken token = default)
+        {
+            var orders = await _unitOfWork.Orders.GetShopOrdersAsync(shopId, status, page, size);
+            return _mapper.Map<List<OrderResponse>>(orders);
+        }
+
+        public async Task<OrderResponse> GetShopOrderDetailAsync(Guid shopId, Guid orderId, CancellationToken token = default)
+        {
+            var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
+            if (order == null) throw new KeyNotFoundException("Order not found");
+            if (order.ShopId != shopId) throw new UnauthorizedAccessException("This order does not belong to your shop.");
+
+            return _mapper.Map<OrderResponse>(order);
+        }
+
+        public async Task UpdateOrderStatusAsync(Guid shopId, Guid orderId, OrderStatus newStatus, CancellationToken token = default)
+        {
+            var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
+            if (order == null) throw new KeyNotFoundException("Order not found");
+            if (order.ShopId != shopId) throw new UnauthorizedAccessException("Access denied.");
+            if (newStatus == OrderStatus.Cancelled && order.OrderStatus != OrderStatus.Cancelled)
+            {
+                foreach (var item in order.OrderItems)
+                {
+                    var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
+                    if (product != null)
+                    {
+                        product.StockQuantity += item.Quantity;
+                        await _unitOfWork.Models.UpdateAsync(product);
+                    }
+                }
             }
 
             order.OrderStatus = newStatus;
-
-            await _orderRepo.UpdateOrderAsync(order, token);
-            await _orderRepo.SaveChangesAsync(token);
-        }
-        public async Task<OrderDto> GetShopOrderDetailAsync(Guid shopId, Guid orderId, CancellationToken token = default)
-        {
-            var order = await _orderRepo.GetByIdAsync(orderId, token);
-
-            if (order == null || order.ShopId != shopId)
-                throw new KeyNotFoundException("Order not found or access denied");
-
-            return _mapper.Map<OrderDto>(order);
+            await _unitOfWork.Orders.UpdateOrderAsync(order);
+            await _unitOfWork.CommitAsync();
         }
 
-        public async Task<OrderDto> GetMyCartAsync(Guid userId)
+        // =================================================================
+        // PRIVATE HELPERS
+        // =================================================================
+
+        private async Task AddNormalItemToCartAsync(Order cartOrder, AddToCartRequest request, Model product)
         {
-            var cartOrder = await _orderRepo.GetOrderByStatusAsync(userId, "InCart");
-            return cartOrder == null ? null : _mapper.Map<OrderDto>(cartOrder);
-        }
+            var existingItem = cartOrder.OrderItems.FirstOrDefault(oi => oi.ProductId == product.Id && !oi.IsCustom);
 
-        public async Task AddToCartAsync(Guid userId, AddToCartRequest request)
-        {
-            if (request.Quantity <= 0)
+            if (existingItem != null)
             {
-                request.Quantity = 1;
+                if (existingItem.Quantity + request.Quantity > product.StockQuantity)
+                    throw new InvalidOperationException($"Insufficient stock.");
+
+                existingItem.Quantity += request.Quantity;
+                existingItem.UnitPrice = product.Price; // Update giá mới
+                existingItem.TotalPrice = existingItem.Quantity * existingItem.UnitPrice;
             }
-            var cartOrder = await _orderRepo.GetOrderByStatusAsync(userId, "InCart");
-
-            if (cartOrder == null)
-            {
-                cartOrder = new Order
-                {
-                    Id = Guid.NewGuid(),
-                    CustomerId = userId,
-                    OrderStatus = "InCart",
-                    PaymentStatus = "Unpaid",
-                    TotalAmount = 0,
-                    IsDeleted = false,
-                    CreatedAt = DateTime.UtcNow,
-                    OrderItems = new List<OrderItem>(),
-                    ShopId = null
-                };
-                await _orderRepo.AddAsync(cartOrder);
-                await _orderRepo.SaveChangesAsync();
-            }
-
-            OrderItem newItem = null;
-            bool isUpdateQuantity = false;
-
-            // =========================================================
-            // CASE 1: BUILDER SESSION (Custom Keyboard)
-            // =========================================================
-            if (request.BuilderSessionId.HasValue && request.BuilderSessionId != Guid.Empty)
-            {
-                var session = await _builderSessionRepo.GetSessionByIdAsync(request.BuilderSessionId.Value);
-                if (session == null) throw new Exception("Builder session not found or expired");
-                var existingCustomItem = cartOrder.OrderItems.FirstOrDefault(oi =>
-                    oi.IsCustom == true &&
-                    !string.IsNullOrEmpty(oi.DesignConfig) &&
-                    oi.DesignConfig.Contains(session.Id.ToString()) 
-                );
-
-                if (existingCustomItem != null)
-                {
-                    existingCustomItem.Quantity += request.Quantity;
-                    existingCustomItem.TotalPrice = existingCustomItem.UnitPrice * existingCustomItem.Quantity;
-                    isUpdateQuantity = true;
-                }
-                else
-                {
-                    var selection = JsonSerializer.Deserialize<Dictionary<string, SelectedPartDetail>>(session.SelectedItemsJson);
-
-                    newItem = new OrderItem
-                    {
-                        Id = Guid.NewGuid(),
-                        OrderId = cartOrder.Id,
-                        ProductId = session.BaseKitId,
-                        ProductName = $"{session.BaseKit.Name} (Custom Build)",
-                        ProductImage = session.BaseKit.ThumbnailURL ?? string.Empty,
-                        UnitPrice = session.BaseKit.Price,
-                        Quantity = request.Quantity,
-                        IsCustom = true,
-                        DesignConfig = JsonSerializer.Serialize(new { SessionId = session.Id }),
-                        OrderItemComponents = new List<OrderItemComponent>()
-                    };
-
-                    if (selection != null)
-                    {
-                        foreach (var part in selection.Values)
-                        {
-                            newItem.OrderItemComponents.Add(new OrderItemComponent
-                            {
-                                Id = Guid.NewGuid(),
-                                OrderItemId = newItem.Id,
-                                PartId = part.Id,
-                                PartName = part.Name,
-                                PartPriceSnapshot = part.Price,
-                                PartImageUrl = part.ThumbnailUrl ?? string.Empty,
-                                Quantity = 1
-                            });
-                            newItem.UnitPrice += part.Price;
-                        }
-                    }
-                    newItem.TotalPrice = newItem.UnitPrice * newItem.Quantity;
-                }
-            }
-            // =========================================================
-            // CASE 2: NORMAL PRODUCT (Sản phẩm thường)
-            // =========================================================
             else
             {
-                if (request.ProductId == null) throw new Exception("Product ID is required.");
-
-                var product = await _productRepo.GetByIdAsync(request.ProductId.Value);
-                if (product == null) throw new Exception("Product not found");
-
-                var existingItem = cartOrder.OrderItems
-                    .FirstOrDefault(oi => oi.ProductId == request.ProductId.Value && !oi.IsCustom);
-
-                if (existingItem != null)
+                cartOrder.OrderItems.Add(new OrderItem
                 {
-                    existingItem.Quantity += request.Quantity;
-                    existingItem.TotalPrice = existingItem.Quantity * existingItem.UnitPrice;
-                    isUpdateQuantity = true;
-                }
-                else
-                {
-                    newItem = new OrderItem
-                    {
-                        Id = Guid.NewGuid(),
-                        OrderId = cartOrder.Id,
-                        ProductId = product.Id,
-                        ProductName = product.Name,
-                        ProductImage = product.ThumbnailURL ?? string.Empty,
-                        UnitPrice = product.Price,
-                        Quantity = request.Quantity,
-                        IsCustom = request.IsCustom,
-                        TotalPrice = product.Price * request.Quantity,
-                        DesignConfig = (request.IsCustom && request.CustomComponentIds != null)
-                            ? JsonSerializer.Serialize(request.CustomComponentIds) : null,
-                        OrderItemComponents = new List<OrderItemComponent>()
-                    };
+                    Id = Guid.NewGuid(),
+                    OrderId = cartOrder.Id,
+                    ProductId = product.Id,
+                    ProductName = product.Name,
+                    ProductImage = product.ThumbnailURL ?? "",
+                    UnitPrice = product.Price,
+                    Quantity = request.Quantity,
+                    TotalPrice = product.Price * request.Quantity,
+                    IsCustom = false
+                });
+            }
+        }
 
-                    if (request.IsCustom && request.CustomComponentIds != null)
+        private async Task AddCustomItemToCartAsync(Order cartOrder, AddToCartRequest request, Model baseKit)
+        {
+            var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.BuilderSessionId.Value);
+            if (session == null) throw new KeyNotFoundException("Session expired.");
+            var selectedParts = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson);
+
+            // Check trùng
+            // check IsCustom và DesignConfig chứa SessionId
+            var existingItem = cartOrder.OrderItems.FirstOrDefault(oi =>
+                oi.IsCustom == true &&
+                oi.DesignConfig != null &&
+                oi.DesignConfig.Contains(session.Id.ToString()));
+
+            if (existingItem != null)
+            {
+                // Nếu đã có -> Cộng thêm số lượng bàn phím
+                existingItem.Quantity += request.Quantity;
+                existingItem.TotalPrice = existingItem.Quantity * existingItem.UnitPrice;
+            }
+            else
+            {
+                // Nếu chưa -> Tạo mới
+                var newItem = new OrderItem
+                {
+                    Id = Guid.NewGuid(),
+                    OrderId = cartOrder.Id,
+                    ProductId = baseKit.Id,
+                    ProductName = $"{baseKit.Name} (Custom Build)",
+                    ProductImage = baseKit.ThumbnailURL ?? "",
+                    UnitPrice = baseKit.Price,
+                    Quantity = request.Quantity,
+                    IsCustom = true,
+                    DesignConfig = JsonSerializer.Serialize(new { SessionId = session.Id }),
+                    OrderItemComponents = new List<OrderItemComponent>()
+                };
+
+                //Loop qua từng linh kiện để tính tiền và số lượng
+                if (selectedParts != null)
+                {
+                    foreach (var part in selectedParts.Values)
                     {
-                        foreach (var compId in request.CustomComponentIds)
+                        int qtyRecipe = part.Quantity > 0 ? part.Quantity : 1;
+                        newItem.UnitPrice += (part.Price * qtyRecipe);
+                        newItem.OrderItemComponents.Add(new OrderItemComponent
                         {
-                            var component = await _productRepo.GetByIdAsync(compId);
-                            if (component != null)
-                            {
-                                newItem.OrderItemComponents.Add(new OrderItemComponent
-                                {
-                                    Id = Guid.NewGuid(),
-                                    OrderItemId = newItem.Id,
-                                    PartId = component.Id,
-                                    PartName = component.Name,
-                                    PartPriceSnapshot = component.Price,
-                                    PartImageUrl = component.ThumbnailURL ?? string.Empty,
-                                    Quantity = 1
-                                });
-                            }
-                        }
+                            Id = Guid.NewGuid(),
+                            OrderItemId = newItem.Id,
+                            PartId = part.Id,
+                            PartName = part.Name,
+                            PartPriceSnapshot = part.Price,
+                            PartImageUrl = part.ThumbnailUrl,
+                            Quantity = qtyRecipe 
+                        });
                     }
                 }
-            }
 
-            // 3. LƯU VÀO DB
-            if (newItem != null && !isUpdateQuantity)
-            {
-                await _orderRepo.AddOrderItemAsync(newItem);
+                newItem.TotalPrice = newItem.UnitPrice * newItem.Quantity;
                 cartOrder.OrderItems.Add(newItem);
             }
-            cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
-            await _orderRepo.SaveChangesAsync();
         }
-
-        public async Task RemoveItemFromCartAsync(Guid userId, Guid orderItemId)
-        {
-            var cartOrder = await _orderRepo.GetOrderByStatusAsync(userId, "InCart");
-            if (cartOrder == null) throw new Exception("Cart is empty");
-
-            var itemToRemove = cartOrder.OrderItems.FirstOrDefault(x => x.Id == orderItemId);
-
-            if (itemToRemove != null)
-            {
-                await _orderRepo.DeleteOrderItemAsync(itemToRemove.Id);
-                cartOrder.OrderItems.Remove(itemToRemove);
-                if (cartOrder.OrderItems.Count == 0)
-                {
-                    cartOrder.TotalAmount = 0;
-                    cartOrder.IsDeleted = true; 
-                }
-                else
-                {
-                    cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
-                }
-                await _orderRepo.SaveChangesAsync();
-            }
-        }
-
-        public async Task UpdateCartItemQuantityAsync(Guid userId, Guid orderItemId, int newQuantity)
-        {
-            if (newQuantity <= 0)
-            {
-                await RemoveItemFromCartAsync(userId, orderItemId);
-                return;
-            }
-            var cartOrder = await _orderRepo.GetOrderByStatusAsync(userId, "InCart");
-            if (cartOrder == null) throw new Exception("Cart empty");
-            var item = cartOrder.OrderItems.FirstOrDefault(x => x.Id == orderItemId);
-            if (item == null) throw new Exception($"Item not found (ID: {orderItemId})");
-            item.Quantity = newQuantity;
-            item.TotalPrice = item.UnitPrice * item.Quantity;
-
-            cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
-
-            await _orderRepo.SaveChangesAsync();
-        }
-
-
     }
 }

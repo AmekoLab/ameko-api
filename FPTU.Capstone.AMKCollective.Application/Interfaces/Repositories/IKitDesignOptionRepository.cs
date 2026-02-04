@@ -13,7 +13,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<IEnumerable<KitDesignOption>> GetOptionsByBaseKitAsync(Guid baseKitId, CancellationToken token = default);
 
         //Search/Lazy Load in Builder
-        Task<(IEnumerable<KitDesignOption> Items, int TotalCount)> GetCompatiblePartsPagedAsync(CompatiblePartsQuery query, CancellationToken token = default);
+        Task<(IEnumerable<KitDesignOption> Items, int TotalCount)> GetCompatiblePartsPagedAsync(GetCompatiblePartsRequest query, CancellationToken token = default);
         Task<IEnumerable<Guid>> GetValidComponentIdsAsync(Guid baseKitId, IEnumerable<Guid> componentIds, CancellationToken token = default);
 
         Task CreateAsync(KitDesignOption option, CancellationToken token = default);

@@ -49,5 +49,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             return await _context.SaveChangesAsync(token);
         }
+
+        public async Task<Payment?> GetPaymentByOrderGroupIdAsync(Guid orderGroupId)
+        {
+            return await _context.Payments
+                .Where(p => p.OrderGroupId == orderGroupId && p.Status == Domain.Enums.PaymentStatus.Paid)
+                .OrderByDescending(p => p.CreatedAt) 
+                .FirstOrDefaultAsync();
+        }
     }
 }

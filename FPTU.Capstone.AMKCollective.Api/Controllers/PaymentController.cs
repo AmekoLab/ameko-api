@@ -1,8 +1,10 @@
 ﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Payment;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Swashbuckle.AspNetCore.Annotations;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
 {
@@ -17,44 +19,52 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             _paymentService = paymentService;
         }
 
-        /// <summary>
-        /// Stripe Webhook - Nhận thông báo kết quả thanh toán từ Stripe
-        /// </summary>
-        /// <remarks>
-        /// API này được gọi tự động bởi server của Stripe, không gọi trực tiếp từ Frontend.
-        /// Cần cấu hình URL này trong Stripe Dashboard.
-        /// </remarks>
-        [HttpPost("webhook")]
-        [AllowAnonymous] // Webhook phải public để Stripe gọi vào được
-        public async Task<IActionResult> StripeWebhook()
+        [HttpPost("create-checkout-session")]
+        [SwaggerOperation(
+    Summary = "Create Checkout Session",
+    Description = "Creates a Stripe checkout session for payment processing."
+)]
+        [SwaggerResponse(200, "Session created successfully")]
+        [SwaggerResponse(400, "Invalid request data")]
+        public async Task<IActionResult> CreateCheckoutSession([FromBody] CreateCheckoutSessionRequest request)
         {
-            try
+            if (!ModelState.IsValid)
             {
-                var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
-
-                var signature = Request.Headers["Stripe-Signature"].ToString();
-
-                await _paymentService.HandleWebhookAsync(json, signature ?? string.Empty);
-               
-                return Ok();
+                return ErrorResponse<object>("Invalid request data");
             }
-            catch (Exception ex)
-            {
-                return BadRequest(new { error = ex.Message });
-            }
+
+            var result = await _paymentService.CreateCheckoutSessionAsync(request);
+            return SuccessResponse(result, "Checkout session created successfully");
         }
 
-        /// <summary>
-        /// Xem lịch sử thanh toán của một đơn hàng
-        /// </summary>
-        /// <param name="orderGroupId">ID nhóm đơn hàng</param>
-        /// <returns>Danh sách các lần thanh toán</returns>
-        [HttpGet("history/{orderGroupId}")]
-        [Authorize]
-        public async Task<IActionResult> GetPaymentHistory(Guid orderGroupId)
+        [HttpPost("webhook")]
+        [SwaggerOperation(
+    Summary = "Stripe Webhook",
+    Description = "Endpoint for Stripe to send asynchronous payment events (Do not call manually)."
+)]
+        [SwaggerResponse(200, "Webhook processed")]
+        [SwaggerResponse(400, "Invalid signature or payload")]
+        public async Task<IActionResult> StripeWebhook()
         {
-            var history = await _paymentService.GetPaymentHistoryByOrderGroupAsync(orderGroupId);
-            return SuccessResponse(history);
+            var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
+
+            if (!Request.Headers.TryGetValue("Stripe-Signature", out var signature))
+            {
+                return ErrorResponse<object>("Missing Stripe-Signature header");
+            }
+
+            try
+            {
+                await _paymentService.ProcessWebhookAsync(json, signature);
+
+                // Webhook của Stripe chỉ cần Status 200. 
+                // Có thể dùng SuccessResponse hoặc Ok() đều được
+                return SuccessResponse();
+            }
+            catch (System.Exception ex)
+            {
+                return ErrorResponse<object>(ex.Message);
+            }
         }
     }
 }

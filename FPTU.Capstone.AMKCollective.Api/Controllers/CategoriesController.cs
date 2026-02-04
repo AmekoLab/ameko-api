@@ -7,6 +7,7 @@ using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Swashbuckle.AspNetCore.Annotations;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
 {
@@ -26,9 +27,13 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             _logger = logger;
         }
         [HttpGet]
-        [ProducesResponseType(typeof(ApiResponse<IEnumerable<CategoryListDto>>), StatusCodes.Status200OK)]
+        [SwaggerOperation(
+    Summary = "Get All Categories",
+    Description = "Returns a hierarchical list of categories with optional filtering."
+)]
+        [SwaggerResponse(200, "Categories retrieved successfully", typeof(ApiResponse<IEnumerable<CategorySummaryResponse>>))]
         public async Task<IActionResult> GetCategories(
-            [FromQuery] CategoryQueryParams queryParams,
+            [FromQuery] GetCategoriesFilterRequest queryParams,
             CancellationToken cancellationToken)
         {
             try
@@ -43,8 +48,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
         [HttpGet("{id:guid}")]
-        [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [SwaggerOperation(
+    Summary = "Get Category by ID",
+    Description = "Retrieves details of a specific category, optionally including its sub-categories."
+)]
+        [SwaggerResponse(200, "Category details retrieved", typeof(ApiResponse<CategoryResponse>))]
+        [SwaggerResponse(404, "Category not found")]
         public async Task<IActionResult> GetCategoryById(
             Guid id,
             [FromQuery] bool includeSubCategories = false,
@@ -56,7 +65,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
                 if (category == null)
                 {
-                    return NotFoundResponse<CategoryDto>($"Category with id {id} not found");
+                    return NotFoundResponse<CategoryResponse>($"Category with id {id} not found");
                 }
 
                 return SuccessResponse(category);
@@ -69,7 +78,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpGet("{id:guid}/parts")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+        [SwaggerOperation(
+    Summary = "Get Parts in Category",
+    Description = "Returns a paginated list of parts/products belonging to a specific category."
+)]
+        [SwaggerResponse(200, "Parts retrieved successfully", typeof(ApiResponse<object>))]
+        [SwaggerResponse(404, "Category not found")]
         public async Task<IActionResult> GetPartsInCategory(
             Guid id,
             [FromQuery] int pageNumber = 1,
@@ -81,7 +95,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var queryParams = new PartQueryParams
+                var queryParams = new GetPartsFilterRequest
                 {
                     CategoryId = id,
                     PageNumber = pageNumber,
@@ -118,7 +132,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpPost]
-        [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status200OK)] 
+        [SwaggerOperation(
+    Summary = "Create Category (Admin)",
+    Description = "Creates a new product category."
+)]
+        [SwaggerResponse(200, "Category created successfully", typeof(ApiResponse<CategoryResponse>))]
+        [SwaggerResponse(400, "Validation error")]
         public async Task<IActionResult> CreateCategory(
             [FromForm] CreateCategoryRequest request,
             CancellationToken cancellationToken)
@@ -140,6 +159,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpPatch("{id:guid}")]
+        [SwaggerOperation(
+    Summary = "Update Category (Admin)",
+    Description = "Updates an existing category's information."
+)]
+        [SwaggerResponse(200, "Category updated successfully", typeof(ApiResponse<CategoryResponse>))]
+        [SwaggerResponse(404, "Category not found")]
         public async Task<IActionResult> UpdateCategory(
             Guid id,
             [FromForm] UpdateCategoryRequest request,
@@ -166,6 +191,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpDelete("{id:guid}")]
+        [SwaggerOperation(
+    Summary = "Delete Category (Admin)",
+    Description = "Soft deletes a category."
+)]
+        [SwaggerResponse(200, "Category deleted successfully")]
+        [SwaggerResponse(404, "Category not found")]
         public async Task<IActionResult> DeleteCategory(
              Guid id,
              CancellationToken cancellationToken)
@@ -192,7 +223,11 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpGet("root")]
-        [ProducesResponseType(typeof(IEnumerable<CategoryListDto>), StatusCodes.Status200OK)]
+        [SwaggerOperation(
+    Summary = "Get Root Categories",
+    Description = "Retrieves only the top-level categories."
+)]
+        [SwaggerResponse(200, "Root categories retrieved", typeof(IEnumerable<CategorySummaryResponse>))]
         public async Task<IActionResult> GetRootCategories(
             [FromQuery] bool includeInactive = false,
             CancellationToken cancellationToken = default)
@@ -210,6 +245,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpGet("slug/{slug}/parts")]
+        [SwaggerOperation(
+    Summary = "Get Parts by Category Slug",
+    Description = "Retrieves parts using the category's URL-friendly slug instead of ID."
+)]
+        [SwaggerResponse(200, "Parts retrieved successfully")]
+        [SwaggerResponse(404, "Category slug not found")]
         public async Task<IActionResult> GetPartsByCategorySlug(
     string slug,
     [FromQuery] int pageNumber = 1,
@@ -222,7 +263,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return NotFoundResponse<string>($"Category with slug '{slug}' not found");
 
 
-            var queryParams = new PartQueryParams
+            var queryParams = new GetPartsFilterRequest
             {
                 CategoryId = category.Id,
                 PageNumber = pageNumber,

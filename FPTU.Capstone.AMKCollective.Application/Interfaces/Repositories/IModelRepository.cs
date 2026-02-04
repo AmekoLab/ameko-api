@@ -10,7 +10,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
 {
     public interface IModelRepository
     {
-        Task<(IEnumerable<Model> Items, int TotalCount)> GetPagedAsync(PartQueryParams queryParams, CancellationToken token = default);
+        Task<(IEnumerable<Model> Items, int TotalCount)> GetPagedAsync(GetPartsFilterRequest queryParams, CancellationToken token = default);
         Task<Model?> GetByIdAsync(Guid? id, CancellationToken token = default);
         Task<Model?> GetBySlugAsync(string slug, CancellationToken token = default);
 

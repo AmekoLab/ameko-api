@@ -9,18 +9,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 {
     public interface ICategoryService
     {
-        Task<IEnumerable<CategoryListDto>> GetCategoriesAsync(CategoryQueryParams queryParams, CancellationToken cancellationToken = default);
-        Task<CategoryDto?> GetCategoryByIdAsync(Guid id, bool includeSubCategories = false, CancellationToken cancellationToken = default);
-        Task<CategoryDto> CreateCategoryAsync(CreateCategoryRequest request, CancellationToken cancellationToken = default);
-        Task<CategoryDto> UpdateCategoryAsync(Guid id, UpdateCategoryRequest request, CancellationToken cancellationToken = default);
+        Task<IEnumerable<CategorySummaryResponse>> GetCategoriesAsync(GetCategoriesFilterRequest queryParams, CancellationToken cancellationToken = default);
+        Task<CategoryResponse?> GetCategoryByIdAsync(Guid id, bool includeSubCategories = false, CancellationToken cancellationToken = default);
+        Task<CategoryResponse> CreateCategoryAsync(CreateCategoryRequest request, CancellationToken cancellationToken = default);
+        Task<CategoryResponse> UpdateCategoryAsync(Guid id, UpdateCategoryRequest request, CancellationToken cancellationToken = default);
         Task<bool> DeleteCategoryAsync(Guid id, CancellationToken cancellationToken = default);
-        Task<CategoryDto?> GetCategoryBySlugAsync(string slug, CancellationToken cancellationToken = default);
+        Task<CategoryResponse?> GetCategoryBySlugAsync(string slug, CancellationToken cancellationToken = default);
 
         // parts
-        Task<(IEnumerable<PartInCategoryDto> Items, int TotalCount, int TotalPages)> GetPartsInCategoryAsync(PartQueryParams queryParams, CancellationToken cancellationToken = default);
+        Task<(IEnumerable<PartSummaryResponse> Items, int TotalCount, int TotalPages)> GetPartsInCategoryAsync(GetPartsFilterRequest queryParams, CancellationToken cancellationToken = default);
 
         // Utility
         Task<bool> CategoryExistsAsync(Guid id, CancellationToken cancellationToken = default);
-        Task<IEnumerable<CategoryListDto>> GetRootCategoriesAsync(bool includeInactive = false, CancellationToken cancellationToken = default);
+        Task<IEnumerable<CategorySummaryResponse>> GetRootCategoriesAsync(bool includeInactive = false, CancellationToken cancellationToken = default);
     }
 }

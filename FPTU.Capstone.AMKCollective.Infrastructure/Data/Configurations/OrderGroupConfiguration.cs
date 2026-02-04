@@ -1,6 +1,7 @@
+using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using FPTU.Capstone.AMKCollective.Domain.Entities;
 
 namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
 {
@@ -14,10 +15,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(og => og.TotalGroupAmount)
                 .HasPrecision(18, 2)
                 .IsRequired();
+            builder.Property(x => x.PaymentStatus)
+                .HasConversion<string>()
+                .HasDefaultValue(PaymentStatus.Pending);
 
-            builder.Property(og => og.PaymentStatus)
-                .HasMaxLength(50)
-                .HasDefaultValue("Pending");
+           
             builder.HasOne(og => og.Customer)
            .WithMany() 
            .HasForeignKey(og => og.CustomerId)
