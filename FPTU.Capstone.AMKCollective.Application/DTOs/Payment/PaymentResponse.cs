@@ -1,18 +1,12 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
 namespace FPTU.Capstone.AMKCollective.Application.DTOs.Payment
 {
-    /// <summary>
-    /// Response checkout session
-    /// </summary>
-    public class CheckoutSessionResponse
-    {
-        public string SessionId { get; set; } = string.Empty;
-        public string PaymentUrl { get; set; } = string.Empty;
-    }
-
-    /// <summary>
-    /// DTO thông tin thanh toán
-    /// </summary>
-    public class PaymentDto
+    public class PaymentResponse
     {
         public Guid Id { get; set; }
         public decimal Amount { get; set; }

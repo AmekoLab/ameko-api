@@ -25,7 +25,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _storageService = storageService;
         }
 
-        public async Task<BuilderConfigDto> GetBuilderConfigAsync(Guid baseKitId)
+        public async Task<BuilderConfigResponse> GetBuilderConfigAsync(Guid baseKitId)
         {
             var baseKit = await _unitOfWork.Models.GetByIdAsync(baseKitId);
             if (baseKit == null) throw new KeyNotFoundException("Base Kit not found");
@@ -34,16 +34,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             var steps = options
                 .GroupBy(x => new { x.StepName, x.StepOrder })
-                .Select(g => new BuilderStepDto
+                .Select(g => new BuilderStepConfigResponse
                 {
                     StepName = g.Key.StepName,
                     StepOrder = g.Key.StepOrder,
                     PartType = g.First().Component.PartType ?? "UNKNOWN",
-                    Options = _mapper.Map<List<CompatiblePartDto>>(g.ToList())
+                    Options = _mapper.Map<List<CompatiblePartResponse>>(g.ToList())
                 })
                 .OrderBy(s => s.StepOrder)
                 .ToList();
-            return new BuilderConfigDto
+            return new BuilderConfigResponse
             {
                 BaseKitId = baseKit.Id,
                 BaseKitName = baseKit.Name,
@@ -51,10 +51,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Steps = steps
             };
         }
-        public async Task<(IEnumerable<CompatiblePartDto> Items, int TotalCount)> SearchPartsInBuilderAsync(CompatiblePartsQuery query)
+        public async Task<(IEnumerable<CompatiblePartResponse> Items, int TotalCount)> SearchPartsInBuilderAsync(GetCompatiblePartsRequest query)
         {
             var (entities, total) = await _unitOfWork.KitDesignOptions.GetCompatiblePartsPagedAsync(query);
-            var dtos = _mapper.Map<IEnumerable<CompatiblePartDto>>(entities);
+            var dtos = _mapper.Map<IEnumerable<CompatiblePartResponse>>(entities);
 
             return (dtos, total);
         }
@@ -167,73 +167,58 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var firstStepOptions = await _unitOfWork.KitDesignOptions.GetCompatibleOptionsForStepAsync(request.BaseKitId, "case", null);
 
             // 4. Trả về Response
-            return ConstructResponse(session, "case", 1, _mapper.Map<List<CompatiblePartDto>>(firstStepOptions));
+            return ConstructResponse(session, "case", 1, _mapper.Map<List<CompatiblePartResponse>>(firstStepOptions));
         }
 
         public async Task<BuilderStepResponse> SelectPartAsync(BuilderSelectRequest request)
         {
-            // 1. Lấy Session
             var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.SessionId);
             if (session == null) throw new KeyNotFoundException("Session expired or not found");
-
-            // 2. Validate: Lấy thông tin linh kiện vừa chọn
-            // (Lưu ý: Dùng null ở tham số requiredTag vì ta đang validate cái user chọn, ko phải lọc list)
             var stepOptions = await _unitOfWork.KitDesignOptions.GetCompatibleOptionsForStepAsync(session.BaseKitId, request.StepName, null);
             var selectedOption = stepOptions.FirstOrDefault(x => x.ComponentId == request.SelectedPartId);
 
             if (selectedOption == null) throw new KeyNotFoundException("Selected part is not valid for this kit");
 
             // 3. Update Session
-            var currentSelection = JsonSerializer.Deserialize<Dictionary<string, SelectedPartDetail>>(session.SelectedItemsJson)
-                                   ?? new Dictionary<string, SelectedPartDetail>();
+            var currentSelection = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson)
+                                   ?? new Dictionary<string, SelectedPartResponse>();
 
-            // Ví dụ: Đang sửa bước 'case', thì phải xóa 'plate', 'switch' cũ đi
             ClearSubsequentSteps(currentSelection, request.StepName);
-            // ----------------------------------------------------------
-
-            // Lưu món vừa chọn vào Dictionary
-            currentSelection[request.StepName] = new SelectedPartDetail
+            string categorySlug = selectedOption.Component.Category?.Slug ?? "";
+            int qtyNeeded = GetRecipeQuantity(session.BaseKit.Specifications, categorySlug);
+            currentSelection[request.StepName] = new SelectedPartResponse
             {
                 Id = selectedOption.ComponentId,
                 Name = selectedOption.Component.Name,
                 Price = selectedOption.Component.Price,
-                ThumbnailUrl = selectedOption.Component.ThumbnailURL
+                ThumbnailUrl = selectedOption.Component.ThumbnailURL,
+                Quantity = qtyNeeded 
             };
 
-            // Tính lại tổng tiền
             decimal newTotal = session.BaseKit.Price;
-
             foreach (var item in currentSelection.Values)
             {
-                int qtyNeeded = GetRecipeQuantity(session.BaseKit.Specifications, item.Name);
-                newTotal += (item.Price * qtyNeeded);
+                newTotal += (item.Price * item.Quantity);
             }
+            // -----------------------------------------------------------------------
 
             session.SelectedItemsJson = JsonSerializer.Serialize(currentSelection);
             session.TotalPrice = newTotal;
-
-            // 4. Xác định Bước Tiếp Theo
-            // Logic: Sau khi chọn xong bước này thì nhảy sang bước kế tiếp
             var (nextStepName, nextStepOrder) = GetNextStepInfo(request.StepName);
-
-            session.CurrentStep = nextStepName; // Cập nhật bước hiện tại của user là bước tiếp theo
+            session.CurrentStep = nextStepName;
             await _unitOfWork.BuilderSessions.UpdateSessionAsync(session);
             await _unitOfWork.CommitAsync();
-
-            // 5. Lấy danh sách sản phẩm cho bước BƯỚC TIẾP THEO (có Lọc Tag)
-            List<CompatiblePartDto> nextProducts = new();
+            List<CompatiblePartResponse> nextProducts = new();
             if (nextStepName != "complete")
             {
-                // Lấy rule từ món VỪA CHỌN để lọc cho món KẾ TIẾP
-                // Ví dụ: Vừa chọn Case 65% (rule: plate:LAYOUT_65) -> Lọc Plate theo tag LAYOUT_65
                 string? requiredTag = ParseTagFromRule(selectedOption.NextStepFilterRule, nextStepName);
-
                 var nextOptions = await _unitOfWork.KitDesignOptions.GetCompatibleOptionsForStepAsync(session.BaseKitId, nextStepName, requiredTag);
-                nextProducts = _mapper.Map<List<CompatiblePartDto>>(nextOptions);
+                nextProducts = _mapper.Map<List<CompatiblePartResponse>>(nextOptions);
             }
 
             return ConstructResponse(session, nextStepName, nextStepOrder, nextProducts);
         }
+
         public async Task<BuilderStepResponse> GetExistingSessionAsync(Guid sessionId, string? requestStep = null)
         {
             // 1. Tìm Session
@@ -244,8 +229,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             // 2. Parse dữ liệu
-            var currentSelection = JsonSerializer.Deserialize<Dictionary<string, SelectedPartDetail>>(session.SelectedItemsJson)
-                                   ?? new Dictionary<string, SelectedPartDetail>();
+            var currentSelection = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson)
+                                   ?? new Dictionary<string, SelectedPartResponse>();
 
             // 3. Xác định bước cần hiển thị dữ liệu (Quan Trọng)
             // Nếu FE gửi requestStep (ví dụ user click tab "case") -> Dùng requestStep
@@ -274,7 +259,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // 5. Query DB lấy sản phẩm (đã lọc)
             var availableProducts = await _unitOfWork.KitDesignOptions.GetCompatibleOptionsForStepAsync(session.BaseKitId, stepToProcess, requiredTag);
-            var productDtos = _mapper.Map<List<CompatiblePartDto>>(availableProducts);
+            var productDtos = _mapper.Map<List<CompatiblePartResponse>>(availableProducts);
 
             // 6. Trả về Response
             return ConstructResponse(session, stepToProcess, stepOrder, productDtos);
@@ -295,7 +280,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         }
 
         // 2. Logic tìm món ở bước ngay trước đó
-        private SelectedPartDetail? GetPreviousSelectedPart(Dictionary<string, SelectedPartDetail> selection, string currentStep)
+        private SelectedPartResponse? GetPreviousSelectedPart(Dictionary<string, SelectedPartResponse> selection, string currentStep)
         {
             // Nếu đang ở bước 'plate', thì bước trước là 'case'. Kiểm tra xem đã chọn case chưa.
             if (currentStep == "plate" && selection.ContainsKey("case")) return selection["case"];
@@ -308,7 +293,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         }
 
         // 3. Logic xóa các bước phía sau (Khi user chọn lại từ đầu)
-        private void ClearSubsequentSteps(Dictionary<string, SelectedPartDetail> selection, string currentStep)
+        private void ClearSubsequentSteps(Dictionary<string, SelectedPartResponse> selection, string currentStep)
         {
             if (currentStep == "case")
             {
@@ -340,16 +325,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         }
 
         // 5. Construct Response (Giữ nguyên)
-        private BuilderStepResponse ConstructResponse(BuilderSession session, string nextStepName, int nextOrder, List<CompatiblePartDto> products)
+        private BuilderStepResponse ConstructResponse(BuilderSession session, string nextStepName, int nextOrder, List<CompatiblePartResponse> products)
         {
-            var selectionDict = JsonSerializer.Deserialize<Dictionary<string, SelectedPartDetail>>(session.SelectedItemsJson);
+            var selectionDict = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson);
 
             return new BuilderStepResponse
             {
                 Message = "Success",
                 Data = new BuilderSessionData
                 {
-                    Session = new SessionInfo
+                    Session = new SessionInfoResponse
                     {
                         Id = session.Id,
                         TotalPrice = session.TotalPrice,
@@ -357,18 +342,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         Selection = selectionDict,
                         IsComplete = nextStepName == "complete"
                     },
-                    NextStep = new NextStepInfo
+                    NextStep = new NextStepResponse
                     {
-                        Step = new StepDetail { Name = nextStepName, Slug = nextStepName, StepOrder = nextOrder },
+                        Step = new BuilderStepDetailResponse { Name = nextStepName, Slug = nextStepName, StepOrder = nextOrder },
                         Products = products
                     }
                 }
             };
         }
 
-        private int GetRecipeQuantity(string? specifications, string partName)
+        private int GetRecipeQuantity(string? specifications, string? categorySlug)
         {
-            if (string.IsNullOrEmpty(specifications)) return 1;
+            if (string.IsNullOrEmpty(specifications) || string.IsNullOrEmpty(categorySlug)) return 1;
+
             try
             {
                 using (var doc = JsonDocument.Parse(specifications))
@@ -377,7 +363,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     {
                         foreach (var prop in recipe.EnumerateObject())
                         {
-                            if (partName.ToLower().Contains(prop.Name.ToLower()) && prop.Value.ValueKind == JsonValueKind.Number)
+                            if (categorySlug.ToLower() == prop.Name.ToLower())
                             {
                                 return prop.Value.GetInt32();
                             }

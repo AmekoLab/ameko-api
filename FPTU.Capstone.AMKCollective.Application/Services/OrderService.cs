@@ -85,11 +85,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
         }
 
-        public async Task<OrderDto> GetMyCartAsync(Guid userId, CancellationToken token = default)
+        public async Task<OrderResponse> GetMyCartAsync(Guid userId, CancellationToken token = default)
         {
             var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, "InCart");
             if (cartOrder == null) return null; // Hoặc trả về new OrderDto rỗng
-            return _mapper.Map<OrderDto>(cartOrder);
+            return _mapper.Map<OrderResponse>(cartOrder);
         }
 
         public async Task RemoveItemFromCartAsync(Guid userId, Guid orderItemId, CancellationToken token = default)
@@ -153,6 +153,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, "InCart");
             if (cartOrder == null || !cartOrder.OrderItems.Any())
                 throw new InvalidOperationException("Cart is empty.");
+
+            string successUrl = request.SuccessUrl;
+            string cancelUrl = request.CancelUrl;
+
+            if (string.IsNullOrEmpty(successUrl) || !successUrl.StartsWith("http"))
+                successUrl = "http://localhost:3000/payment/success";
+
+            if (string.IsNullOrEmpty(cancelUrl) || !cancelUrl.StartsWith("http"))
+                cancelUrl = "http://localhost:3000/payment/cancel";
+
             var orderGroup = new OrderGroup
             {
                 Id = Guid.NewGuid(),
@@ -162,11 +172,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 TotalGroupAmount = 0,
                 Orders = new List<Order>()
             };
+
             var itemsByShop = cartOrder.OrderItems.GroupBy(i => i.Product?.ShopId ?? Guid.Empty);
 
             foreach (var shopGroup in itemsByShop)
             {
                 if (shopGroup.Key == Guid.Empty) continue;
+
                 var order = new Order
                 {
                     Id = Guid.NewGuid(),
@@ -188,11 +200,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 foreach (var cartItem in shopGroup)
                 {
                     var product = await _unitOfWork.Models.GetByIdAsync(cartItem.ProductId);
+
                     if (product == null) throw new InvalidOperationException($"Product {cartItem.ProductName} missing.");
                     if (product.StockQuantity < cartItem.Quantity)
                         throw new InvalidOperationException($"Out of stock: {product.Name}");
+
                     product.StockQuantity -= cartItem.Quantity;
                     await _unitOfWork.Models.UpdateAsync(product);
+
                     var orderItem = new OrderItem
                     {
                         Id = Guid.NewGuid(),
@@ -207,45 +222,52 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         DesignConfig = cartItem.DesignConfig,
                         OrderItemComponents = new List<OrderItemComponent>()
                     };
+
                     if (cartItem.OrderItemComponents != null && cartItem.OrderItemComponents.Any())
                     {
                         foreach (var comp in cartItem.OrderItemComponents)
                         {
                             var partEntity = await _unitOfWork.Models.GetByIdAsync(comp.PartId);
                             if (partEntity == null) throw new InvalidOperationException($"Component {comp.PartName} not found.");
-                            int requiredQtyPerKit = 1; 
+
+                            int requiredQtyPerKit = 1;
                             if (!string.IsNullOrEmpty(product.Specifications))
                             {
                                 try
                                 {
                                     using (JsonDocument doc = JsonDocument.Parse(product.Specifications))
                                     {
-                                        var root = doc.RootElement;
-                                        if (root.TryGetProperty("recipe", out JsonElement recipe))
+                                        if (doc.RootElement.TryGetProperty("recipe", out JsonElement recipe))
                                         {
-                                            string partNameLower = partEntity.Name.ToLower();
-                                            foreach (var property in recipe.EnumerateObject())
+                                            if (partEntity.Category != null)
                                             {
-                                                if (partNameLower.Contains(property.Name.ToLower()))
+                                                string partCategorySlug = partEntity.Category.Slug.ToLower();
+                                                foreach (var property in recipe.EnumerateObject())
                                                 {
-                                                    requiredQtyPerKit = property.Value.GetInt32();
-                                                    break;
+                                                    if (partCategorySlug == property.Name.ToLower())
+                                                    {
+                                                        requiredQtyPerKit = property.Value.GetInt32();
+                                                        break;
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
-                                catch
-                                {
-                                }
-                            }                         
+                                catch { /* Ignore JSON errors */ }
+                            }
+                            // -------------------------------------
+
                             int totalPartNeeded = requiredQtyPerKit * cartItem.Quantity;
+
                             if (partEntity.StockQuantity < totalPartNeeded)
                             {
                                 throw new InvalidOperationException($"Không đủ linh kiện '{partEntity.Name}'. Cần: {totalPartNeeded}, Còn: {partEntity.StockQuantity}");
                             }
+
                             partEntity.StockQuantity -= totalPartNeeded;
                             await _unitOfWork.Models.UpdateAsync(partEntity);
+
                             orderItem.OrderItemComponents.Add(new OrderItemComponent
                             {
                                 Id = Guid.NewGuid(),
@@ -266,40 +288,61 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 order.SubTotal = subTotal;
                 order.ShippingFee = 30000;
                 order.TotalAmount = order.SubTotal + order.ShippingFee;
+
                 orderGroup.Orders.Add(order);
                 orderGroup.TotalGroupAmount += order.TotalAmount;
             }
             await _unitOfWork.OrderGroups.CreateAsync(orderGroup);
-            _unitOfWork.Orders.Delete(cartOrder);
             await _unitOfWork.CommitAsync();
-            var paymentRequest = new CreateCheckoutSessionRequest
+            try
             {
-                OrderGroupId = orderGroup.Id,
-                //TODO: waiting front-end URL
-                SuccessUrl = !string.IsNullOrEmpty(request.SuccessUrl) ? request.SuccessUrl : "http://localhost:3000/payment/success",
-                CancelUrl = !string.IsNullOrEmpty(request.CancelUrl) ? request.CancelUrl : "http://localhost:3000/payment/cancel"
-            };
-            var paymentRes = await _paymentService.CreateCheckoutSessionAsync(paymentRequest, token);
-            return new CheckoutResponse
+                var paymentRequest = new CreateCheckoutSessionRequest
+                {
+                    OrderGroupId = orderGroup.Id,
+                    SuccessUrl = successUrl, 
+                    CancelUrl = cancelUrl
+                };
+
+                var paymentRes = await _paymentService.CreateCheckoutSessionAsync(paymentRequest, token);
+
+                _unitOfWork.Orders.Delete(cartOrder);
+                await _unitOfWork.CommitAsync(); 
+
+                return new CheckoutResponse
+                {
+                    OrderGroupId = orderGroup.Id,
+                    TotalAmount = orderGroup.TotalGroupAmount,
+                    PaymentUrl = paymentRes.PaymentUrl
+                };
+            }
+            catch (Exception ex)
             {
-                OrderGroupId = orderGroup.Id,
-                TotalAmount = orderGroup.TotalGroupAmount,
-                PaymentUrl = paymentRes.PaymentUrl
-            };
+                
+                throw new InvalidOperationException($"Payment error: {ex.Message}. please try again.");
+            }
         }
 
-        public async Task<List<OrderGroupDto>> GetMyOrdersAsync(Guid userId, CancellationToken token = default)
+        public async Task<List<OrderResponse>> GetMyOrdersAsync(Guid userId, CancellationToken token = default)
         {
-            // Cần repo support lấy OrderGroup
-            var groups = await _unitOfWork.OrderGroups.GetByUserIdAsync(userId);
-            return _mapper.Map<List<OrderGroupDto>>(groups);
+            // Gọi Repo lấy Order lẻ (Hàm này bạn đã có trong OrderRepository, nhớ kiểm tra vụ .ThenInclude nhé)
+            var orders = await _unitOfWork.Orders.GetOrdersByUserIdAsync(userId, token);
+
+            // Map sang OrderDto (Lúc này danh sách sẽ phẳng, dễ hiển thị)
+            return _mapper.Map<List<OrderResponse>>(orders);
         }
 
-        public async Task<OrderGroupDto> GetOrderGroupDetailAsync(Guid orderGroupId, CancellationToken token = default)
+        public async Task<List<OrderGroupResponse>> GetMyOrderGroupsAsync(Guid userId, CancellationToken token = default)
+        {
+            // Logic cũ giữ nguyên
+            var groups = await _unitOfWork.OrderGroups.GetByUserIdAsync(userId);
+            return _mapper.Map<List<OrderGroupResponse>>(groups);
+        }
+
+        public async Task<OrderGroupResponse> GetOrderGroupDetailAsync(Guid orderGroupId, CancellationToken token = default)
         {
             var group = await _unitOfWork.OrderGroups.GetByIdAsync(orderGroupId);
             if (group == null) throw new KeyNotFoundException("Order group not found.");
-            return _mapper.Map<OrderGroupDto>(group);
+            return _mapper.Map<OrderGroupResponse>(group);
         }
 
         public async Task CancelOrderAsync(Guid userId, Guid orderId, string reason, CancellationToken token = default)
@@ -342,19 +385,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         // 3. SELLER / SHOP OWNER
         // =================================================================
 
-        public async Task<List<OrderDto>> GetShopOrdersAsync(Guid shopId, string? status, int page, int size, CancellationToken token = default)
+        public async Task<List<OrderResponse>> GetShopOrdersAsync(Guid shopId, string? status, int page, int size, CancellationToken token = default)
         {
             var orders = await _unitOfWork.Orders.GetShopOrdersAsync(shopId, status, page, size);
-            return _mapper.Map<List<OrderDto>>(orders);
+            return _mapper.Map<List<OrderResponse>>(orders);
         }
 
-        public async Task<OrderDto> GetShopOrderDetailAsync(Guid shopId, Guid orderId, CancellationToken token = default)
+        public async Task<OrderResponse> GetShopOrderDetailAsync(Guid shopId, Guid orderId, CancellationToken token = default)
         {
             var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
             if (order == null) throw new KeyNotFoundException("Order not found");
             if (order.ShopId != shopId) throw new UnauthorizedAccessException("This order does not belong to your shop.");
 
-            return _mapper.Map<OrderDto>(order);
+            return _mapper.Map<OrderResponse>(order);
         }
 
         public async Task UpdateOrderStatusAsync(Guid shopId, Guid orderId, string newStatus, CancellationToken token = default)
@@ -418,9 +461,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.BuilderSessionId.Value);
             if (session == null) throw new KeyNotFoundException("Session expired.");
-
-            // Parse các món đã chọn trong session
-            var selectedParts = JsonSerializer.Deserialize<Dictionary<string, SelectedPartDetail>>(session.SelectedItemsJson);
+            var selectedParts = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson);
 
             // Check trùng
             // check IsCustom và DesignConfig chứa SessionId
@@ -445,7 +486,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     ProductId = baseKit.Id,
                     ProductName = $"{baseKit.Name} (Custom Build)",
                     ProductImage = baseKit.ThumbnailURL ?? "",
-                    // Giá khởi điểm là giá Kit
                     UnitPrice = baseKit.Price,
                     Quantity = request.Quantity,
                     IsCustom = true,
@@ -458,34 +498,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 {
                     foreach (var part in selectedParts.Values)
                     {
-                        // 1. Tính số lượng theo Recipe (dùng lại logic parse JSON)
-                        int qtyRecipe = 1;
-                        if (!string.IsNullOrEmpty(baseKit.Specifications))
-                        {
-                            try
-                            {
-                                using (var doc = JsonDocument.Parse(baseKit.Specifications))
-                                {
-                                    if (doc.RootElement.TryGetProperty("recipe", out var r))
-                                    {
-                                        foreach (var p in r.EnumerateObject())
-                                        {
-                                            if (part.Name.ToLower().Contains(p.Name.ToLower()))
-                                            {
-                                                qtyRecipe = p.Value.GetInt32(); break;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            catch { }
-                        }
-
-                        // 2. Cộng tiền vào UnitPrice của Bàn phím
-                        // Giá 1 bàn phím = Giá Kit + (Giá Switch * 61) + (Giá Keycap * 1)...
+                        int qtyRecipe = part.Quantity > 0 ? part.Quantity : 1;
                         newItem.UnitPrice += (part.Price * qtyRecipe);
-
-                        // 3. Thêm vào danh sách linh kiện con (để hiển thị trong cart nếu cần)
                         newItem.OrderItemComponents.Add(new OrderItemComponent
                         {
                             Id = Guid.NewGuid(),
@@ -494,14 +508,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             PartName = part.Name,
                             PartPriceSnapshot = part.Price,
                             PartImageUrl = part.ThumbnailUrl,
-                            Quantity = qtyRecipe // Lưu số lượng
+                            Quantity = qtyRecipe 
                         });
                     }
                 }
 
-                // Tính tổng tiền cuối cùng = Đơn giá (đã cộng full) * Số lượng bàn phím mua
                 newItem.TotalPrice = newItem.UnitPrice * newItem.Quantity;
-
                 cartOrder.OrderItems.Add(newItem);
             }
         }

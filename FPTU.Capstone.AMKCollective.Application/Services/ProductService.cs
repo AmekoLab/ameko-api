@@ -26,21 +26,21 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _storage = storage;
         }
 
-        public async Task<(IEnumerable<PartDto> Items, int TotalCount)> GetListAsync(PartQueryParams query)
+        public async Task<(IEnumerable<PartResponse> Items, int TotalCount)> GetListAsync(GetPartsFilterRequest query)
         {
             var (entities, total) = await _unitOfWork.Models.GetPagedAsync(query);
-            var dtos = _mapper.Map<IEnumerable<PartDto>>(entities);
+            var dtos = _mapper.Map<IEnumerable<PartResponse>>(entities);
             return (dtos, total);
         }
 
-        public async Task<PartDto> GetBySlugAsync(string slug)
+        public async Task<PartResponse> GetBySlugAsync(string slug)
         {
             var entity = await _unitOfWork.Models.GetBySlugAsync(slug);
             if (entity == null) throw new KeyNotFoundException($"Product with slug '{slug}' not found.");
-            return _mapper.Map<PartDto>(entity);
+            return _mapper.Map<PartResponse>(entity);
         }
 
-        public async Task<PartDto> CreateAsync(Guid userId, CreateUpdatePartRequest request)
+        public async Task<PartResponse> CreateAsync(Guid userId, CreateUpdatePartRequest request)
         {
             var entity = _mapper.Map<Model>(request);
 
@@ -85,7 +85,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Models.CreateAsync(entity);
             await _unitOfWork.CommitAsync();
 
-            return _mapper.Map<PartDto>(entity);
+            return _mapper.Map<PartResponse>(entity);
         }
 
         public async Task UpdateAsync(Guid id, CreateUpdatePartRequest request)
@@ -169,10 +169,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return shop.Id;
         }
 
-        public async Task<IEnumerable<PartDto>> GetRecommendationsAsync(Guid baseKitId, string partType)
+        public async Task<IEnumerable<PartResponse>> GetRecommendationsAsync(Guid baseKitId, string partType)
         {
             var entities = await _unitOfWork.Models.GetCompatiblePartsAsync(baseKitId, partType);
-            return _mapper.Map<IEnumerable<PartDto>>(entities);
+            return _mapper.Map<IEnumerable<PartResponse>>(entities);
         }
 
         public async Task<Dictionary<Guid, int>> CheckStockAvailabilityAsync(List<Guid> productIds)

@@ -1,4 +1,5 @@
-﻿using FPTU.Capstone.AMKCollective.Application.DTOs;
+﻿using AutoMapper;
+using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
@@ -23,7 +24,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _mapper = mapper;
         }
 
-        public async Task<IEnumerable<CategoryListDto>> GetCategoriesAsync(CategoryQueryParams queryParams, CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<CategorySummaryResponse>> GetCategoriesAsync(GetCategoriesFilterRequest queryParams, CancellationToken cancellationToken = default)
         {
             var (categories, totalCount) = await _unitOfWork.Categories.GetPagedAsync(
                 queryParams.PageNumber,
@@ -34,7 +35,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 cancellationToken);
 
             // Manual mapping để kiểm soát dữ liệu tốt hơn
-            var categoryDtos = categories.Select(c => new CategoryListDto
+            var categoryDtos = categories.Select(c => new CategorySummaryResponse
             {
                 Id = c.Id,
                 Name = c.Name,
@@ -49,14 +50,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return categoryDtos;
         }
 
-        public async Task<CategoryDto?> GetCategoryByIdAsync(Guid id, bool includeSubCategories = false, CancellationToken cancellationToken = default)
+        public async Task<CategoryResponse?> GetCategoryByIdAsync(Guid id, bool includeSubCategories = false, CancellationToken cancellationToken = default)
         {
             var category = await _unitOfWork.Categories.GetByIdAsync(id, includeSubCategories, cancellationToken);
             if (category == null) return null;
             return MapToCategoryDto(category, includeSubCategories);
         }
 
-        public async Task<CategoryDto> CreateCategoryAsync(CreateCategoryRequest request, CancellationToken cancellationToken = default)
+        public async Task<CategoryResponse> CreateCategoryAsync(CreateCategoryRequest request, CancellationToken cancellationToken = default)
         {
             if (request.ParentId.HasValue)
             {
@@ -97,7 +98,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return MapToCategoryDto(category, false);
         }
 
-        public async Task<CategoryDto> UpdateCategoryAsync(Guid id, UpdateCategoryRequest request, CancellationToken cancellationToken = default)
+        public async Task<CategoryResponse> UpdateCategoryAsync(Guid id, UpdateCategoryRequest request, CancellationToken cancellationToken = default)
         {
             var category = await _unitOfWork.Categories.GetByIdAsync(id, false, cancellationToken);
             if (category == null) throw new KeyNotFoundException($"Category with id {id} not found.");
@@ -147,7 +148,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return result;
         }
 
-        public async Task<(IEnumerable<PartInCategoryDto> Items, int TotalCount, int TotalPages)> GetPartsInCategoryAsync(PartQueryParams queryParams, CancellationToken cancellationToken = default)
+        public async Task<(IEnumerable<PartSummaryResponse> Items, int TotalCount, int TotalPages)> GetPartsInCategoryAsync(GetPartsFilterRequest queryParams, CancellationToken cancellationToken = default)
         {
             var categoryExists = await _unitOfWork.Categories.ExistsAsync(queryParams.CategoryId, cancellationToken);
             if (!categoryExists) throw new KeyNotFoundException($"Category with id {queryParams.CategoryId} not found.");
@@ -161,7 +162,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 queryParams.ShopId,
                 cancellationToken);
 
-            var partDtos = parts.Select(p => new PartInCategoryDto
+            var partDtos = parts.Select(p => new PartSummaryResponse
             {
                 Id = p.Id,
                 Name = p.Name,
@@ -182,10 +183,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return await _unitOfWork.Categories.ExistsAsync(id, cancellationToken);
         }
 
-        public async Task<IEnumerable<CategoryListDto>> GetRootCategoriesAsync(bool includeInactive = false, CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<CategorySummaryResponse>> GetRootCategoriesAsync(bool includeInactive = false, CancellationToken cancellationToken = default)
         {
             var categories = await _unitOfWork.Categories.GetRootCategoriesAsync(includeInactive, cancellationToken);
-            return categories.Select(c => new CategoryListDto
+            return categories.Select(c => new CategorySummaryResponse
             {
                 Id = c.Id,
                 Name = c.Name,
@@ -197,7 +198,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }).ToList();
         }
 
-        public async Task<CategoryDto?> GetCategoryBySlugAsync(string slug, CancellationToken cancellationToken = default)
+        public async Task<CategoryResponse?> GetCategoryBySlugAsync(string slug, CancellationToken cancellationToken = default)
         {
             var category = await _unitOfWork.Categories.GetBySlugAsync(slug, cancellationToken);
             if (category == null) return null;
@@ -205,9 +206,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         }
 
         // Helpers
-        private CategoryDto MapToCategoryDto(Category category, bool includeSubCategories)
+        private CategoryResponse MapToCategoryDto(Category category, bool includeSubCategories)
         {
-            var dto = new CategoryDto
+            var dto = new CategoryResponse
             {
                 Id = category.Id,
                 Name = category.Name,

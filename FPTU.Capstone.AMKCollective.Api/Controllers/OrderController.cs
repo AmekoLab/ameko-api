@@ -100,21 +100,41 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             return SuccessResponse("Cart item updated successfully");
         }
 
-        // 6. Lấy lịch sử đơn hàng
+        // 1. GET MY ORDERS (Flat list)
         [HttpGet("my-orders")]
         [SwaggerOperation(
-    Summary = "Get Order History",
-    Description = "Retrieves a list of all orders placed by the current user."
-)]
-        [SwaggerResponse(200, "Orders retrieved successfully")]
+            Summary = "Get detailed list of orders",
+            Description = "Returns a flat list of individual orders for tracking shipment and shop-level status."
+        )]
+        [SwaggerResponse(200, "Success", typeof(List<OrderResponse>))]
         [SwaggerResponse(401, "Unauthorized")]
         public async Task<IActionResult> GetMyOrders()
         {
             var userId = GetCurrentUserId();
             var orders = await _orderService.GetMyOrdersAsync(userId);
 
-            return SuccessResponse(orders, "Orders retrieved successfully");
+            return SuccessResponse(orders, "Order list retrieved successfully.");
         }
+
+        // 2. GET PAYMENT HISTORY (Grouped)
+        [HttpGet("my-payment-history")]
+        [SwaggerOperation(
+            Summary = "Get payment history (Grouped)",
+            Description = "Returns a list of payment batches (Order Groups). Each group contains multiple child orders."
+        )]
+        [SwaggerResponse(200, "Success", typeof(List<OrderGroupResponse>))]
+        [SwaggerResponse(401, "Unauthorized")]
+        public async Task<IActionResult> GetMyPaymentHistory()
+        {
+            var userId = GetCurrentUserId();
+
+            var orderGroups = await _orderService.GetMyOrderGroupsAsync(userId);
+
+            return SuccessResponse(orderGroups, "Payment history retrieved successfully.");
+        }
+
+
+
 
         // 7. Chi tiết Group Order
         [HttpGet("groups/{groupId}")]

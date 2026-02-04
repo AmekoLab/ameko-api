@@ -6,6 +6,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
+using FPTU.Capstone.AMKCollective.Infrastructure.Configurations;
+using Microsoft.Extensions.Options;
+using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 
 namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
 {

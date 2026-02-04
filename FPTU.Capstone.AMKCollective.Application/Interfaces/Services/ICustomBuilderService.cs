@@ -10,8 +10,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 {
     public interface ICustomBuilderService
     {
-        Task<BuilderConfigDto> GetBuilderConfigAsync(Guid baseKitId);
-        Task<(IEnumerable<CompatiblePartDto> Items, int TotalCount)> SearchPartsInBuilderAsync(CompatiblePartsQuery query);
+        Task<BuilderConfigResponse> GetBuilderConfigAsync(Guid baseKitId);
+        Task<(IEnumerable<CompatiblePartResponse> Items, int TotalCount)> SearchPartsInBuilderAsync(GetCompatiblePartsRequest query);
         Task<bool> ValidateConfigurationAsync(Guid baseKitId, List<Guid> componentIds);//check before add to cart
         Task CreateOptionAsync(CreateKitOptionRequest request);
         Task DeleteOptionAsync(Guid id);

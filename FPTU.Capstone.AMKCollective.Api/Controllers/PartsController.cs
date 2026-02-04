@@ -28,8 +28,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
     Summary = "Search and Filter Parts",
     Description = "Retrieves a paginated list of parts with optional filtering by type, search term, etc."
 )]
-        [SwaggerResponse(200, "List of parts retrieved", typeof(PaginatedResult<PartDto>))]
-        public async Task<IActionResult> GetList([FromQuery] PartQueryParams query)
+        [SwaggerResponse(200, "List of parts retrieved", typeof(PaginatedResult<PartResponse>))]
+        public async Task<IActionResult> GetList([FromQuery] GetPartsFilterRequest query)
         {
             try
             {
@@ -50,7 +50,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
     Summary = "Get Part Details",
     Description = "Retrieves detailed information about a specific part using its slug."
 )]
-        [SwaggerResponse(200, "Part details retrieved", typeof(ApiResponse<PartDto>))]
+        [SwaggerResponse(200, "Part details retrieved", typeof(ApiResponse<PartResponse>))]
         [SwaggerResponse(404, "Part not found")]
         public async Task<IActionResult> GetBySlug(string slug)
         {
@@ -76,7 +76,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
     Summary = "Create Part (Shop/Admin)",
     Description = "Creates a new part/product listing."
 )]
-        [SwaggerResponse(200, "Part created successfully", typeof(ApiResponse<PartDto>))]
+        [SwaggerResponse(200, "Part created successfully", typeof(ApiResponse<PartResponse>))]
         [SwaggerResponse(401, "Unauthorized")]
         public async Task<IActionResult> Create([FromForm] CreateUpdatePartRequest request)
         {
@@ -146,7 +146,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
     Summary = "Get Recommended Parts",
     Description = "Suggests compatible parts based on a base kit and part type."
 )]
-        [SwaggerResponse(200, "Recommendations retrieved", typeof(ApiResponse<IEnumerable<PartDto>>))]
+        [SwaggerResponse(200, "Recommendations retrieved", typeof(ApiResponse<IEnumerable<PartResponse>>))]
         public async Task<IActionResult> GetRecommendations(Guid baseKitId, string partType)
         {
             try

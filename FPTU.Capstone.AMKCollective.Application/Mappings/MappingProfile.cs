@@ -4,6 +4,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Follow;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System.Text.Json;
 
 namespace FPTU.Capstone.AMKCollective.Application.Mappings
@@ -42,13 +43,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // TODO: Thêm mapping cho các entities khác ở đây
 
             //==================MODEL=======================//
-            CreateMap<Model, PartDto>()
+            CreateMap<Model, PartResponse>()
                 .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Shop.ShopName))
                 .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.Name))
                 .ForMember(dest => dest.RecipeSwitchCount, opt => opt.MapFrom(src =>
                     GetRecipeValue(src.Specifications, "switch")))
                 .ForMember(dest => dest.RecipeStabilizerCount, opt => opt.MapFrom(src =>
-                    GetRecipeValue(src.Specifications, "stabilizer")));
+                    GetRecipeValue(src.Specifications, "stabilizer")))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src =>
+                    src.StockQuantity > 0 ? StockStatus.InStock : StockStatus.OutOfStock));
 
             CreateMap<CreateUpdatePartRequest, Model>()
                 .ForMember(dest => dest.ThumbnailURL, opt => opt.Ignore())
@@ -59,7 +62,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
 
             //==================KITDESIGN=======================//
 
-            CreateMap<KitDesignOption, CompatiblePartDto>()
+            CreateMap<KitDesignOption, CompatiblePartResponse>()
                 .ForMember(dest => dest.PartId, opt => opt.MapFrom(src => src.ComponentId))
                 .ForMember(dest => dest.Name, opt => opt.MapFrom(src => src.Component.Name))
                 .ForMember(dest => dest.Price, opt => opt.MapFrom(src => src.Component.Price))
@@ -68,7 +71,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.LayerImageUrl, opt => opt.MapFrom(src =>
                     !string.IsNullOrEmpty(src.LayerImageUrl)
                         ? src.LayerImageUrl
-                        : src.Component.DefaultLayerImageUrl));
+                        : src.Component.DefaultLayerImageUrl))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src =>
+                    src.Component != null && src.Component.StockQuantity > 0 ? StockStatus.InStock : StockStatus.OutOfStock));
 
             CreateMap<CreateKitOptionRequest, KitDesignOption>()
                 .ForMember(dest => dest.LayerImageUrl, opt => opt.Ignore()); // Handled in service
@@ -76,9 +81,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
 
            
             //==================ShopProfile=====================//
-            CreateMap<ShopProfile, ShopDto>();
+            CreateMap<ShopProfile, ShopResponse>();
 
-            CreateMap<ShopProfile, ShopDetailDto>();
+            CreateMap<ShopProfile, ShopDetailResponse>();
 
             CreateMap<CreateShopRequest, ShopProfile>()
                 .ForMember(dest => dest.Id, opt => opt.Ignore())       
@@ -102,13 +107,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // =========================================================
             // 1. ORDER GROUP (ORDER GROUP -> DTO)
             // =========================================================
-            CreateMap<OrderGroup, OrderGroupDto>()
+            CreateMap<OrderGroup, OrderGroupResponse>()
                 .ForMember(dest => dest.PaymentStatus, opt => opt.MapFrom(src => src.PaymentStatus));
 
             // =========================================================
             // 2. ORDER (ORDER -> DTO)
             // =========================================================
-            CreateMap<Order, OrderDto>()
+            CreateMap<Order, OrderResponse>()
     // [FIX LỖI NULL]: Vì Giỏ hàng (InCart) chưa có ShopId cụ thể, nên src.Shop sẽ bị null.
     // Nếu không check null, dòng này sẽ gây crash API GetCart.
                 .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Shop != null ? src.Shop.ShopName : "N/A"))
@@ -124,7 +129,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // =========================================================
             // 3. ORDER ITEM (ORDER ITEM -> DTO)
             // =========================================================
-            CreateMap<OrderItem, OrderItemDto>()
+            CreateMap<OrderItem, OrderItemResponse>()
                 .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
                .ForMember(dest => dest.ProductId, opt => opt.MapFrom(src => src.ProductId))
                .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.Name : src.ProductName))
@@ -140,8 +145,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                    ? JsonSerializer.Deserialize<List<Guid>>(src.DesignConfig, (JsonSerializerOptions?)null)
                    : null)) 
 
-               .ForMember(dest => dest.IsCustom, opt => opt.MapFrom(src => src.IsCustom));
-
+               .ForMember(dest => dest.IsCustom, opt => opt.MapFrom(src => src.IsCustom))
+               .ForMember(dest => dest.OrderItemComponents, opt => opt.MapFrom(src => src.OrderItemComponents));
             //order item component
             CreateMap<OrderItemComponent, OrderItemComponentDto>();
 

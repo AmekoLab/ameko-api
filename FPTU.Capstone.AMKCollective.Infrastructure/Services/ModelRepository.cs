@@ -21,7 +21,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             _context = context;
         }
         public async Task<(IEnumerable<Model> Items, int TotalCount)> GetPagedAsync(
-            PartQueryParams queryParams,
+            GetPartsFilterRequest queryParams,
             CancellationToken cancellationToken = default)
         {
             var query = _context.Models.AsNoTracking().Where(x => !x.IsDeleted);

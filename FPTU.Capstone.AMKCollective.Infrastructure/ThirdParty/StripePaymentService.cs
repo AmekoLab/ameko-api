@@ -13,7 +13,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using PaymentMethod = FPTU.Capstone.AMKCollective.Domain.Enums.PaymentMethod;
-
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
 {
     public class StripePaymentService : IPaymentService

@@ -12,7 +12,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         //CUSTOMER SHOPPING
         Task AddToCartAsync(Guid userId, AddToCartRequest request, CancellationToken token = default);
 
-        Task<OrderDto> GetMyCartAsync(Guid userId, CancellationToken token = default);
+        Task<OrderResponse> GetMyCartAsync(Guid userId, CancellationToken token = default);
 
         Task RemoveItemFromCartAsync(Guid userId, Guid orderItemId, CancellationToken token = default);
 
@@ -21,16 +21,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<CheckoutResponse> CheckoutAsync(Guid userId, CheckoutRequest request, CancellationToken token = default);
 
         //CUSTOMER HISTORY
-        Task<List<OrderGroupDto>> GetMyOrdersAsync(Guid userId, CancellationToken token = default);
+        Task<List<OrderResponse>> GetMyOrdersAsync(Guid userId, CancellationToken token = default);
+        Task<List<OrderGroupResponse>> GetMyOrderGroupsAsync(Guid userId, CancellationToken token = default);
 
-        Task<OrderGroupDto> GetOrderGroupDetailAsync(Guid orderGroupId, CancellationToken token = default);
+        Task<OrderGroupResponse> GetOrderGroupDetailAsync(Guid orderGroupId, CancellationToken token = default);
 
         Task CancelOrderAsync(Guid userId, Guid orderId, string reason, CancellationToken token = default);
 
         //SHOP 
-        Task<List<OrderDto>> GetShopOrdersAsync(Guid shopId, string? status, int page, int size, CancellationToken token = default);
+        Task<List<OrderResponse>> GetShopOrdersAsync(Guid shopId, string? status, int page, int size, CancellationToken token = default);
 
-        Task<OrderDto> GetShopOrderDetailAsync(Guid shopId, Guid orderId, CancellationToken token = default);
+        Task<OrderResponse> GetShopOrderDetailAsync(Guid shopId, Guid orderId, CancellationToken token = default);
 
         Task UpdateOrderStatusAsync(Guid shopId, Guid orderId, string newStatus, CancellationToken token = default);
     }

@@ -116,7 +116,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
     Description = "Searches for parts that are compatible with the current builder session context."
 )]
         [SwaggerResponse(200, "Search results retrieved", typeof(ApiResponse<object>))]
-        public async Task<IActionResult> SearchParts([FromQuery] CompatiblePartsQuery query)
+        public async Task<IActionResult> SearchParts([FromQuery] GetCompatiblePartsRequest query)
         {
             try
             {

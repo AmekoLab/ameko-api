@@ -72,6 +72,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .AsSplitQuery() 
                 .Include(o => o.OrderItems)
                 .ThenInclude(oi => oi.OrderItemComponents)
+                .Include(o => o.Shop)
                 .Include(o => o.OrderItems)
                 .ThenInclude(oi => oi.Product) 
                 .OrderByDescending(o => o.CreatedAt)

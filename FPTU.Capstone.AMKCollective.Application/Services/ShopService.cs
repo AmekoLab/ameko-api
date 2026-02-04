@@ -31,7 +31,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _userService = userService;
         }
 
-        public async Task<ShopDto> GetShopPublicProfileAsync(Guid shopId)
+        public async Task<ShopResponse> GetShopPublicProfileAsync(Guid shopId)
         {
             var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
             
@@ -40,26 +40,26 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 throw new KeyNotFoundException("Shop not found or inactive");
             }
 
-            return _mapper.Map<ShopDto>(shop);
+            return _mapper.Map<ShopResponse>(shop);
         }
 
-        public async Task<(IEnumerable<ShopDto> Items, int TotalCount)> GetMarketplaceShopAsync(string? searchTerm, int page, int size)
+        public async Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetMarketplaceShopAsync(string? searchTerm, int page, int size)
         {
             var (items, total) = await _unitOfWork.Shops.GetActiveShopsForUserAsync(searchTerm, page, size);
-            return (_mapper.Map<IEnumerable<ShopDto>>(items), total);
+            return (_mapper.Map<IEnumerable<ShopResponse>>(items), total);
         }
 
-        public async Task<ShopDetailDto> GetMyShopAsync(Guid userId)
+        public async Task<ShopDetailResponse> GetMyShopAsync(Guid userId)
         {
             var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
             if (shop == null)
             {
                 throw new KeyNotFoundException("You do not have a shop yet.");
             }
-            return _mapper.Map<ShopDetailDto>(shop);
+            return _mapper.Map<ShopDetailResponse>(shop);
         }
 
-        public async Task<ShopDto> RegisterShopAsync(Guid userId, CreateShopRequest request)
+        public async Task<ShopResponse> RegisterShopAsync(Guid userId, CreateShopRequest request)
         {
             var existingShop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
             if (existingShop != null)
@@ -120,7 +120,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Shops.CreateAsync(shop);
             await _unitOfWork.CommitAsync();
 
-            return _mapper.Map<ShopDto>(shop);
+            return _mapper.Map<ShopResponse>(shop);
         }
 
         public async Task UpdateMyShopAsync(Guid userId, UpdateShopRequest request)
@@ -159,10 +159,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
         }
 
-        public async Task<(IEnumerable<ShopDetailDto> Items, int TotalCount)> GetShopForAdminAsync(string? searchTerm, ShopStatus? status, int page, int size)
+        public async Task<(IEnumerable<ShopDetailResponse> Items, int TotalCount)> GetShopForAdminAsync(string? searchTerm, ShopStatus? status, int page, int size)
         {
             var (items, total) = await _unitOfWork.Shops.GetShopsAsync(searchTerm, status, page, size);
-            return (_mapper.Map<IEnumerable<ShopDetailDto>>(items), total);
+            return (_mapper.Map<IEnumerable<ShopDetailResponse>>(items), total);
         }
 
         public async Task ApproveShopAsync(Guid shopId, ApproveShopRequest request)
