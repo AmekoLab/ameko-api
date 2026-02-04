@@ -3,9 +3,10 @@ namespace FPTU.Capstone.AMKCollective.Domain.Enums
 {
     public enum OrderStatus
     {
-        InCart, // Đơn trong giỏ hàng chưa thanh toán
+       
 
         Pending, // Khách đã checkout. Chờ shop xác nhận/thanh toán
+        InCart, // Đơn trong giỏ hàng chưa thanh toán
 
         Processing, // Shop đã nhận đơn và đang tiến hành build
 

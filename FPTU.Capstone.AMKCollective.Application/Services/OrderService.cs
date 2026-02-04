@@ -59,15 +59,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 throw new InvalidOperationException($"Insufficient stock. Available: {product.StockQuantity}");
 
             // 3. Get/Create Cart
-            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, "InCart");
+            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
             if (cartOrder == null)
             {
                 cartOrder = new Order
                 {
                     Id = Guid.NewGuid(),
                     CustomerId = userId,
-                    OrderStatus = "InCart",
-                    PaymentStatus = "Unpaid",
+                    OrderStatus = OrderStatus.InCart,
+                    PaymentStatus = PaymentStatus.Pending,
                     TotalAmount = 0,
                     CreatedAt = DateTime.UtcNow,
                     OrderItems = new List<OrderItem>()
@@ -87,14 +87,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<OrderResponse> GetMyCartAsync(Guid userId, CancellationToken token = default)
         {
-            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, "InCart");
+            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
             if (cartOrder == null) return null; // Hoặc trả về new OrderDto rỗng
             return _mapper.Map<OrderResponse>(cartOrder);
         }
 
         public async Task RemoveItemFromCartAsync(Guid userId, Guid orderItemId, CancellationToken token = default)
         {
-            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, "InCart");
+            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
             if (cartOrder == null) throw new KeyNotFoundException("Cart is empty.");
 
             var item = cartOrder.OrderItems.FirstOrDefault(i => i.Id == orderItemId);
@@ -120,7 +120,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 return;
             }
 
-            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, "InCart");
+            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
             if (cartOrder == null) throw new KeyNotFoundException("Cart is empty.");
 
             var item = cartOrder.OrderItems.FirstOrDefault(i => i.Id == orderItemId);
@@ -150,7 +150,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<CheckoutResponse> CheckoutAsync(Guid userId, CheckoutRequest request, CancellationToken token = default)
         {
-            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, "InCart");
+            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
             if (cartOrder == null || !cartOrder.OrderItems.Any())
                 throw new InvalidOperationException("Cart is empty.");
 
@@ -167,7 +167,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 Id = Guid.NewGuid(),
                 CustomerId = userId,
-                PaymentStatus = "Pending",
+                PaymentStatus = PaymentStatus.Pending,
                 CreatedAt = DateTime.UtcNow,
                 TotalGroupAmount = 0,
                 Orders = new List<Order>()
@@ -189,8 +189,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     ReceiverPhone = request.ReceiverPhone,
                     ShippingAddress = request.ShippingAddress,
                     Note = request.Note,
-                    OrderStatus = "Pending",
-                    PaymentStatus = "Pending",
+                    OrderStatus = OrderStatus.Pending,
+                    PaymentStatus = PaymentStatus.Pending,
                     CreatedAt = DateTime.UtcNow,
                     OrderItems = new List<OrderItem>()
                 };
@@ -351,7 +351,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (order == null) throw new KeyNotFoundException("Order not found");
             if (order.CustomerId != userId) throw new UnauthorizedAccessException("Access denied.");
 
-            if (order.OrderStatus != "Pending" && order.OrderStatus != "Unpaid")
+            if (order.OrderStatus != OrderStatus.Pending && order.PaymentStatus != PaymentStatus.Pending)
                 throw new InvalidOperationException("Cannot cancel processed order.");
 
             // Refund Stock
@@ -364,18 +364,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     //await _unitOfWork.Models.UpdateAsync(product);
                 }
             }
-            if (order.PaymentStatus == "Paid")
+            if (order.PaymentStatus == PaymentStatus.Paid)
             {
                 if (order.OrderGroupId.HasValue)
                 {
                     await _paymentService.RefundPaymentAsync(order.OrderGroupId.Value);
-                    order.PaymentStatus = "Refunded";
+                    order.PaymentStatus = PaymentStatus.Refunded;
                     var group = await _unitOfWork.OrderGroups.GetByIdAsync(order.OrderGroupId.Value);
-                    if (group != null) group.PaymentStatus = "Refunded";
+                    if (group != null) group.PaymentStatus = PaymentStatus.Refunded;
                 }
             }
 
-            order.OrderStatus = "Cancelled";
+            order.OrderStatus = OrderStatus.Cancelled;
             order.CancelReason = reason;
             //await _unitOfWork.Orders.UpdateOrderAsync(order);
             await _unitOfWork.CommitAsync();
@@ -385,7 +385,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         // 3. SELLER / SHOP OWNER
         // =================================================================
 
-        public async Task<List<OrderResponse>> GetShopOrdersAsync(Guid shopId, string? status, int page, int size, CancellationToken token = default)
+        public async Task<List<OrderResponse>> GetShopOrdersAsync(Guid shopId, OrderStatus? status, int page, int size, CancellationToken token = default)
         {
             var orders = await _unitOfWork.Orders.GetShopOrdersAsync(shopId, status, page, size);
             return _mapper.Map<List<OrderResponse>>(orders);
@@ -400,12 +400,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<OrderResponse>(order);
         }
 
-        public async Task UpdateOrderStatusAsync(Guid shopId, Guid orderId, string newStatus, CancellationToken token = default)
+        public async Task UpdateOrderStatusAsync(Guid shopId, Guid orderId, OrderStatus newStatus, CancellationToken token = default)
         {
             var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
             if (order == null) throw new KeyNotFoundException("Order not found");
             if (order.ShopId != shopId) throw new UnauthorizedAccessException("Access denied.");
-            if (newStatus == "Cancelled" && order.OrderStatus != "Cancelled")
+            if (newStatus == OrderStatus.Cancelled && order.OrderStatus != OrderStatus.Cancelled)
             {
                 foreach (var item in order.OrderItems)
                 {

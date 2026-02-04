@@ -1,4 +1,5 @@
 ﻿using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -29,10 +30,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task CancelOrderAsync(Guid userId, Guid orderId, string reason, CancellationToken token = default);
 
         //SHOP 
-        Task<List<OrderResponse>> GetShopOrdersAsync(Guid shopId, string? status, int page, int size, CancellationToken token = default);
+        Task<List<OrderResponse>> GetShopOrdersAsync(Guid shopId, OrderStatus? status, int page, int size, CancellationToken token = default);
 
         Task<OrderResponse> GetShopOrderDetailAsync(Guid shopId, Guid orderId, CancellationToken token = default);
 
-        Task UpdateOrderStatusAsync(Guid shopId, Guid orderId, string newStatus, CancellationToken token = default);
+        Task UpdateOrderStatusAsync(Guid shopId, Guid orderId, OrderStatus newStatus, CancellationToken token = default);
     }
 }

@@ -1,4 +1,5 @@
 ﻿using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,7 +13,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<Order?> GetByIdAsync(Guid id, CancellationToken token = default);
         Task<IEnumerable<Order>> GetOrdersByUserIdAsync(Guid userId, CancellationToken token = default);
         Task<IEnumerable<Order>> GetOrdersByShopIdAsync(Guid shopId, CancellationToken token = default);
-        Task<Order?> GetOrderByStatusAsync(Guid userId, string status);
+        Task<Order?> GetOrderByStatusAsync(Guid userId, OrderStatus status);
         Task UpdateOrderAsync(Order order, CancellationToken token = default);
         Task<int> SaveChangesAsync(CancellationToken token = default);
         Task DeleteOrderItemAsync(Guid orderItemId);
@@ -21,6 +22,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task AddOrderItemAsync(OrderItem item);
         void Delete(Order order);
 
-        Task<IEnumerable<Order>> GetShopOrdersAsync(Guid shopId, string? status, int page, int size, CancellationToken token = default);
+        Task<IEnumerable<Order>> GetShopOrdersAsync(Guid shopId, OrderStatus? status, int page, int size, CancellationToken token = default);
     }
 }

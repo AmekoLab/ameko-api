@@ -40,10 +40,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                 Mode = "payment",
                 SuccessUrl = request.SuccessUrl + "?session_id={CHECKOUT_SESSION_ID}",
                 CancelUrl = request.CancelUrl,
+                ClientReferenceId = orderGroup.Id.ToString(),
+
                 Metadata = new Dictionary<string, string>
-                {
-                    { "OrderGroupId", orderGroup.Id.ToString() }
-                },
+        {
+            { "OrderGroupId", orderGroup.Id.ToString() }
+        },
                 LineItems = new List<SessionLineItemOptions>()
             };
 
@@ -99,22 +101,21 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
         {
             try
             {
-                var stripeEvent = EventUtility.ConstructEvent(
-                    json,
-                    stripeSignature,
-                    _stripeSettings.WebhookSecret
-                );
+                var stripeEvent = EventUtility.ConstructEvent(json, stripeSignature, _stripeSettings.WebhookSecret);
 
                 if (stripeEvent.Type == EventTypes.CheckoutSessionCompleted)
                 {
                     var session = stripeEvent.Data.Object as Session;
+                    string orderGroupIdStr = session.ClientReferenceId;
 
-                    if (session.Metadata != null && session.Metadata.TryGetValue("OrderGroupId", out var orderGroupIdStr))
+                    if (string.IsNullOrEmpty(orderGroupIdStr))
                     {
-                        if (Guid.TryParse(orderGroupIdStr, out Guid orderGroupId))
-                        {
-                            await FulfillOrderAsync(orderGroupId, session.PaymentIntentId, session.Id);
-                        }
+                        session.Metadata?.TryGetValue("OrderGroupId", out orderGroupIdStr);
+                    }
+
+                    if (!string.IsNullOrEmpty(orderGroupIdStr) && Guid.TryParse(orderGroupIdStr, out Guid orderGroupId))
+                    {
+                        await FulfillOrderAsync(orderGroupId, session.PaymentIntentId, session.Id);
                     }
                 }
             }
@@ -130,11 +131,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
             var orderGroup = await _unitOfWork.OrderGroups.GetByIdAsync(orderGroupId);
             if (orderGroup != null)
             {
-                orderGroup.PaymentStatus = "Paid";
+                orderGroup.PaymentStatus = PaymentStatus.Paid;
+
                 foreach (var order in orderGroup.Orders)
                 {
-                    order.PaymentStatus = "Paid";
+                    order.PaymentStatus = PaymentStatus.Paid;
                 }
+
                 var payment = new FPTU.Capstone.AMKCollective.Domain.Entities.Payment
                 {
                     Id = Guid.NewGuid(),
@@ -143,7 +146,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                     Currency = "vnd",
                     StripePaymentIntentId = transactionId,
                     StripeSessionId = sessionId,
-
                     Method = PaymentMethod.CreditCard,
                     Status = PaymentStatus.Paid,
                 };

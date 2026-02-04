@@ -1,5 +1,6 @@
 ﻿using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -66,7 +67,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             _context.Orders.Update(order);
             return Task.CompletedTask;
         }
-        public async Task<Order?> GetOrderByStatusAsync(Guid userId, string status)
+        public async Task<Order?> GetOrderByStatusAsync(Guid userId, OrderStatus status)
         {
             return await _context.Orders
                 .AsSplitQuery() 
@@ -100,15 +101,15 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             await _context.Orders.AddAsync(order, token);
         }
 
-        public async Task<IEnumerable<Order>> GetShopOrdersAsync(Guid shopId, string? status, int page, int size, CancellationToken token = default)
+        public async Task<IEnumerable<Order>> GetShopOrdersAsync(Guid shopId, OrderStatus? status, int page, int size, CancellationToken token = default)
         {
             var query = _context.Orders
                 .Include(o => o.OrderItems) 
                 .AsNoTracking() 
                 .Where(o => o.ShopId == shopId);
-            if (!string.IsNullOrEmpty(status))
+            if (status.HasValue)
             {
-                query = query.Where(o => o.OrderStatus.ToLower() == status.ToLower());
+                query = query.Where(o => o.OrderStatus == status);
             }
             return await query
                 .OrderByDescending(o => o.CreatedAt)
