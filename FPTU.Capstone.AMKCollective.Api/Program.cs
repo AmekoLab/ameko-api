@@ -65,7 +65,7 @@ internal class Program
 
         #region CORS
         // Configure CORS
-        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? new[] { "http://localhost:3000" };
 
         builder.Services.AddCors(options =>
         {

@@ -16,6 +16,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         private IOrderRepository? _order;
         private IOrderGroupRepository? _orderGroups;
         private IPaymentRepository? _payments;
+        private IWalletRepository? _wallets;
+        private IOrderIssueRepository? _orderIssues;
+        private IOrderIssueLogRepository? _orderIssueLogs;
 
         public UnitOfWork(ApplicationDbContext context)
         {
@@ -34,6 +37,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public IOrderRepository Orders => _order ??= new OrderRepository(_context);
         public IOrderGroupRepository OrderGroups => _orderGroups ??= new OrderGroupRepository(_context);
         public IPaymentRepository Payments => _payments ??= new PaymentRepository(_context);
+        
+        public IWalletRepository Wallets => _wallets ??= new WalletRepository(_context);
+        public IOrderIssueRepository OrderIssues => _orderIssues ??= new OrderIssueRepository(_context);
+        public IOrderIssueLogRepository OrderIssueLogs => _orderIssueLogs ??= new OrderIssueLogRepository(_context);
 
         public async Task CommitAsync()
         {
