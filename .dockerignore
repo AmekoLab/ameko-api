@@ -1,0 +1,53 @@
+# Git
+.git
+.gitignore
+.gitattributes
+.github
+
+# IDEs
+.vs
+.vscode
+.idea
+*.user
+*.suo
+
+# Build outputs
+**/bin/
+**/obj/
+**/out/
+
+# NuGet
+**/.nuget/
+**/packages/
+*.nupkg
+
+# Test results
+**/TestResults/
+**/*.trx
+
+# Documentation
+*.md
+!README.md
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+**/logs/
+**/*.log
+
+# Temp files
+**/tmp/
+**/temp/
+**/.cache/
