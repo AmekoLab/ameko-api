@@ -3,6 +3,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Follow;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
+using FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System.Text.Json;
@@ -40,7 +41,22 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             CreateMap<FollowRequest, Follow>();
             CreateMap<Follow, FollowResponse>();
 
-            // TODO: Thêm mapping cho các entities khác ở đây
+            //==================ASSEMBLED PRODUCT=======================//
+            CreateMap<AssembledProduct, AssembledProductResponse>();
+            CreateMap<AssembledProduct, AssembledProductDetailResponse>()
+                .ForMember(dest => dest.Details, opt => opt.MapFrom(src => src.ProductAssembledDetails));
+
+            CreateMap<ProductAssembledDetail, ProductAssembledDetailResponse>()
+                .ForMember(dest => dest.BaseKitName, opt => opt.MapFrom(src => src.BaseKit != null ? src.BaseKit.Name : string.Empty))
+                .ForMember(dest => dest.ComponentName, opt => opt.MapFrom(src => src.Component != null ? src.Component.Name : string.Empty));
+
+            CreateMap<CreateAssembledProductRequest, AssembledProduct>()
+                .ForMember(dest => dest.ProductAssembledDetails, opt => opt.MapFrom(src => src.Details));
+
+            CreateMap<ProductAssembledDetailRequest, ProductAssembledDetail>();
+
+            CreateMap<UpdateAssembledProductRequest, AssembledProduct>();
+            //==================ASSEMBLED PRODUCT=======================//
 
             //==================MODEL=======================//
             CreateMap<Model, PartResponse>()
