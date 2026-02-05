@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - develop
       - developer
     paths:
       - "FPTU.Capstone.AMKCollective.Api/**"
@@ -15,6 +16,7 @@ on:
   pull_request:
     branches:
       - developer
+      - develop
       - main
     types: [opened, synchronize, reopened]
 
@@ -61,7 +63,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./FPTU.Capstone.AMKCollective.Api
+          context: .
           file: ./FPTU.Capstone.AMKCollective.Api/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
