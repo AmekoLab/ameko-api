@@ -25,7 +25,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public string? CitizenId { get; set; } //CCCD/CMND
         [MaxLength(50)]
         public string? TaxCode { get; set; }
-        public ShopStatus Status { get; set; } = ShopStatus.Pending;
+        public ShopStatus Status { get; set; } = ShopStatus.PendingApproval;
         public string? AdminNote {  get; set; }
 
         public bool IsActive { get; set; } = true;

@@ -60,5 +60,13 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public virtual ICollection<PostReaction> PostReactions { get; set; } = new List<PostReaction>();
         public virtual ICollection<PostComment> PostComments { get; set; } = new List<PostComment>();
         public virtual ICollection<CommunityPost> CommunityPosts { get; set; } = new List<CommunityPost>();
+        
+        // Payment & Wallet
+        public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
+        public virtual Wallet? Wallet { get; set; }
+        
+        // Order Issues
+        public virtual ICollection<OrderIssue> OrderIssues { get; set; } = new List<OrderIssue>();
+        public virtual ICollection<OrderIssueLog> OrderIssueActions { get; set; } = new List<OrderIssueLog>();
     }
 }

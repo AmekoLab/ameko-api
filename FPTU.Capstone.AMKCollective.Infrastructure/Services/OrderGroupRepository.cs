@@ -1,5 +1,6 @@
 ﻿using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -32,7 +33,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             await _context.OrderGroups.AddAsync(orderGroup, token);
         }
 
-        public async Task UpdatePaymentStatusAsync(Guid orderGroupId, string status, CancellationToken token = default)
+        public async Task UpdatePaymentStatusAsync(Guid orderGroupId, PaymentStatus status, CancellationToken token = default)
         {
             await _context.OrderGroups
                 .Where(og => og.Id == orderGroupId)
@@ -56,6 +57,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<int> SaveChangesAsync(CancellationToken token = default)
         {
             return await _context.SaveChangesAsync(token);
+        }
+        public async Task UpdateAsync(OrderGroup orderGroup)
+        {
+            _context.OrderGroups.Update(orderGroup);
+            await Task.CompletedTask;
         }
     }
 }

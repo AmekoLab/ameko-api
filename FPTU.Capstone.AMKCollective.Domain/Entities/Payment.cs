@@ -7,7 +7,8 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
 {
     public class Payment : BaseEntity
     {
-        public Guid OrderGroupId { get; set; }
+        public Guid? OrderGroupId { get; set; }
+        public Guid UserId { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]
         //CURRENCY INFORMATION
@@ -36,7 +37,9 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public string? Description {  get; set; }
         public string? FailureMessage {  get; set; }
 
+        public PaymentType Type { get; set; } = PaymentType.OrderPayment; 
         // Navigation Properties
-        public virtual OrderGroup OrderGroup { get; set; } = null!;
+        public virtual OrderGroup? OrderGroup { get; set; }
+        public virtual User? User { get; set; }
     }
 }

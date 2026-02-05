@@ -1,3 +1,4 @@
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -25,10 +26,9 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public decimal TotalAmount { get; set; }
         [Column(TypeName = "decimal(18,2)")]
         public decimal DiscountAmount { get; set; } = 0;
-
-        public string OrderStatus { get; set; } = "Pending";  //OrderStatus == "InCart" 
-        public string? PaymentStatus { get; set; } = "Pending";
-
+        //TODO: need enum for order status
+        public OrderStatus OrderStatus { get; set; } = OrderStatus.Pending;  //OrderStatus == "InCart" 
+        public PaymentStatus PaymentStatus { get; set; } = PaymentStatus.Pending;
         public string? Note { get; set; } 
         public string? CancelReason { get; set; }
 

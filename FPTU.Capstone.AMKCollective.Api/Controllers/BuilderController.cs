@@ -5,6 +5,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Swashbuckle.AspNetCore.Annotations;
 using System.Security.Claims;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
@@ -25,8 +26,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Bắt đầu quy trình Build. Tạo Session mới và trả về bước 1.
         /// </summary>
         [HttpPost("start")]
-        [ProducesResponseType(typeof(ApiResponse<BuilderStepResponse>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [SwaggerOperation(
+            Summary = "Start Builder Session",
+            Description = "Initiates a new custom keyboard building session for a specific Base Kit. Returns the first step of the building process.")]
+        [SwaggerResponse(200, "Session started successfully", typeof(ApiResponse<BuilderStepResponse>))]
+        [SwaggerResponse(404, "Base Kit not found")]
+        [SwaggerResponse(500, "Internal server error")]
         public async Task<IActionResult> StartSession([FromBody] BuilderStartRequest request)
         {
             try
@@ -50,9 +55,13 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Chọn một linh kiện. Backend sẽ lưu lại và trả về bước tiếp theo.
         /// </summary>
         [HttpPost("select")]
-        [ProducesResponseType(typeof(ApiResponse<BuilderStepResponse>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [SwaggerOperation(
+    Summary = "Select Part for Builder",
+    Description = "Records a user's choice for a specific component in the builder session and returns the next step configuration."
+)]
+        [SwaggerResponse(200, "Part selected successfully", typeof(ApiResponse<BuilderStepResponse>))]
+        [SwaggerResponse(400, "Invalid selection or step")]
+        [SwaggerResponse(404, "Session or part not found")]
         public async Task<IActionResult> SelectPart([FromBody] BuilderSelectRequest request)
         {
             try
@@ -76,8 +85,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // GET: api/builder/config/{baseKitId}
         [HttpGet("config/{baseKitId}")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [SwaggerOperation(
+    Summary = "Get Builder Config",
+    Description = "Retrieves the initial configuration and available slots for a specific Base Kit."
+)]
+        [SwaggerResponse(200, "Configuration retrieved", typeof(ApiResponse<object>))]
+        [SwaggerResponse(404, "Base Kit not found")]
         public async Task<IActionResult> GetConfig(Guid baseKitId)
         {
             try
@@ -98,8 +111,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // GET: api/builder/search
         [HttpGet("search")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
-        public async Task<IActionResult> SearchParts([FromQuery] CompatiblePartsQuery query)
+        [SwaggerOperation(
+    Summary = "Search Compatible Parts",
+    Description = "Searches for parts that are compatible with the current builder session context."
+)]
+        [SwaggerResponse(200, "Search results retrieved", typeof(ApiResponse<object>))]
+        public async Task<IActionResult> SearchParts([FromQuery] GetCompatiblePartsRequest query)
         {
             try
             {
@@ -116,8 +133,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // POST: api/builder/validate
         [HttpPost("validate")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+        [SwaggerOperation(
+    Summary = "Validate Configuration",
+    Description = "Validates if the selected list of components form a valid and compatible keyboard configuration."
+)]
+        [SwaggerResponse(200, "Configuration is valid")]
+        [SwaggerResponse(400, "Configuration is invalid (details in response)")]
         public async Task<IActionResult> Validate([FromBody] ValidateBuilderRequest request)
         {
             try
@@ -140,7 +161,11 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // GET: api/builder/check-match
         [HttpGet("check-match")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+        [SwaggerOperation(
+    Summary = "Check Compatibility",
+    Description = "Checks if a specific component ID is compatible with the given Base Kit ID."
+)]
+        [SwaggerResponse(200, "Check successful", typeof(ApiResponse<object>))]
         public async Task<IActionResult> CheckMatch(Guid baseKitId, Guid componentId)
         {
             try
@@ -157,7 +182,11 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // POST: api/builder/options
         [HttpPost("options")]
-        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status200OK)]
+        [SwaggerOperation(
+    Summary = "Create Kit Option (Admin)",
+    Description = "Define a new selectable option slot for a keyboard kit."
+)]
+        [SwaggerResponse(200, "Option created successfully")]
         public async Task<IActionResult> CreateOption([FromForm] CreateKitOptionRequest request)
         {
             try
@@ -174,7 +203,11 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // DELETE: api/builder/options/{id}
         [HttpDelete("options/{id}")]
-        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status200OK)]
+        [SwaggerOperation(
+    Summary = "Delete Kit Option (Admin)",
+    Description = "Removes a configuration option from a kit."
+)]
+        [SwaggerResponse(200, "Option deleted successfully")]
         public async Task<IActionResult> DeleteOption(Guid id)
         {
             try
@@ -191,8 +224,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // POST: api/builder/options/bulk
         [HttpPost("options/bulk")]
-        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status400BadRequest)]
+        [SwaggerOperation(
+    Summary = "Bulk Create Options (Admin)",
+    Description = "Import multiple kit options at once."
+)]
+        [SwaggerResponse(200, "Bulk import successful")]
+        [SwaggerResponse(400, "Request list is empty")]
         public async Task<IActionResult> BulkCreateOptions([FromForm] List<CreateKitOptionRequest> requests)
         {
             try
@@ -215,8 +252,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // DELETE: api/builder/config/{baseKitId}
         [HttpDelete("config/{baseKitId}")]
-        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [SwaggerOperation(
+    Summary = "Reset Builder Config",
+    Description = "Resets the configuration of a base kit to its default state."
+)]
+        [SwaggerResponse(200, "Reset successful")]
+        [SwaggerResponse(404, "Base Kit not found")]
         public async Task<IActionResult> ResetConfig(Guid baseKitId)
         {
             try
@@ -236,6 +277,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpGet("session/{sessionId}")]
+        [SwaggerOperation(
+    Summary = "Resume Session",
+    Description = "Retrieves the state of an existing builder session."
+)]
+        [SwaggerResponse(200, "Session resumed", typeof(ApiResponse<BuilderStepResponse>))]
+        [SwaggerResponse(404, "Session expired or not found")]
         public async Task<IActionResult> ResumeSession(Guid sessionId, [FromQuery] string? stepName = null)
         {
             try

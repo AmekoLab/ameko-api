@@ -7,6 +7,7 @@ using FPTU.Capstone.AMKCollective.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Swashbuckle.AspNetCore.Annotations;
 using System.Security.Claims;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
@@ -22,146 +23,157 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             _orderService = orderService;
         }
 
-        // =================================================================
-        // 1. NHÓM API GIỎ HÀNG (CART) - Thay thế cho CartController cũ
-        // =================================================================
-
-        /// <summary>
-        /// Lấy giỏ hàng hiện tại của user
-        /// </summary>
-        [HttpGet("cart")]
-        [Authorize]
-        public async Task<IActionResult> GetMyCart()
-        {
-            var userId = GetUserId();
-            var cart = await _orderService.GetMyCartAsync(userId);
-            if (cart == null) return SuccessResponse(new { items = new List<object>(), totalAmount = 0 }, "Cart empty");
-
-            return SuccessResponse(cart);
-        }
-
-        /// <summary>
-        /// Thêm sản phẩm vào giỏ hàng
-        /// </summary>
-        [HttpPost("cart/add")]
-        [Authorize]
-        public async Task<IActionResult> AddToCart([FromBody] AddToCartRequest request)
-        {
-            var userId = GetUserId();
-            try
-            {
-                await _orderService.AddToCartAsync(userId, request);
-                return SuccessResponse("Add to cart successfully");
-            }
-            catch (Exception ex)
-            {
-                var message = ex.InnerException?.Message ?? ex.Message;
-                return ErrorResponse<string>(message);
-            }
-        }
-
-        /// <summary>
-        /// Xóa 1 món khỏi giỏ hàng
-        /// </summary>
-        [HttpDelete("cart/{orderItemId}")]
-        [Authorize]
-        public async Task<IActionResult> RemoveFromCart(Guid orderItemId)
-        {
-            var userId = GetUserId();
-            try
-            {
-                await _orderService.RemoveItemFromCartAsync(userId, orderItemId);
-                return SuccessResponse("Removed item in cart");
-            }
-            catch (Exception ex)
-            {
-                return ErrorResponse<string>(ex.Message);
-            }
-        }
-
-        // =================================================================
-        // 2. NHÓM API THANH TOÁN (CHECKOUT)
-        // =================================================================
-
-        /// <summary>
-        /// Chốt đơn (Checkout) - Chuyển từ Giỏ hàng sang Đơn hàng thật & Lấy link thanh toán
-        /// </summary>
+        // 1. Checkout
         [HttpPost("checkout")]
-        [Authorize]
+        [SwaggerOperation(
+    Summary = "Process Checkout",
+    Description = "Finalizes the order based on items in the cart or immediate purchase requests."
+)]
+        [SwaggerResponse(200, "Checkout initiated successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
         public async Task<IActionResult> Checkout([FromBody] CheckoutRequest request)
         {
-            if (!ModelState.IsValid) return BadRequest(ModelState);
-
-            var userId = GetUserId();
-            try
-            {
-                // Hàm này giờ sẽ lấy data từ Giỏ hàng trong DB chứ không tin tưởng Items từ Request nữa
-                var result = await _orderService.CheckoutAsync(userId, request);
-                return SuccessResponse(result, "Create order sucessfully, please check out");
-            }
-            catch (Exception ex)
-            {
-                return ErrorResponse<string>(ex.Message);
-            }
+            var userId = GetCurrentUserId();
+            var result = await _orderService.CheckoutAsync(userId, request);
+            return SuccessResponse(result, "Checkout initiated successfully");
         }
 
-        // =================================================================
-        // 3. NHÓM API LỊCH SỬ ĐƠN HÀNG (HISTORY)
-        // =================================================================
+        // 2. Thêm vào giỏ
+        [HttpPost("cart")]
+        [SwaggerOperation(
+    Summary = "Add Item to Cart",
+    Description = "Adds a product or a custom built keyboard to the user's shopping cart."
+)]
+        [SwaggerResponse(200, "Item added to cart")]
+        [SwaggerResponse(401, "Unauthorized")]
+        public async Task<IActionResult> AddToCart([FromBody] AddToCartRequest request)
+        {
+            var userId = GetCurrentUserId();
+            await _orderService.AddToCartAsync(userId, request);
+            return SuccessResponse("Item added to cart successfully");
+        }
 
-        /// <summary>
-        /// Lấy lịch sử mua hàng (Các đơn đã đặt)
-        /// </summary>
+        // 3. Lấy giỏ hàng
+        [HttpGet("cart")]
+        [SwaggerOperation(
+    Summary = "Get My Cart",
+    Description = "Retrieves the current user's shopping cart details."
+)]
+        [SwaggerResponse(200, "Cart retrieved successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
+        public async Task<IActionResult> GetMyCart()
+        {
+            var userId = GetCurrentUserId();
+            var cart = await _orderService.GetMyCartAsync(userId);
+            return SuccessResponse(cart, "Cart retrieved successfully");
+        }
+
+        // 4. Xóa item khỏi giỏ
+        [HttpDelete("cart/{itemId}")]
+        [SwaggerOperation(
+    Summary = "Remove Item from Cart",
+    Description = "Removes a specific item from the shopping cart."
+)]
+        [SwaggerResponse(200, "Item removed successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
+        public async Task<IActionResult> RemoveFromCart(Guid itemId)
+        {
+            var userId = GetCurrentUserId();
+            await _orderService.RemoveItemFromCartAsync(userId, itemId);
+
+            return SuccessResponse("Item removed from cart");
+        }
+
+        // 5. Cập nhật số lượng
+        [HttpPut("cart/{itemId}")]
+        [SwaggerOperation(
+    Summary = "Update Cart Item Quantity",
+    Description = "Updates the quantity of a specific item in the cart."
+)]
+        [SwaggerResponse(200, "Cart updated successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
+        public async Task<IActionResult> UpdateCartItem(Guid itemId, [FromBody] UpdateCartItemRequest request)
+        {
+            var userId = GetCurrentUserId();
+            await _orderService.UpdateCartItemQuantityAsync(userId, itemId, request.Quantity);
+
+            return SuccessResponse("Cart item updated successfully");
+        }
+
+        // 1. GET MY ORDERS (Flat list)
         [HttpGet("my-orders")]
-        [Authorize]
+        [SwaggerOperation(
+            Summary = "Get detailed list of orders",
+            Description = "Returns a flat list of individual orders for tracking shipment and shop-level status."
+        )]
+        [SwaggerResponse(200, "Success", typeof(List<OrderResponse>))]
+        [SwaggerResponse(401, "Unauthorized")]
         public async Task<IActionResult> GetMyOrders()
         {
-            var userId = GetUserId();
+            var userId = GetCurrentUserId();
             var orders = await _orderService.GetMyOrdersAsync(userId);
-            return SuccessResponse(orders);
+
+            return SuccessResponse(orders, "Order list retrieved successfully.");
         }
 
-        /// <summary>
-        /// Xem chi tiết một nhóm đơn hàng (Order Group)
-        /// </summary>
-        [HttpGet("group/{orderGroupId}")]
-        [Authorize]
-        public async Task<IActionResult> GetOrderGroupDetail(Guid orderGroupId)
+        // 2. GET PAYMENT HISTORY (Grouped)
+        [HttpGet("my-payment-history")]
+        [SwaggerOperation(
+            Summary = "Get payment history (Grouped)",
+            Description = "Returns a list of payment batches (Order Groups). Each group contains multiple child orders."
+        )]
+        [SwaggerResponse(200, "Success", typeof(List<OrderGroupResponse>))]
+        [SwaggerResponse(401, "Unauthorized")]
+        public async Task<IActionResult> GetMyPaymentHistory()
         {
-            try
-            {
-                var orderGroup = await _orderService.GetOrderGroupDetailAsync(orderGroupId);
-                return SuccessResponse(orderGroup);
-            }
-            catch (KeyNotFoundException)
-            {
-                return NotFoundResponse<string>("Order not found");
-            }
+            var userId = GetCurrentUserId();
+
+            var orderGroups = await _orderService.GetMyOrderGroupsAsync(userId);
+
+            return SuccessResponse(orderGroups, "Payment history retrieved successfully.");
         }
 
-        [HttpPatch("cart/update")]
-        [Authorize]
-        public async Task<IActionResult> UpdateQuantity([FromBody] UpdateCartItemRequest request)
+
+
+
+        // 7. Chi tiết Group Order
+        [HttpGet("groups/{groupId}")]
+        [SwaggerOperation(
+    Summary = "Get Order Group Detail",
+    Description = "Retrieves details of a group order (for Group Buy)."
+)]
+        [SwaggerResponse(200, "Group details retrieved")]
+        [SwaggerResponse(404, "Group not found")]
+        public async Task<IActionResult> GetOrderGroupDetail(Guid groupId)
         {
-            var userId = GetUserId();
-            try
-            {
-                await _orderService.UpdateCartItemQuantityAsync(userId, request.OrderItemId, request.Quantity);
-                return SuccessResponse("udpate quantity successfully");
-            }
-            catch (Exception ex)
-            {
-                return ErrorResponse<string>(ex.Message);
-            }
+            var group = await _orderService.GetOrderGroupDetailAsync(groupId);
+            return SuccessResponse(group);
         }
 
-        // --- Helper để lấy UserId từ Token ---
-        private Guid GetUserId()
+        // 8. Hủy đơn
+        [HttpPost("{orderId}/cancel")]
+        [SwaggerOperation(
+    Summary = "Cancel Order",
+    Description = "Cancels a pending order if it meets the cancellation criteria."
+)]
+        [SwaggerResponse(200, "Order cancelled successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
+        public async Task<IActionResult> CancelOrder(Guid orderId, [FromBody] CancelOrderRequest request)
         {
-            var idClaim = User.FindFirst("id") ?? User.FindFirst(ClaimTypes.NameIdentifier);
-            if (idClaim == null) throw new UnauthorizedAccessException("Invalid Token");
-            return Guid.Parse(idClaim.Value);
+            var userId = GetCurrentUserId();
+            await _orderService.CancelOrderAsync(userId, orderId, request.Reason);
+            return SuccessResponse("Order cancelled successfully");
         }
 
+        // --- Helper: Get User ID ---
+        private Guid GetCurrentUserId()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
+            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out Guid userId))
+            {
+                return userId;
+            }
+            throw new UnauthorizedAccessException("User ID not found in token");
+        }
     }
 }

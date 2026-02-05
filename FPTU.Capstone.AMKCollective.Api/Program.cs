@@ -66,7 +66,7 @@ internal class Program
 
         #region CORS
         // Configure CORS
-        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? new[] { "http://localhost:3000" };
 
         builder.Services.AddCors(options =>
         {
@@ -141,13 +141,13 @@ internal class Program
 
         var app = builder.Build();
 
-        if (app.Environment.IsDevelopment())
-        {
+        // if (app.Environment.IsDevelopment())
+        // {
             app.UseSwagger();
             app.UseSwaggerUI();
 
             app.UseRewriter(new RewriteOptions().AddRedirect("^$", "swagger"));
-        }
+        // }
 
         app.UseHttpsRedirection();
         app.UseAuthentication();

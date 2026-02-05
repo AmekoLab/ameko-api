@@ -32,7 +32,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         }
 
         public async Task<(IEnumerable<KitDesignOption> Items, int TotalCount)> GetCompatiblePartsPagedAsync(
-            CompatiblePartsQuery query,
+            GetCompatiblePartsRequest query,
             CancellationToken token = default)
         {
             var dbQuery = _context.KitDesignOptions
@@ -115,7 +115,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<IEnumerable<KitDesignOption>> GetCompatibleOptionsForStepAsync(Guid baseKitId, string stepName, string? requiredTag)
         {
             var query = _context.KitDesignOptions
-                .Include(x => x.Component)
+                .Include(x => x.Component).ThenInclude(c => c.Category)
                 .Where(x => x.BaseKitId == baseKitId && x.StepName == stepName)
                 .AsQueryable();
 
