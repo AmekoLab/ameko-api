@@ -140,13 +140,13 @@ internal class Program
 
         var app = builder.Build();
 
-        if (app.Environment.IsDevelopment())
-        {
+        // if (app.Environment.IsDevelopment())
+        // {
             app.UseSwagger();
             app.UseSwaggerUI();
 
             app.UseRewriter(new RewriteOptions().AddRedirect("^$", "swagger"));
-        }
+        // }
 
         app.UseHttpsRedirection();
         app.UseAuthentication();
