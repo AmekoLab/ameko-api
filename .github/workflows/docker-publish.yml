@@ -67,7 +67,7 @@ jobs:
           cat > FPTU.Capstone.AMKCollective.Api/appsettings.Production.json << 'ENDJSON'
           {
             "ConnectionStrings": {
-              "DefaultConnection": "server=${{ secrets.DB_HOST }};port=${{ secrets.DB_PORT }};database=${{ secrets.DB_NAME }};user=${{ secrets.DB_USER }};password=${{ secrets.DB_PASSWORD }}"
+              "DefaultConnection": "Server=${{ secrets.DB_HOST }};Port=${{ secrets.DB_PORT }};Database=${{ secrets.DB_NAME }};Uid=${{ secrets.DB_USER }};Pwd=${{ secrets.DB_PASSWORD }};SslMode=Required;TreatTinyAsBoolean=true;"
             },
             "JwtSettings": {
               "SecretKey": "${{ secrets.JWT_SECRET_KEY }}",
