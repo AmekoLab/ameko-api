@@ -2,6 +2,7 @@ using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Follow;
+using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
@@ -150,7 +151,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             //order item component
             CreateMap<OrderItemComponent, OrderItemComponentDto>();
 
+            // =========================================================
+            // 3. ORDER ISSUES (ORDER ISSUES -> DTO)
+            // =========================================================
+            CreateMap<OrderIssue, OrderIssueResponse>();
+
+
         }
+
 
 
         //HELPER

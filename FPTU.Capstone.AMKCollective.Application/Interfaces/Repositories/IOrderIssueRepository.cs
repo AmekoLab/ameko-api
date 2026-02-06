@@ -1,4 +1,5 @@
 using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 
 namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
 {
@@ -10,5 +11,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task AddAsync(OrderIssue orderIssue);
         void Update(OrderIssue orderIssue);
         void Delete(OrderIssue orderIssue);
+
+        Task<int> CountUserIssuesAsync(Guid userId, OrderIssueStatus status, DateTime fromDate);
+        Task<List<OrderIssue>> GetExpiredIssuesAsync(DateTime threshold);
     }
 }

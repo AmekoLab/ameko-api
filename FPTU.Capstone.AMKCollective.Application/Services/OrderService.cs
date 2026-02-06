@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
@@ -344,7 +345,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (group == null) throw new KeyNotFoundException("Order group not found.");
             return _mapper.Map<OrderGroupResponse>(group);
         }
-
+        [Obsolete("This API is deprecated and disabled.")]
         public async Task CancelOrderAsync(Guid userId, Guid orderId, string reason, CancellationToken token = default)
         {
             var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
@@ -422,6 +423,136 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Orders.UpdateOrderAsync(order);
             await _unitOfWork.CommitAsync();
         }
+
+
+        public async Task<OrderIssueResponse> RequestCancelOrderAsync(Guid userId, DTOs.OrderIssues.CancelOrderRequest request, CancellationToken token = default)
+        {
+            // 1. Validate Order
+            var order = await _unitOfWork.Orders.GetByIdAsync(request.OrderId);
+            if (order == null) throw new KeyNotFoundException("Order not found");
+            if (order.CustomerId != userId) throw new UnauthorizedAccessException("Not your order.");
+
+            // 2. Check Business Rule (BR): Chặn nếu hủy > 4 đơn/tuần
+            var lastWeek = DateTime.UtcNow.AddDays(-7);
+
+            // Sử dụng Repository method vừa tạo
+            int cancelledCount = await _unitOfWork.OrderIssues.CountUserIssuesAsync(
+                userId,
+                OrderIssueStatus.Cancelled,
+                lastWeek
+            );
+
+            bool isSpamRequest = cancelledCount >= 4;
+
+            // 3. Tạo Entity
+            var issue = new OrderIssue
+            {
+                Id = Guid.NewGuid(),
+                OrderId = request.OrderId,
+                UserId = userId,
+                Type = OrderIssueType.CancelRequest,
+                Reason = request.Reason,
+                Description = request.Description,
+                EvidenceUrl = request.EvidenceUrl,
+                CreatedAt = DateTime.UtcNow,
+                IsSystemValid = false
+            };
+
+            // 4. Logic xét duyệt tự động
+            bool isOrderTooLate = order.OrderStatus == OrderStatus.Shipped ||
+                                  order.OrderStatus == OrderStatus.Completed;
+
+            if (isSpamRequest)
+            {
+                issue.Status = OrderIssueStatus.Rejected;
+                issue.ShopResponse = "System Auto-Reject: Spam limit reached (4 cancellations/week).";
+            }
+            else if (isOrderTooLate)
+            {
+                issue.Status = OrderIssueStatus.Rejected;
+                issue.ShopResponse = "System Auto-Reject: Order is already shipped or completed.";
+            }
+            else
+            {
+                // Valid case
+                issue.Status = OrderIssueStatus.InProgress;
+                issue.IsSystemValid = true;
+            }
+
+            // 5. Save & Map
+            await _unitOfWork.OrderIssues.AddAsync(issue);
+            await _unitOfWork.CommitAsync();
+
+            return _mapper.Map<OrderIssueResponse>(issue);
+        }
+
+        public async Task ProcessCancelRequestAsync(Guid shopId, ProcessIssueRequest request, CancellationToken token = default)
+        {
+            // 1. Lấy Issue & Validate
+            var issue = await _unitOfWork.OrderIssues.GetByIdAsync(request.IssueId);
+            if (issue == null) throw new KeyNotFoundException("Order issue not found");
+
+            // Check quyền: Order của Shop nào thì Shop đó mới được xử lý
+            var order = await _unitOfWork.Orders.GetByIdAsync(issue.OrderId);
+            if (order == null) throw new KeyNotFoundException("Related order not found"); // Data integrity check
+
+            // Nếu shopId != Guid.Empty (trường hợp gọi từ API Shop) thì phải check quyền
+            // Nếu là System job gọi (auto cancel) thì có thể bỏ qua check shopId hoặc truyền vào shopId của order
+            if (shopId != Guid.Empty && order.ShopId != shopId)
+                throw new UnauthorizedAccessException("You can only process issues for your own shop orders.");
+
+            // Chỉ xử lý được khi đang InProgress hoặc Pending
+            if (issue.Status != OrderIssueStatus.InProgress && issue.Status != OrderIssueStatus.Pending)
+                throw new InvalidOperationException($"Cannot process issue in status {issue.Status}");
+
+            // 2. Cập nhật thông tin phản hồi
+            issue.ShopResponse = request.ShopResponse;
+            issue.UpdatedAt = DateTime.UtcNow;
+
+            // 3. Xử lý theo quyết định (Decision)
+            switch (request.Decision)
+            {
+                case OrderIssueStatus.Approved: // 1.3.1 Shop Đồng ý
+                    issue.Status = OrderIssueStatus.Approved;
+
+                    // Hủy đơn & Hoàn tiền/Voucher
+                    order.OrderStatus = OrderStatus.Cancelled;
+                    order.CancelReason = $"Shop approved cancel request: {issue.Reason}";
+                    await ExecuteRefundStrategyAsync(order);
+                    break;
+
+                case OrderIssueStatus.Rejected: // Shop Từ chối
+                    issue.Status = OrderIssueStatus.Rejected;
+                    // Đơn hàng giữ nguyên trạng thái cũ, tiếp tục quy trình
+                    break;
+
+                case OrderIssueStatus.Cancelled: // 1.3.2 System Timeout / Shop mặc kệ -> Auto Refund
+                    issue.Status = OrderIssueStatus.Cancelled;
+
+                    // Hủy đơn & Hoàn tiền/Voucher ngay
+                    order.OrderStatus = OrderStatus.Cancelled;
+                    order.CancelReason = "Request timeout (Auto-Refund)";
+                    await ExecuteRefundStrategyAsync(order);
+                    break;
+
+                default:
+                    throw new ArgumentException("Invalid decision status.");
+            }
+
+            // 4. Save Changes
+            // Update Order (trạng thái hủy)
+            if (order.OrderStatus == OrderStatus.Cancelled)
+            {
+                await _unitOfWork.Orders.UpdateOrderAsync(order);
+            }
+
+            // Update Issue
+             _unitOfWork.OrderIssues.Update(issue);
+
+            await _unitOfWork.CommitAsync();
+        }
+
+        
 
         // =================================================================
         // PRIVATE HELPERS
@@ -516,6 +647,40 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 newItem.TotalPrice = newItem.UnitPrice * newItem.Quantity;
                 cartOrder.OrderItems.Add(newItem);
             }
+        }
+
+        private async Task ExecuteRefundStrategyAsync(Order order)
+        {
+            // A. Hoàn trả tồn kho (Stock)
+            // Cần load OrderItems nếu chưa có
+            // Lưu ý: Nếu OrderItems chưa được Include trong GetByIdAsync ở trên thì phải load lại hoặc Include ngay từ đầu
+            // Giả sử repo đã include OrderItems
+            foreach (var item in order.OrderItems)
+            {
+                var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
+                if (product != null)
+                {
+                    product.StockQuantity += item.Quantity;
+                    await _unitOfWork.Models.UpdateAsync(product);
+                }
+            }
+
+            // B. Xử lý tiền (Voucher/Refund)
+            // Nếu chưa thanh toán -> ko cần làm gì
+            if (order.PaymentStatus == PaymentStatus.Pending || order.PaymentStatus == PaymentStatus.Pending)
+            {
+                order.PaymentStatus = PaymentStatus.Failed;
+                return;
+            }
+
+            // Nếu đã thanh toán -> Tạo Voucher (TODO)
+            /* // TODO: Voucher Logic
+               var voucher = new Voucher { ... };
+               await _unitOfWork.Vouchers.AddAsync(voucher);
+            */
+
+            // Update trạng thái tiền
+            order.PaymentStatus = PaymentStatus.Refunded;
         }
     }
 }

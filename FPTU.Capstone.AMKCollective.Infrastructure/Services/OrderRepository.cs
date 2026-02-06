@@ -121,5 +121,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             _context.Orders.Remove(order);
         }
+
+        public async Task<IEnumerable<Order>> GetOrdersByGroupIdAsync(Guid orderGroupId, CancellationToken token = default)
+        {
+            return await _context.Orders
+                .Include(o => o.OrderItems) // Load items để đảm bảo tính toàn vẹn dữ liệu
+                .Where(o => o.OrderGroupId == orderGroupId && !o.IsDeleted)
+                .AsSplitQuery() // Tối ưu hiệu năng khi có Include
+                .ToListAsync(token);
+        }
     }
 }

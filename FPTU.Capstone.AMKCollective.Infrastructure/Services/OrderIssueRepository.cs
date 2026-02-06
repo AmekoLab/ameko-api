@@ -1,5 +1,6 @@
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -54,6 +55,21 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             orderIssue.IsDeleted = true;
             _context.OrderIssues.Update(orderIssue);
+        }
+
+        public async Task<int> CountUserIssuesAsync(Guid userId, OrderIssueStatus status, DateTime fromDate)
+        {
+            return await _context.OrderIssues
+                .CountAsync(x => x.UserId == userId &&
+                                 x.Status == status &&
+                                 x.CreatedAt >= fromDate);
+        }
+
+        public async Task<List<OrderIssue>> GetExpiredIssuesAsync(DateTime threshold)
+        {
+            return await _context.OrderIssues
+                .Where(x => x.Status == OrderIssueStatus.InProgress && x.CreatedAt <= threshold)
+                .ToListAsync();
         }
     }
 }
