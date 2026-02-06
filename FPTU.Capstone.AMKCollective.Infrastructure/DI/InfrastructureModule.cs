@@ -31,7 +31,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
             builder.Register(c =>
             {
                 var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
-                optionsBuilder.UseMySql(connectionString, serverVersion);
+                optionsBuilder.UseMySql(connectionString, serverVersion, mySqlOptions =>
+                    mySqlOptions.EnableRetryOnFailure(
+                        maxRetryCount: 5,
+                        maxRetryDelay: TimeSpan.FromSeconds(30),
+                        errorNumbersToAdd: null));
                 return new ApplicationDbContext(optionsBuilder.Options);
             })
             .AsSelf()
