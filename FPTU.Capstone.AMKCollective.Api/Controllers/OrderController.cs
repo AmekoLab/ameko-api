@@ -211,7 +211,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
 
             // 2. Call Service to process
-            await _orderService.ProcessCancelRequestAsync(shop.Id, request);
+            await _orderService.ProcessCancelRequestAsync(userId, request);
 
             return SuccessResponse(true, "Request processed successfully.");
         }

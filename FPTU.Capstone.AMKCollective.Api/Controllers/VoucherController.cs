@@ -3,6 +3,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs.Voucher;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
 {
@@ -137,12 +138,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         // Helper private để lấy User Id từ Token
         private Guid GetCurrentUserId()
         {
-            var userIdClaim = User.FindFirst("id");
-            if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId))
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
+            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out Guid userId))
             {
-                throw new Exception("Cannot identify user from token");
+                return userId;
             }
-            return userId;
+            throw new UnauthorizedAccessException("User ID not found in token");
         }
     }
 }

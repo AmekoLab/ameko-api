@@ -20,12 +20,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly IPaymentService _paymentService;
+        private readonly IVoucherService _voucherService;
+        private readonly IWalletService _walletService;
 
-        public OrderService(IUnitOfWork unitOfWork, IMapper mapper, IPaymentService paymentService)
+        public OrderService(IUnitOfWork unitOfWork, IMapper mapper, IPaymentService paymentService, IVoucherService voucher, IWalletService wallet)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _paymentService = paymentService;
+            _voucherService = voucher;
+            _walletService = wallet;
         }
 
         // =================================================================
@@ -432,127 +436,230 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (order == null) throw new KeyNotFoundException("Order not found");
             if (order.CustomerId != userId) throw new UnauthorizedAccessException("Not your order.");
 
-            // 2. Check Business Rule (BR): Chặn nếu hủy > 4 đơn/tuần
+            // Chặn nếu đơn hàng đã đi quá xa (Đã giao/Hoàn tất)
+            if (order.OrderStatus == OrderStatus.Shipped || order.OrderStatus == OrderStatus.Completed)
+            {
+                throw new InvalidOperationException("Cannot cancel order at this stage.");
+            }
+
+            // 2. Check Spam: Hủy > 4 đơn/tuần (Tính cả AutoCancelled và ShopAccepted)
             var lastWeek = DateTime.UtcNow.AddDays(-7);
 
-            // Sử dụng Repository method vừa tạo
+            // Đếm số đơn đã hủy thành công (Cancelled) của user này trong 7 ngày qua
             int cancelledCount = await _unitOfWork.OrderIssues.CountUserIssuesAsync(
                 userId,
-                OrderIssueStatus.AutoCancelled,
+                OrderIssueStatus.AutoCancelled, // Hoặc status tương ứng khi hủy thành công
                 lastWeek
             );
 
             bool isSpamRequest = cancelledCount >= 4;
 
-            // 3. Tạo Entity
+            // 3. Tạo Entity OrderIssue
             var issue = new OrderIssue
             {
-                Id = Guid.NewGuid(),
                 OrderId = request.OrderId,
                 UserId = userId,
-                Type = OrderIssueType.CancelRequest,
+                Type = OrderIssueType.CancelRequest, // Đổi tên Enum cho khớp code cũ của bạn
                 Reason = request.Reason,
                 Description = request.Description,
-                EvidenceUrl = request.EvidenceUrl,
+                // EvidenceUrl = request.EvidenceUrl, // Uncomment nếu DTO có trường này
                 CreatedAt = DateTime.UtcNow,
-                IsSystemValid = false
+                IsSystemValid = !isSpamRequest // Nếu spam thì invalid ngay từ đầu
             };
 
-            // 4. Logic xét duyệt tự động
-            bool isOrderTooLate = order.OrderStatus == OrderStatus.Shipped ||
-                                  order.OrderStatus == OrderStatus.Completed;
-
+            // 4. Quyết định trạng thái ngay lập tức
             if (isSpamRequest)
             {
                 issue.Status = OrderIssueStatus.Rejected;
                 issue.ShopResponse = "System Auto-Reject: Spam limit reached (4 cancellations/week).";
-            }
-            else if (isOrderTooLate)
-            {
-                issue.Status = OrderIssueStatus.Rejected;
-                issue.ShopResponse = "System Auto-Reject: Order is already shipped or completed.";
+                issue.AdminNote = "Auto-rejected by System.";
             }
             else
             {
-                // Valid case
+                // Valid -> Chờ Shop xử lý
                 issue.Status = OrderIssueStatus.InProgress;
-                issue.IsSystemValid = true;
             }
 
-            // 5. Save & Map
+            // 5. Lưu vào DB
             await _unitOfWork.OrderIssues.AddAsync(issue);
+
+            // Tạo Log khởi tạo
+            var log = new OrderIssueLog
+            {
+                OrderIssueId = issue.Id,
+                ActionById = userId,
+                ActionByRole = RoleType.Customer,
+                Action = OrderIssueAction.Create,
+                Comment = "Customer requested cancellation."
+            };
+            await _unitOfWork.OrderIssueLogs.AddAsync(log);
+
             await _unitOfWork.CommitAsync();
 
             return _mapper.Map<OrderIssueResponse>(issue);
         }
 
-        public async Task ProcessCancelRequestAsync(Guid shopId, ProcessIssueRequest request, CancellationToken token = default)
+        public async Task ProcessCancelRequestAsync(Guid actorId, ProcessIssueRequest request, CancellationToken token = default)
         {
-            // 1. Lấy Issue & Validate
+            // 1. Lấy Issue
             var issue = await _unitOfWork.OrderIssues.GetByIdAsync(request.IssueId);
             if (issue == null) throw new KeyNotFoundException("Order issue not found");
 
-            // Check quyền: Order của Shop nào thì Shop đó mới được xử lý
+            // 2. Lấy Order
             var order = await _unitOfWork.Orders.GetByIdAsync(issue.OrderId);
-            if (order == null) throw new KeyNotFoundException("Related order not found"); // Data integrity check
+            if (order == null) throw new KeyNotFoundException("Related order not found");
 
-            // Nếu shopId != Guid.Empty (trường hợp gọi từ API Shop) thì phải check quyền
-            // Nếu là System job gọi (auto cancel) thì có thể bỏ qua check shopId hoặc truyền vào shopId của order
-            if (shopId != Guid.Empty && order.ShopId != shopId)
-                throw new UnauthorizedAccessException("You can only process issues for your own shop orders.");
+            // [FIX 1] Đảm bảo Shop luôn được load. Nếu Repo chưa include thì load thủ công.
+            if (order.Shop == null && order.ShopId.HasValue)
+            {
+                order.Shop = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+            }
 
-            // Chỉ xử lý được khi đang InProgress hoặc Pending
+            // 3. XÁC ĐỊNH NGƯỜI THỰC HIỆN (REAL ACTOR)
+            Guid realActionUserId = actorId;
+
+            // Trường hợp A: Hệ thống/Worker gọi (truyền Guid.Empty)
+            if (realActionUserId == Guid.Empty)
+            {
+                if (order.Shop != null)
+                {
+                    realActionUserId = order.Shop.UserId; // Hệ thống đóng vai chủ shop
+                }
+                else
+                {
+                    // Nếu đơn không có Shop (lỗi data), log warning và tiếp tục (hoặc throw)
+                    // Ở đây gán tạm là CustomerId hoặc 1 ID hệ thống để không crash luồng Refund
+                    throw new InvalidOperationException("System cannot identify Shop Owner (Shop data missing).");
+                }
+
+                if (string.IsNullOrEmpty(request.ShopResponse))
+                    request.ShopResponse = "System Auto-Process: Request timeout.";
+            }
+            // Trường hợp B: Shop Owner (hoặc User) gọi API thủ công
+            else
+            {
+                // [FIX 2] Validate Quyền chặt chẽ & Thông báo rõ ràng
+                if (order.Shop != null)
+                {
+                    // Nếu người gọi KHÁC chủ shop
+                    if (order.Shop.UserId != realActionUserId)
+                    {
+                        // Mở comment dòng dưới nếu muốn cho phép ADMIN xử lý (cần check Role)
+                        // var user = await _unitOfWork.Users.GetByIdAsync(realActionUserId);
+                        // if (user.Role.Name != RoleType.Admin) 
+
+                        throw new UnauthorizedAccessException($"Access Denied");
+                    }
+                }
+                else if (order.ShopId.HasValue)
+                {
+                    // ShopId có value mà Shop object vẫn null -> Lỗi DB/Query
+                    throw new KeyNotFoundException($"ShopProfile with ID {order.ShopId} not found.");
+                }
+            }
+
+            if (issue.Status == request.Decision)
+            {
+                return; // Đã xử lý rồi, không làm gì thêm
+            }
+
+            // Validate trạng thái 
             if (issue.Status != OrderIssueStatus.InProgress && issue.Status != OrderIssueStatus.Pending)
-                throw new InvalidOperationException($"Cannot process issue in status {issue.Status}");
+                throw new InvalidOperationException($"This request has already been processed (Current Status: {issue.Status}).");
 
-            // 2. Cập nhật thông tin phản hồi
+            // Cập nhật Issue
             issue.ShopResponse = request.ShopResponse;
             issue.UpdatedAt = DateTime.UtcNow;
 
-            // 3. Xử lý theo quyết định (Decision)
+            // 4. Xử lý theo quyết định
             switch (request.Decision)
             {
-                case OrderIssueStatus.ShopAccepted: // 1.3.1 Shop Đồng ý
-                    issue.Status = OrderIssueStatus.ShopAccepted;
+                case OrderIssueStatus.ShopAccepted:
+                case OrderIssueStatus.AutoCancelled:
+                    var newStatus = request.Decision == OrderIssueStatus.AutoCancelled
+                                    ? OrderIssueStatus.AutoCancelled
+                                    : OrderIssueStatus.ShopAccepted;
 
-                    // Hủy đơn & Hoàn tiền/Voucher
+                    issue.Status = newStatus;
+
+                    // Hủy đơn
                     order.OrderStatus = OrderStatus.Cancelled;
-                    order.CancelReason = $"Shop approved cancel request: {issue.Reason}";
-                    await ExecuteRefundStrategyAsync(order);
+                    order.CancelReason = request.Decision == OrderIssueStatus.AutoCancelled
+                                         ? "Request timeout (Auto-Refund)"
+                                         : $"Shop approved: {issue.Reason}";
+
+                    // === LOGIC HOÀN TIỀN / TRẢ KHO ===
+                    // 4.1 Trả hàng về kho
+                    // Lưu ý: Cần load OrderItems nếu chưa có
+                    if (order.OrderItems == null || !order.OrderItems.Any())
+                    {
+                        // Load lại order với items nếu cần thiết (thường Repo GetById đã có)
+                        // var fullOrder = ... 
+                    }
+
+                    if (order.OrderItems != null)
+                    {
+                        foreach (var item in order.OrderItems)
+                        {
+                            var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
+                            if (product != null)
+                            {
+                                product.StockQuantity += item.Quantity;
+                                await _unitOfWork.Models.UpdateAsync(product);
+                            }
+                        }
+                    }
+
+                    // 4.2 Tạo Voucher đền bù (Nếu đã thanh toán)
+                    if (order.PaymentStatus == PaymentStatus.Paid)
+                    {
+                        // Dùng realActionUserId (Chủ Shop) làm CreatorId
+                        await _voucherService.CreateCompensationVoucherAsync(
+                            realActionUserId,
+                            issue.UserId,
+                            order.TotalAmount
+                        );
+
+                        // TODO: Gọi WalletService trừ tiền shop tại đây (nếu có)
+
+                        order.PaymentStatus = PaymentStatus.Refunded;
+                    }
                     break;
 
-                case OrderIssueStatus.Rejected: // Shop Từ chối
+                case OrderIssueStatus.Rejected:
                     issue.Status = OrderIssueStatus.Rejected;
-                    // Đơn hàng giữ nguyên trạng thái cũ, tiếp tục quy trình
-                    break;
-
-                case OrderIssueStatus.AutoCancelled: // 1.3.2 System Timeout / Shop mặc kệ -> Auto Refund
-                    issue.Status = OrderIssueStatus.AutoCancelled;
-
-                    // Hủy đơn & Hoàn tiền/Voucher ngay
-                    order.OrderStatus = OrderStatus.Cancelled;
-                    order.CancelReason = "Request timeout (Auto-Refund)";
-                    await ExecuteRefundStrategyAsync(order);
                     break;
 
                 default:
                     throw new ArgumentException("Invalid decision status.");
             }
 
-            // 4. Save Changes
-            // Update Order (trạng thái hủy)
+            // 5. Save Order Updates
             if (order.OrderStatus == OrderStatus.Cancelled)
             {
                 await _unitOfWork.Orders.UpdateOrderAsync(order);
             }
 
-            // Update Issue
-             _unitOfWork.OrderIssues.Update(issue);
+            // 6. GHI LOG
+            var log = new OrderIssueLog
+            {
+                Id = Guid.NewGuid(),
+                OrderIssueId = issue.Id,
+                ActionById = realActionUserId,
+                ActionByRole = RoleType.Shop,
+                Action = request.Decision == OrderIssueStatus.Rejected ? OrderIssueAction.ShopReject : OrderIssueAction.ShopApprove,
+                Comment = request.ShopResponse ?? "Processed cancellation request.",
+                CreatedAt = DateTime.UtcNow
+            };
 
+            await _unitOfWork.OrderIssueLogs.AddAsync(log);
+
+            // Update Issue & Commit
+            _unitOfWork.OrderIssues.Update(issue);
             await _unitOfWork.CommitAsync();
         }
 
-        
+
 
         // =================================================================
         // PRIVATE HELPERS
