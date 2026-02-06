@@ -60,6 +60,45 @@ jobs:
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
 
+      # Generate appsettings.Production.json with actual secrets
+      # This file is baked into the Docker image so FE team can just docker run
+      - name: Generate appsettings.Production.json
+        run: |
+          cat > FPTU.Capstone.AMKCollective.Api/appsettings.Production.json << 'ENDJSON'
+          {
+            "ConnectionStrings": {
+              "DefaultConnection": "server=${{ secrets.DB_HOST }};port=${{ secrets.DB_PORT }};database=${{ secrets.DB_NAME }};user=${{ secrets.DB_USER }};password=${{ secrets.DB_PASSWORD }}"
+            },
+            "JwtSettings": {
+              "SecretKey": "${{ secrets.JWT_SECRET_KEY }}",
+              "Issuer": "${{ secrets.JWT_ISSUER }}",
+              "Audience": "${{ secrets.JWT_AUDIENCE }}",
+              "ExpireMinutes": ${{ secrets.JWT_EXPIRE_MINUTES || '120' }}
+            },
+            "CloudinarySettings": {
+              "CloudName": "${{ secrets.CLOUDINARY_CLOUD_NAME }}",
+              "ApiKey": "${{ secrets.CLOUDINARY_API_KEY }}",
+              "ApiSecret": "${{ secrets.CLOUDINARY_API_SECRET }}"
+            },
+            "RedisSettings": {
+              "ConnectionString": "${{ secrets.REDIS_CONNECTION_STRING }}",
+              "InstanceName": "${{ secrets.REDIS_INSTANCE_NAME || 'Ameko' }}"
+            },
+            "EmailSettings": {
+              "From": "${{ secrets.EMAIL_FROM }}",
+              "SmtpServer": "${{ secrets.EMAIL_SMTP_SERVER || 'smtp.gmail.com' }}",
+              "Port": ${{ secrets.EMAIL_PORT || '587' }},
+              "Username": "${{ secrets.EMAIL_USERNAME }}",
+              "Password": "${{ secrets.EMAIL_PASSWORD }}"
+            },
+            "Cors": {
+              "AllowedOrigins": [
+                "${{ secrets.CORS_ALLOWED_ORIGINS || 'http://localhost:3000' }}"
+              ]
+            }
+          }
+          ENDJSON
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:

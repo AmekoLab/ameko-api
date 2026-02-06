@@ -16,9 +16,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
 
         public StorageService(IConfiguration configuration)
         {
-            var cloudName = configuration["Cloudinary:CloudName"];
-            var apiKey = configuration["Cloudinary:ApiKey"];
-            var apiSecret = configuration["Cloudinary:ApiSecret"];
+            var cloudName = configuration["CloudinarySettings:CloudName"];
+            var apiKey = configuration["CloudinarySettings:ApiKey"];
+            var apiSecret = configuration["CloudinarySettings:ApiSecret"];
 
             var account = new Account(cloudName, apiKey, apiSecret);
             _cloudinary = new Cloudinary(account);

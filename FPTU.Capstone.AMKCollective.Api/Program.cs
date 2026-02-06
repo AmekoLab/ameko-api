@@ -35,7 +35,11 @@ internal class Program
         var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
         var serverVersion = new MySqlServerVersion(new Version(8, 0, 36));
         builder.Services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseMySql(connectionString, serverVersion));
+            options.UseMySql(connectionString, serverVersion, mySqlOptions =>
+                mySqlOptions.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(30),
+                    errorNumbersToAdd: null)));
 
         #region JWT Authentication
         // Configure JWT Authentication
@@ -148,7 +152,10 @@ internal class Program
             app.UseRewriter(new RewriteOptions().AddRedirect("^$", "swagger"));
         // }
 
-        app.UseHttpsRedirection();
+        if (app.Environment.IsDevelopment())
+        {
+            app.UseHttpsRedirection();
+        }
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseCors("AllowFrontend");
