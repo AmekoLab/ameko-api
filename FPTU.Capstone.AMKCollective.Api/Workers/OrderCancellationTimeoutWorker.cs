@@ -52,7 +52,7 @@ namespace FPTU.Capstone.AMKCollective.API.Workers
                                     var request = new ProcessIssueRequest
                                     {
                                         IssueId = issue.Id,
-                                        Decision = OrderIssueStatus.Cancelled,
+                                        Decision = OrderIssueStatus.AutoCancelled,
                                         ShopResponse = "System Auto-Resolve: Shop did not respond within 24 hours."
                                     };
 

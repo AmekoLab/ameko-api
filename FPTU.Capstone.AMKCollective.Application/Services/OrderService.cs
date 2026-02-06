@@ -438,7 +438,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // Sử dụng Repository method vừa tạo
             int cancelledCount = await _unitOfWork.OrderIssues.CountUserIssuesAsync(
                 userId,
-                OrderIssueStatus.Cancelled,
+                OrderIssueStatus.AutoCancelled,
                 lastWeek
             );
 
@@ -512,8 +512,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // 3. Xử lý theo quyết định (Decision)
             switch (request.Decision)
             {
-                case OrderIssueStatus.Approved: // 1.3.1 Shop Đồng ý
-                    issue.Status = OrderIssueStatus.Approved;
+                case OrderIssueStatus.ShopAccepted: // 1.3.1 Shop Đồng ý
+                    issue.Status = OrderIssueStatus.ShopAccepted;
 
                     // Hủy đơn & Hoàn tiền/Voucher
                     order.OrderStatus = OrderStatus.Cancelled;
@@ -526,8 +526,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     // Đơn hàng giữ nguyên trạng thái cũ, tiếp tục quy trình
                     break;
 
-                case OrderIssueStatus.Cancelled: // 1.3.2 System Timeout / Shop mặc kệ -> Auto Refund
-                    issue.Status = OrderIssueStatus.Cancelled;
+                case OrderIssueStatus.AutoCancelled: // 1.3.2 System Timeout / Shop mặc kệ -> Auto Refund
+                    issue.Status = OrderIssueStatus.AutoCancelled;
 
                     // Hủy đơn & Hoàn tiền/Voucher ngay
                     order.OrderStatus = OrderStatus.Cancelled;

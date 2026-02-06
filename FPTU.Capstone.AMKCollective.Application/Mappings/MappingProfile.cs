@@ -4,6 +4,8 @@ using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Follow;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Voucher;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Wallet;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System.Text.Json;
@@ -152,9 +154,51 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             CreateMap<OrderItemComponent, OrderItemComponentDto>();
 
             // =========================================================
-            // 3. ORDER ISSUES (ORDER ISSUES -> DTO)
+            // ORDER ISSUES (ORDER ISSUES -> DTO)
             // =========================================================
             CreateMap<OrderIssue, OrderIssueResponse>();
+
+
+            // =========================================================
+            // WALLET (WALLET -> DTO)
+            // =========================================================
+
+            // Map từ Wallet Entity -> WalletResponse DTO
+            CreateMap<Wallet, WalletResponse>();
+
+            // Map từ Payment Entity -> WalletTransactionResponse DTO
+            // Lưu ý: Cần convert Enum sang String cho Type và Status
+            CreateMap<Payment, WalletTransactionResponse>()
+                .ForMember(dest => dest.Type, opt => opt.MapFrom(src => src.Type.ToString()))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()));
+
+            // Map từ WithdrawRequest DTO -> Payment Entity (Dùng khi tạo lệnh rút tiền)
+            // Lưu ý: Các field như FeeAmount, Status... sẽ được xử lý trong logic Service nên Ignore hoặc tự gán sau
+            CreateMap<WithdrawRequest, Payment>()
+                .ForMember(dest => dest.Amount, opt => opt.MapFrom(src => src.Amount));
+
+            // =========================================================
+            // VOUCHER (VOUCHER -> DTO)
+            // =========================================================
+            // Map Entity -> Response DTO
+            CreateMap<Voucher, VoucherResponse>()
+                .ForMember(dest => dest.Type, opt => opt.MapFrom(src => src.Type.ToString()))
+                .ForMember(dest => dest.DiscountType, opt => opt.MapFrom(src => src.DiscountType.ToString()))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()))
+                .ForMember(dest => dest.CreatorName, opt => opt.MapFrom(src =>
+                    src.Creator != null && src.Creator.ShopProfile != null
+                    ? src.Creator.ShopProfile.ShopName
+                    : (src.Creator != null ? src.Creator.Username : "Unknown")));
+
+            // Map CreateRequest -> Entity
+            CreateMap<CreateVoucherRequest, Voucher>()
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => VoucherStatus.Active)) 
+                .ForMember(dest => dest.UsedCount, opt => opt.Ignore())
+                .ForMember(dest => dest.CreatorId, opt => opt.Ignore()); 
+
+            // Map UpdateRequest -> Entity
+            CreateMap<UpdateVoucherRequest, Voucher>()
+                .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null)); 
 
 
         }

@@ -17,12 +17,4 @@ namespace FPTU.Capstone.AMKCollective.Domain.Enums
 
         Refunded = 3 // Đã được hoàn tiền
     }
-    public enum PaymentMethod
-    {
-        CreditCard =0,
-        //
-        //COD =1,
-        //Wallet =2,
-        //BankTransfer =3,
-    }
 }
