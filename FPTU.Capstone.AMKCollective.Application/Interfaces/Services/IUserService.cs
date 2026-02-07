@@ -29,5 +29,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<(bool Success, string ErrorMessage)> ResetPasswordAsync(ResetPasswordRequest request);
         Task<(bool Success, string ErrorMessage)> UpgradeToShopAsync(Guid userId);
         Task<bool> RevokeAllTokensAsync(Guid userId);
+        Task<(bool Success, string ErrorMessage)> DowngradeToCustomerAsync(Guid userId);
     }
 }
