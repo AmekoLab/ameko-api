@@ -17,7 +17,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
     {
         private readonly IProductService _service;
         private readonly ILogger<PartsController> _logger;
-        public PartsController(IProductService service, ILogger<PartsController> logger) { 
+        public PartsController(IProductService service, ILogger<PartsController> logger)
+        {
             _service = service;
             _logger = logger;
         }
@@ -66,9 +67,14 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting part detail: {Slug}", slug);
-            /// <summary>
-            /// Returns a server error response
-            /// </summary>
+                return ServerErrorResponse<string>("An unexpected error occurred.");
+            }
+        }
+        
+        
+        /// <summary>
+        /// Returns a server error response
+        /// </summary>
 
         // POST: api/parts
         [HttpPost]
