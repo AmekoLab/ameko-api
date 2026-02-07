@@ -45,6 +45,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var user = await _unitOfWork.Users.GetByEmailAsync(request.Email);
             if (user == null || !VerifyPasswordHash(request.Password, user.HashedPassword))
                 return null;
+            if(user.Status == AccountStatus.Suspended)
+                return null;
 
             var token = _tokenService.CreateToken(user);
             var refreshTokenRaw = await SaveRefreshTokenAsync(user);

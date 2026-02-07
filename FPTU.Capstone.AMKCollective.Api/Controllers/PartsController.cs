@@ -66,9 +66,9 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting part detail: {Slug}", slug);
-                return ServerErrorResponse<string>("An error occurred while fetching part detail");
-            }
-        }
+            /// <summary>
+            /// Returns a server error response
+            /// </summary>
 
         // POST: api/parts
         [HttpPost]
@@ -82,7 +82,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var userId = GetUserId();
+                var userId = GetCurrentUserId();
                 var result = await _service.CreateAsync(userId, request);
                 return SuccessResponse(result, "Part created successfully");
             }
@@ -180,13 +180,6 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 _logger.LogError(ex, "Error checking stock");
                 return ServerErrorResponse<string>("An error occurred while checking stock");
             }
-        }
-
-        private Guid GetUserId()
-        {
-            var idClaim = User.FindFirst("id") ?? User.FindFirst(ClaimTypes.NameIdentifier);
-            if (idClaim == null) throw new UnauthorizedAccessException("Invalid Token");
-            return Guid.Parse(idClaim.Value);
         }
     }
 }

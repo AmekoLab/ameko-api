@@ -30,7 +30,6 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
 
         public bool IsActive { get; set; } = true;
         
-
         public double Rating { get; set; } = 0;
         public int TotalSales { get; set; } = 0;
 
