@@ -262,7 +262,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// </summary>
         /// <param name="id">ID of the shop to deactivate</param>
         /// <returns>Deactivation success message</returns>
-        [HttpPut("{id:guid}/deactivate")]
+        [HttpPut("deactivate")]
         [Authorize(Roles = "Shop")]
         [SwaggerOperation(
             Summary = "Shop Owner: Deactivate Shop",
