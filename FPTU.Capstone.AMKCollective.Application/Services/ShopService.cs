@@ -170,21 +170,29 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
             if (shop == null) throw new KeyNotFoundException("Shop not found");
 
-            // [FIX 2] Logic nâng cấp Role User lên Seller
-            // Chỉ thực hiện khi trạng thái mới là Active và trạng thái cũ chưa phải Active
+            // Chỉ upgrade role khi duyệt shop (Active)
             if (request.Status == ShopStatus.Active && shop.Status != ShopStatus.Active)
             {
                 var upgradeResult = await _userService.UpgradeToShopAsync(shop.UserId);
-
                 if (!upgradeResult.Success)
                 {
-                    // Nếu không nâng cấp được user (ví dụ chưa confirm email), không cho phép duyệt shop
                     throw new InvalidOperationException($"Cannot approve shop. User upgrade failed: {upgradeResult.ErrorMessage}");
                 }
+                shop.Status = ShopStatus.Active;
+                shop.AdminNote = request.AdminNote;
             }
-
-            shop.Status = request.Status;
-            shop.AdminNote = request.AdminNote;
+            // Nếu từ chối shop
+            else if (request.Status == ShopStatus.Rejected)
+            {
+                shop.Status = ShopStatus.Rejected;
+                shop.AdminNote = request.AdminNote;
+            }
+            else
+            {
+                // Các trạng thái khác (ví dụ Inactive, Banned...) chỉ cập nhật status và note
+                shop.Status = request.Status;
+                shop.AdminNote = request.AdminNote;
+            }
 
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
@@ -194,10 +202,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
             if (shop == null) throw new KeyNotFoundException("Shop not found");
+
             if(shop.Status != ShopStatus.Active)
             {
                 throw new InvalidOperationException("Only active shops can be deactivated.");
             }
+            
             shop.IsActive = false;
             shop.Status = ShopStatus.Inactive;
             await _unitOfWork.Shops.UpdateAsync(shop);

@@ -364,5 +364,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var computedHash = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(password)));
             return computedHash == storedHash;
         }
+
+        public async Task<(bool Success, string ErrorMessage)> DowngradeToCustomerAsync(Guid userId)
+        {
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            if (user == null)
+                return (false, "User not found");
+            var customerRole = await _unitOfWork.Users.GetRoleByNameAsync(RoleType.Customer);
+            if (customerRole == null)
+                return (false, "Customer role not found");
+            user.Role = customerRole;
+            user.RoleId = customerRole.Id;
+            await _unitOfWork.Users.UpdateAsync(user);
+            await _unitOfWork.CommitAsync();
+            return (true, string.Empty);
+        }
     }
 }
