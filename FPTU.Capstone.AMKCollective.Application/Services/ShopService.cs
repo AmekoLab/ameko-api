@@ -12,7 +12,7 @@ using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 
 namespace FPTU.Capstone.AMKCollective.Application.Services
 {
-    public class ShopService :IShopService
+    public class ShopService : IShopService
     {
         private readonly IUnitOfWork _unitOfWork; // Chuyển sang dùng UnitOfWork
         private readonly IStorageService _storage;
@@ -20,9 +20,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IUserService _userService; // Inject thêm UserService
 
         public ShopService(
-            IUnitOfWork unitOfWork, 
-            IStorageService storage, 
-            IMapper mapper, 
+            IUnitOfWork unitOfWork,
+            IStorageService storage,
+            IMapper mapper,
             IUserService userService)
         {
             _unitOfWork = unitOfWork;
@@ -34,7 +34,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<ShopResponse> GetShopPublicProfileAsync(Guid shopId)
         {
             var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
-            
+
             if (shop == null || shop.Status != ShopStatus.Active || !shop.IsActive)
             {
                 throw new KeyNotFoundException("Shop not found or inactive");
@@ -83,16 +83,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (request.LogoImage != null)
             {
                 logoUrl = await _storage.UploadAsync(
-                    request.LogoImage.OpenReadStream(), 
-                    request.LogoImage.FileName, 
+                    request.LogoImage.OpenReadStream(),
+                    request.LogoImage.FileName,
                     "shops/logos");
             }
 
             if (request.BannerImage != null)
             {
                 bannerUrl = await _storage.UploadAsync(
-                    request.BannerImage.OpenReadStream(), 
-                    request.BannerImage.FileName, 
+                    request.BannerImage.OpenReadStream(),
+                    request.BannerImage.FileName,
                     "shops/banners");
             }
 
@@ -140,21 +140,21 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (request.LogoImage != null)
             {
                 shop.LogoUrl = await _storage.UploadAsync(
-                    request.LogoImage.OpenReadStream(), 
-                    request.LogoImage.FileName, 
+                    request.LogoImage.OpenReadStream(),
+                    request.LogoImage.FileName,
                     "shops/logos");
             }
 
             if (request.BannerImage != null)
             {
                 shop.BannerUrl = await _storage.UploadAsync(
-                    request.BannerImage.OpenReadStream(), 
-                    request.BannerImage.FileName, 
+                    request.BannerImage.OpenReadStream(),
+                    request.BannerImage.FileName,
                     "shops/banners");
             }
 
             _mapper.Map(request, shop);
-            
+
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
         }
@@ -175,7 +175,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (request.Status == ShopStatus.Active && shop.Status != ShopStatus.Active)
             {
                 var upgradeResult = await _userService.UpgradeToShopAsync(shop.UserId);
-                
+
                 if (!upgradeResult.Success)
                 {
                     // Nếu không nâng cấp được user (ví dụ chưa confirm email), không cho phép duyệt shop
@@ -186,6 +186,36 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             shop.Status = request.Status;
             shop.AdminNote = request.AdminNote;
 
+            await _unitOfWork.Shops.UpdateAsync(shop);
+            await _unitOfWork.CommitAsync();
+        }
+
+        public async Task DeactivateShopAsync(Guid shopId)
+        {
+            var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
+            if (shop == null) throw new KeyNotFoundException("Shop not found");
+            if(shop.Status != ShopStatus.Active)
+            {
+                throw new InvalidOperationException("Only active shops can be deactivated.");
+            }
+            shop.IsActive = false;
+            shop.Status = ShopStatus.Inactive;
+            await _unitOfWork.Shops.UpdateAsync(shop);
+            await _unitOfWork.CommitAsync();
+        }
+
+        public async Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetAllPendingApprovalShopAsync(int page, int size)
+        {
+            var (shops, total) = await _unitOfWork.Shops.GetAllPendingApprovalShopAsync(page, size);
+            return (_mapper.Map<IEnumerable<ShopResponse>>(shops), total);
+        }
+
+        public async Task BannedShopAsync(Guid shopId)
+        {
+            var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
+            if (shop == null) throw new KeyNotFoundException("Shop not found");
+            shop.Status = ShopStatus.Banned;
+            shop.IsActive = false;
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
         }

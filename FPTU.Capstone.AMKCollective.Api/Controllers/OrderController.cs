@@ -164,16 +164,5 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             await _orderService.CancelOrderAsync(userId, orderId, request.Reason);
             return SuccessResponse("Order cancelled successfully");
         }
-
-        // --- Helper: Get User ID ---
-        private Guid GetCurrentUserId()
-        {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
-            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out Guid userId))
-            {
-                return userId;
-            }
-            throw new UnauthorizedAccessException("User ID not found in token");
-        }
     }
 }

@@ -19,5 +19,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 
         Task<(IEnumerable<ShopDetailResponse> Items, int TotalCount)> GetShopForAdminAsync(string? searchTerm, ShopStatus? status, int page, int size);
         Task ApproveShopAsync(Guid userId, ApproveShopRequest request);
+        Task DeactivateShopAsync(Guid shopId);
+        Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetAllPendingApprovalShopAsync(int page, int size);
+        Task BannedShopAsync(Guid shopId);
     }
 }
