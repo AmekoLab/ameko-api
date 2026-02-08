@@ -152,10 +152,7 @@ internal class Program
             app.UseRewriter(new RewriteOptions().AddRedirect("^$", "swagger"));
         // }
 
-        if (app.Environment.IsDevelopment())
-        {
-            app.UseHttpsRedirection();
-        }
+        app.UseHttpsRedirection();
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseCors("AllowFrontend");

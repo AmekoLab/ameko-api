@@ -11,7 +11,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
     {
         Task FollowUser(FollowRequest follow);
         Task UnfollowUser(FollowRequest unfollow);
+        Task ToggleFollowUser(FollowRequest request);
         Task<IEnumerable<FollowResponse>> GetFollowsByFollower(Guid followerId);
+        Task<IEnumerable<FollowedUserResponse>> GetFollowedUsersByFollower(Guid followerId);
+        Task<IEnumerable<FollowerResponse>> GetFollowersByUserId(Guid userId);
         Task<FollowResponse?> GetFollowRecord(Guid followerId, Guid followedId);
     }
 }
