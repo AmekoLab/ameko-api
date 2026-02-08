@@ -31,11 +31,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(o => o.CancelReason)
                 .HasMaxLength(500);
             builder.Property(x => x.PaymentStatus)
-                .HasConversion<string>()
                 .HasDefaultValue(PaymentStatus.Pending);
             builder.Property(o => o.OrderStatus)
-                .HasConversion<string>()       
-                .HasMaxLength(50)
                 .HasDefaultValue(OrderStatus.Pending);
             builder.Property(o => o.SubTotal).HasPrecision(18, 2);
             builder.Property(o => o.ShippingFee).HasPrecision(18, 2).HasDefaultValue(0);
