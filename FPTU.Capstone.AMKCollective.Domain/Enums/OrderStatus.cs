@@ -5,21 +5,21 @@ namespace FPTU.Capstone.AMKCollective.Domain.Enums
     {
        
 
-        Pending, // Khách đã checkout. Chờ shop xác nhận/thanh toán
-        InCart, // Đơn trong giỏ hàng chưa thanh toán
+        Pending = 0, // Khách đã checkout. Chờ shop xác nhận/thanh toán
+        InCart = 1, // Đơn trong giỏ hàng chưa thanh toán
 
-        Processing, // Shop đã nhận đơn và đang tiến hành build
+        Processing = 2, // Shop đã nhận đơn và đang tiến hành build
 
-        Shipped, // Shop đã giao cho đơn vị vận chuyển
+        Shipped = 3, // Shop đã giao cho đơn vị vận chuyển
 
-        Completed, // Đã nhận hàng và hoàn tất
+        Completed = 4, // Đã nhận hàng và hoàn tất
 
-        Cancelled, // Đơn bị hủy
+        Cancelled = 5, // Đơn bị hủy
 
-        Returning, // Khách đang gửi trả hàng
+        Returning = 6, // Khách đang gửi trả hàng
 
-        Returned, // Shop đã nhận lại hàng hoàn trả
+        Returned = 7, // Shop đã nhận lại hàng hoàn trả
 
-        Refunded // Đã hoàn tiền
+        Refunded = 8 // Đã hoàn tiền
     }
 }

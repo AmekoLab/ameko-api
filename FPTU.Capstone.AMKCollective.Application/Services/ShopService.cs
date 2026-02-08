@@ -64,7 +64,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var existingShop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
             if (existingShop != null)
             {
-                throw new InvalidOperationException("User already has a shop.");
+                throw new InvalidOperationException("User already has a shop profile, please update .");
             }
 
             if (await _unitOfWork.Shops.IsShopNameExistsAsync(request.ShopName))
@@ -128,7 +128,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
             if (shop == null) throw new KeyNotFoundException("Shop not found");
 
-            // [FIX 1] Validate trùng tên Shop khi update
+            // Shop bị ban không được phép cập nhật
+            if (shop.Status == ShopStatus.Banned)
+                throw new InvalidOperationException("Your shop has been banned. You cannot update your profile.");
+
             if (!string.IsNullOrEmpty(request.ShopName) && request.ShopName != shop.ShopName)
             {
                 if (await _unitOfWork.Shops.IsShopNameExistsAsync(request.ShopName))
@@ -155,6 +158,30 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             _mapper.Map(request, shop);
 
+            if (shop.Status == ShopStatus.Rejected)
+            {
+                // --- Resubmit limit: 2 lần mỗi tháng ---
+                const int maxResubmitsPerMonth = 2;
+                var now = DateTime.UtcNow;
+
+                // Reset counter nếu đã sang tháng mới
+                if (shop.LastResubmitTime.HasValue &&
+                    (shop.LastResubmitTime.Value.Year != now.Year || shop.LastResubmitTime.Value.Month != now.Month))
+                {
+                    shop.ResubmitCount = 0;
+                }
+
+                if (shop.ResubmitCount >= maxResubmitsPerMonth)
+                {
+                    throw new InvalidOperationException(
+                        $"You have reached the maximum of {maxResubmitsPerMonth} resubmissions this month. Please try again next month.");
+                }
+
+                shop.ResubmitCount++;
+                shop.LastResubmitTime = now;
+                shop.Status = ShopStatus.PendingApproval;
+            }
+
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
         }
@@ -170,8 +197,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
             if (shop == null) throw new KeyNotFoundException("Shop not found");
 
-            // Chỉ upgrade role khi duyệt shop (Active)
-            if (request.Status == ShopStatus.Active && shop.Status != ShopStatus.Active)
+            // Chỉ cho phép Approve/Reject qua endpoint này
+            if (request.Status != ShopStatus.Active && request.Status != ShopStatus.Rejected)
+                throw new ArgumentException("Only Active or Rejected status is allowed through this endpoint.");
+
+            // Chỉ approve/reject shop đang PendingApproval
+            if (shop.Status != ShopStatus.PendingApproval)
+                throw new InvalidOperationException($"Cannot approve/reject shop with current status: {shop.Status}. Only PendingApproval shops can be processed.");
+
+            if (request.Status == ShopStatus.Active)
             {
                 var upgradeResult = await _userService.UpgradeToShopAsync(shop.UserId);
                 if (!upgradeResult.Success)
@@ -180,17 +214,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
                 shop.Status = ShopStatus.Active;
                 shop.AdminNote = request.AdminNote;
+                shop.ResubmitCount = 0;
+                shop.LastResubmitTime = null;
             }
-            // Nếu từ chối shop
-            else if (request.Status == ShopStatus.Rejected)
+            else // Rejected
             {
                 shop.Status = ShopStatus.Rejected;
-                shop.AdminNote = request.AdminNote;
-            }
-            else
-            {
-                // Các trạng thái khác (ví dụ Inactive, Banned...) chỉ cập nhật status và note
-                shop.Status = request.Status;
                 shop.AdminNote = request.AdminNote;
             }
 
@@ -198,18 +227,57 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
         }
 
-        public async Task DeactivateShopAsync(Guid shopId)
+        /// <summary>
+        /// Admin: Deactivate shop — thay đổi Status sang Inactive + force IsActive = false
+        /// </summary>
+        public async Task AdminDeactivateShopAsync(Guid shopId)
         {
             var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
             if (shop == null) throw new KeyNotFoundException("Shop not found");
 
-            if(shop.Status != ShopStatus.Active)
-            {
+            if (shop.Status != ShopStatus.Active)
+                throw new InvalidOperationException("Only active shops can be deactivated by admin.");
+
+            shop.Status = ShopStatus.Inactive;  // Admin quyết định Status
+            shop.IsActive = false;               // Force inactive
+            await _unitOfWork.Shops.UpdateAsync(shop);
+            await _unitOfWork.CommitAsync();
+        }
+
+        /// <summary>
+        /// Shop Owner: Tạm nghỉ bán — chỉ thay đổi IsActive, KHÔNG thay đổi Status
+        /// </summary>
+        public async Task DeactivateMyShopAsync(Guid userId)
+        {
+            var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+            if (shop == null) throw new KeyNotFoundException("Shop not found");
+
+            if (shop.Status != ShopStatus.Active)
                 throw new InvalidOperationException("Only active shops can be deactivated.");
-            }
-            
-            shop.IsActive = false;
-            shop.Status = ShopStatus.Inactive;
+
+            if (!shop.IsActive)
+                throw new InvalidOperationException("Shop is already deactivated.");
+
+            shop.IsActive = false;  // Chủ shop quyết định IsActive
+            await _unitOfWork.Shops.UpdateAsync(shop);
+            await _unitOfWork.CommitAsync();
+        }
+
+        /// <summary>
+        /// Shop Owner: Mở lại shop — chỉ thay đổi IsActive, KHÔNG thay đổi Status
+        /// </summary>
+        public async Task ReactivateMyShopAsync(Guid userId)
+        {
+            var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+            if (shop == null) throw new KeyNotFoundException("Shop not found");
+
+            if (shop.Status != ShopStatus.Active)
+                throw new InvalidOperationException("Cannot reactivate. Shop status must be Active (approved by admin).");
+
+            if (shop.IsActive)
+                throw new InvalidOperationException("Shop is already active.");
+
+            shop.IsActive = true;  // Chủ shop quyết định IsActive
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
         }
@@ -226,6 +294,32 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (shop == null) throw new KeyNotFoundException("Shop not found");
             shop.Status = ShopStatus.Banned;
             shop.IsActive = false;
+            await _unitOfWork.Shops.UpdateAsync(shop);
+            await _unitOfWork.CommitAsync();
+        }
+
+        public async Task UnbanShopAsync(Guid shopId)
+        {
+            var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
+            if (shop == null) throw new KeyNotFoundException("Shop not found");
+
+            // Check cho chắc chắn
+            if (shop.Status != ShopStatus.Banned)
+            {
+                throw new InvalidOperationException("Shop is not currently banned.");
+            }
+
+            shop.Status = ShopStatus.Active;
+
+            // Giữ trạng thái ĐÓNG CỬA (IsActive = false)
+            // Lý do: Trong thời gian bị Ban, chủ shop có thể không chuẩn bị hàng.
+            // Nếu set IsActive = true ngay lập tức, đơn hàng có thể ập đến khi họ chưa sẵn sàng.
+            // chủ shop tự vào "Mở cửa" bằng hàm ReactivateMyShopAsync.
+            shop.IsActive = false;
+
+            // (Tùy chọn) Xóa ghi chú vi phạm cũ hoặc ghi log
+             shop.AdminNote = $"Unbanned at {DateTime.UtcNow}";
+
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
         }

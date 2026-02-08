@@ -217,5 +217,46 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Payments.AddAsync(log);
             await _unitOfWork.CommitAsync();
         }
+
+        public async Task DeductFundsForRefundAsync(Guid shopId, Guid orderId, decimal amount, bool isOrderCompleted)
+        {
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(shopId);
+            if (wallet == null) return; 
+
+            if (isOrderCompleted)
+            {
+                // Nếu đơn đã hoàn thành -> Tiền đã về Balance -> Trừ Balance
+                // Cho phép âm nếu shop rút hết tiền rồi (shop nợ sàn)
+                wallet.Balance -= amount;
+            }
+            else
+            {
+                // Nếu đơn chưa hoàn thành -> Tiền còn treo ở Held -> Trừ Held
+                wallet.HeldBalance -= amount;
+
+                // Safety check: Không để HeldBalance âm (nếu logic sai đâu đó)
+                // if (wallet.HeldBalance < 0) wallet.HeldBalance = 0; 
+            }
+
+            _unitOfWork.Wallets.Update(wallet);
+
+            // Ghi log giao dịch
+            var log = new Payment
+            {
+                Id = Guid.NewGuid(),
+                UserId = shopId,
+                RelatedOrderId = orderId,
+                Amount = -amount, // Số âm thể hiện bị trừ
+                Type = PaymentType.RefundToWallet, 
+                Status = PaymentStatus.Paid,
+                Method = PaymentMethod.Wallet,
+                Description = $"Refund deduction for Order #{orderId}",
+                Currency = "VND",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _unitOfWork.Payments.AddAsync(log);
+            await _unitOfWork.CommitAsync();
+        }
     }
 }

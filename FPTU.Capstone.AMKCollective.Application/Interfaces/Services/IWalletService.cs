@@ -17,5 +17,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task AddPendingSalesToWalletAsync(Guid shopId, Guid orderId, decimal amount);
         Task ReleaseHeldMoneyAsync(Guid shopId, Guid orderId, decimal amount);
         Task RefundToWalletAsync(Guid userId, decimal amount, string reason);
+        Task DeductFundsForRefundAsync(Guid shopId, Guid orderId, decimal amount, bool isOrderCompleted);
     }
 }

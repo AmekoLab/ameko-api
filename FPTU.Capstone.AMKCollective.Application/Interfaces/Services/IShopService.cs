@@ -18,9 +18,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task UpdateMyShopAsync(Guid userId, UpdateShopRequest request);
 
         Task<(IEnumerable<ShopDetailResponse> Items, int TotalCount)> GetShopForAdminAsync(string? searchTerm, ShopStatus? status, int page, int size);
-        Task ApproveShopAsync(Guid userId, ApproveShopRequest request);
-        Task DeactivateShopAsync(Guid shopId);
-        Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetAllPendingApprovalShopAsync(int page, int size);
+        Task ApproveShopAsync(Guid shopId, ApproveShopRequest request);
+
+        // Admin: thay đổi Status (Inactive, Banned)
+        Task AdminDeactivateShopAsync(Guid shopId);
         Task BannedShopAsync(Guid shopId);
+        Task UnbanShopAsync(Guid shopId);
+        // Shop Owner: thay đổi IsActive (không ảnh hưởng Status)
+        Task DeactivateMyShopAsync(Guid userId);
+        Task ReactivateMyShopAsync(Guid userId);
+
+        Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetAllPendingApprovalShopAsync(int page, int size);
     }
 }

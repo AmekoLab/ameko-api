@@ -183,7 +183,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         // POST: api/builder/options
         [HttpPost("options")]
         [SwaggerOperation(
-    Summary = "Create Kit Option (Admin)",
+    Summary = "Create Kit Option",
     Description = "Define a new selectable option slot for a keyboard kit."
 )]
         [SwaggerResponse(200, "Option created successfully")]
@@ -204,7 +204,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         // DELETE: api/builder/options/{id}
         [HttpDelete("options/{id}")]
         [SwaggerOperation(
-    Summary = "Delete Kit Option (Admin)",
+    Summary = "Delete Kit Option",
     Description = "Removes a configuration option from a kit."
 )]
         [SwaggerResponse(200, "Option deleted successfully")]
@@ -225,7 +225,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         // POST: api/builder/options/bulk
         [HttpPost("options/bulk")]
         [SwaggerOperation(
-    Summary = "Bulk Create Options (Admin)",
+    Summary = "Bulk Create Options",
     Description = "Import multiple kit options at once."
 )]
         [SwaggerResponse(200, "Bulk import successful")]

@@ -86,7 +86,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             //==================ShopProfile=====================//
             CreateMap<ShopProfile, ShopResponse>();
 
-            CreateMap<ShopProfile, ShopDetailResponse>();
+            CreateMap<ShopProfile, ShopDetailResponse>()
+                .ForMember(dest => dest.RemainingResubmits, opt => opt.MapFrom(src =>
+                    CalculateRemainingResubmits(src.ResubmitCount, src.LastResubmitTime)));
 
             CreateMap<CreateShopRequest, ShopProfile>()
                 .ForMember(dest => dest.Id, opt => opt.Ignore())       
@@ -101,7 +103,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             CreateMap<UpdateShopRequest, ShopProfile>()
                 .ForMember(dest => dest.LogoUrl, opt => opt.Ignore())
                 .ForMember(dest => dest.BannerUrl, opt => opt.Ignore())
-
+                .ForMember(dest => dest.Status, opt => opt.Ignore())        // Status chỉ admin thay đổi
+                .ForMember(dest => dest.IsActive, opt => opt.Ignore())      // IsActive qua endpoint riêng
+                .ForMember(dest => dest.ResubmitCount, opt => opt.Ignore()) // System managed
+                .ForMember(dest => dest.LastResubmitTime, opt => opt.Ignore())
+                .ForMember(dest => dest.Rating, opt => opt.Ignore())
+                .ForMember(dest => dest.TotalSales, opt => opt.Ignore())
+                .ForMember(dest => dest.TotalRevenue, opt => opt.Ignore())
+                .ForMember(dest => dest.AdminNote, opt => opt.Ignore())
+                .ForMember(dest => dest.CitizenId, opt => opt.Ignore())     // Không đổi sau khi đăng ký
                 .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
             //==================ShopProfile=====================//
@@ -232,6 +242,22 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 // Ignore parsing errors
             }
             return 0;
+        }
+
+        private static int CalculateRemainingResubmits(int resubmitCount, DateTime? lastResubmitTime)
+        {
+            const int maxResubmitsPerMonth = 2;
+            var now = DateTime.UtcNow;
+
+            // Nếu chưa từng resubmit hoặc đã sang tháng mới → còn đủ 2 lần
+            if (!lastResubmitTime.HasValue ||
+                lastResubmitTime.Value.Year != now.Year ||
+                lastResubmitTime.Value.Month != now.Month)
+            {
+                return maxResubmitsPerMonth;
+            }
+
+            return Math.Max(0, maxResubmitsPerMonth - resubmitCount);
         }
 
     }

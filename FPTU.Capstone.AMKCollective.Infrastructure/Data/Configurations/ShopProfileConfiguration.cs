@@ -52,11 +52,20 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(s => s.BankAccountNumber).HasMaxLength(50);
             builder.Property(s => s.BankAccountName).HasMaxLength(100);
 
+            builder.Property(s => s.AdminNote)
+                .HasMaxLength(1000);
+
+            builder.Property(s => s.Rating)
+                .HasDefaultValue(0.0);
+
+            builder.Property(s => s.ResubmitCount)
+                .HasDefaultValue(0);
+
             builder.HasIndex(s => s.ShopName);
             builder.HasIndex(s => s.UserId).IsUnique();
             builder.HasIndex(s => s.CitizenId)
                 .IsUnique()
-                .HasFilter("[CitizenId] IS NOT NULL");
+                .HasFilter("`CitizenId` IS NOT NULL");
 
             builder.HasOne(s => s.User)
                 .WithOne(u => u.ShopProfile)

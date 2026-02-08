@@ -509,13 +509,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var order = await _unitOfWork.Orders.GetByIdAsync(issue.OrderId);
             if (order == null) throw new KeyNotFoundException("Related order not found");
 
-            // [FIX 1] Đảm bảo Shop luôn được load. Nếu Repo chưa include thì load thủ công.
+            // Đảm bảo Shop luôn được load.
             if (order.Shop == null && order.ShopId.HasValue)
             {
                 order.Shop = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
             }
 
-            // 3. XÁC ĐỊNH NGƯỜI THỰC HIỆN (REAL ACTOR)
+            // 3. XÁC ĐỊNH NGƯỜI THỰC HIỆN 
             Guid realActionUserId = actorId;
 
             // Trường hợp A: Hệ thống/Worker gọi (truyền Guid.Empty)
@@ -620,7 +620,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             order.TotalAmount
                         );
 
-                        // TODO: Gọi WalletService trừ tiền shop tại đây (nếu có)
+                        // Check xem đơn đã hoàn thành chưa để biết trừ ví nào
+                        bool isCompleted = order.OrderStatus == OrderStatus.Completed;
+
+                        // Lưu ý: realActionUserId lúc này là ID chủ Shop (đã fix ở bước trước)
+                        await _walletService.DeductFundsForRefundAsync(
+                            realActionUserId,
+                            order.Id,
+                            order.TotalAmount,
+                            isCompleted
+                        );
 
                         order.PaymentStatus = PaymentStatus.Refunded;
                     }

@@ -79,7 +79,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpGet("my-shop")]
-        //[Authorize]
+        [Authorize]
         [SwaggerOperation(
     Summary = "Get My Shop",
     Description = "Retrieves the shop profile associated with the current authenticated user."
@@ -107,7 +107,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpPost("register")]
-        //[Authorize]
+        [Authorize]
         [SwaggerOperation(
     Summary = "Register New Shop",
     Description = "Submit a request to upgrade the current user account to a Shop account."
@@ -139,7 +139,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpPut("profile")]
-        //[Authorize]
+        [Authorize]
         [SwaggerOperation(
     Summary = "Update Shop Profile",
     Description = "Updates the details of the authenticated user's shop."
@@ -147,6 +147,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         [SwaggerResponse(200, "Shop updated successfully")]
         [SwaggerResponse(401, "Unauthorized")]
         [SwaggerResponse(404, "Shop not found")]
+        [SwaggerResponse(400, "Validation error or resubmit limit reached")]
         public async Task<IActionResult> UpdateMyShop([FromForm] UpdateShopRequest request)
         {
             try
@@ -159,6 +160,14 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             {
                 return NotFoundResponse<string>(ex.Message);
             }
+            catch (InvalidOperationException ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error updating shop profile");
@@ -167,7 +176,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpGet("admin/list")]
-        // [Authorize(Roles ="Admin")]
+        [Authorize(Roles = "Admin")]
         [SwaggerOperation(
     Summary = "Admin: List All Shops",
     Description = "Retrieves a list of all shops with status filtering for administrative purposes."
@@ -197,12 +206,13 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpPost("admin/{id:guid}/approve")]
-        //[Authorize(Roles="Admin")]
+        [Authorize(Roles = "Admin")]
         [SwaggerOperation(
     Summary = "Admin: Approve/Reject Shop",
-    Description = "Approve or reject a shop registration request."
+    Description = "Approve or reject a shop registration request. Only Active or Rejected status allowed."
 )]
         [SwaggerResponse(200, "Status updated successfully")]
+        [SwaggerResponse(400, "Invalid status or shop not in PendingApproval state")]
         [SwaggerResponse(403, "Forbidden - Requires Admin role")]
         [SwaggerResponse(404, "Shop not found")]
         public async Task<IActionResult> ApproveShop(Guid id, [FromBody] ApproveShopRequest request)
@@ -210,12 +220,19 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             try
             {
                 await _shopService.ApproveShopAsync(id, request);
-                return SuccessResponse($"Updated shop status: {request.Status}"); ;
+                return SuccessResponse($"Updated shop status: {request.Status}");
             }
             catch (KeyNotFoundException ex)
             {
                 return NotFoundResponse<string>(ex.Message);
-                return NotFoundResponse<string>(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                return ErrorResponse<string>(ex.Message);
             }
             catch (Exception ex)
             {
@@ -231,7 +248,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// <param name="size">Records per page</param>
         /// <returns>Paginated list of shops pending approval</returns>
         [HttpGet("admin/pending-approval")]
-        //[Authorize(Roles="Admin")]
+        [Authorize(Roles = "Admin")]
         [SwaggerOperation(
             Summary = "Admin: Get Pending Approval Shops",
             Description = "Retrieves a paginated list of shops awaiting approval."
@@ -266,7 +283,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         [Authorize(Roles = "Shop")]
         [SwaggerOperation(
             Summary = "Shop Owner: Deactivate Shop",
-            Description = "Shop owner deactivates their own shop."
+            Description = "Shop owner temporarily deactivates their own shop. Only changes IsActive, does NOT change Status."
         )]
         [SwaggerResponse(200, "Shop deactivated successfully")]
         [SwaggerResponse(403, "Forbidden - Requires Shop role")]
@@ -277,7 +294,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                await _shopService.DeactivateShopAsync(userId);
+                await _shopService.DeactivateMyShopAsync(userId);
                 return SuccessResponse("Shop deactivated successfully");
             }
             catch (KeyNotFoundException ex)
@@ -292,6 +309,42 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             {
                 _logger.LogError(ex, "Error deactivating shop");
                 return ServerErrorResponse<string>("Error during shop deactivation");
+            }
+        }
+
+        /// <summary>
+        /// Shop Owner: Reactivate shop
+        /// </summary>
+        [HttpPut("reactivate")]
+        [Authorize(Roles = "Shop")]
+        [SwaggerOperation(
+            Summary = "Shop Owner: Reactivate Shop",
+            Description = "Shop owner reactivates their shop after voluntary deactivation. Only changes IsActive, does NOT change Status."
+        )]
+        [SwaggerResponse(200, "Shop reactivated successfully")]
+        [SwaggerResponse(403, "Forbidden - Requires Shop role")]
+        [SwaggerResponse(404, "Shop not found")]
+        [SwaggerResponse(400, "Shop cannot be reactivated")]
+        public async Task<IActionResult> ReactivateShop()
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                await _shopService.ReactivateMyShopAsync(userId);
+                return SuccessResponse("Shop reactivated successfully");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<string>(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error reactivating shop");
+                return ServerErrorResponse<string>("Error during shop reactivation");
             }
         }
 
@@ -314,7 +367,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                await _shopService.DeactivateShopAsync(id);
+                await _shopService.AdminDeactivateShopAsync(id);
                 return SuccessResponse("Shop deactivated by admin successfully");
             }
             catch (KeyNotFoundException ex)
@@ -338,7 +391,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// <param name="id">ID of the shop to ban</param>
         /// <returns>Ban success message</returns>
         [HttpPost("admin/{id:guid}/ban")]
-        //[Authorize(Roles="Admin")]
+        [Authorize(Roles = "Admin")]
         [SwaggerOperation(
             Summary = "Admin: Ban Shop",
             Description = "Bans a shop and sets its status to Banned."
@@ -361,6 +414,43 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             {
                 _logger.LogError(ex, "Error banning shop {Id}", id);
                 return ServerErrorResponse<string>("Error during shop ban");
+            }
+        }
+
+        /// <summary>
+        /// Admin: Unban shop
+        /// </summary>
+        /// <param name="id">ID of the shop to unban</param>
+        /// <returns>Unban success message</returns>
+        [HttpPatch("admin/{id:guid}/unban")]
+        [Authorize(Roles = "Admin")]
+        [SwaggerOperation(
+            Summary = "Admin: Unban Shop",
+            Description = "Unbans a shop and sets its status to Active. Note: The shop remains closed (IsActive = false) until the owner manually reactivates it."
+        )]
+        [SwaggerResponse(200, "Shop unbanned successfully")]
+        [SwaggerResponse(400, "Invalid operation (e.g. Shop is not banned)")]
+        [SwaggerResponse(403, "Forbidden - Requires Admin role")]
+        [SwaggerResponse(404, "Shop not found")]
+        public async Task<IActionResult> UnbanShop(Guid id)
+        {
+            try
+            {
+                await _shopService.UnbanShopAsync(id);
+                return SuccessResponse("Shop has been unbanned. The shop owner needs to reactivate (open) the shop manually.");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<string>(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error unbanning shop {Id}", id);
+                return ServerErrorResponse<string>("Error during unban shop");
             }
         }
     }

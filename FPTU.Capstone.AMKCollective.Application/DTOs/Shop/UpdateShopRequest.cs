@@ -14,7 +14,8 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Shop
         public string? Address { get; set; }
         public string? PhoneNumber { get; set; }
         public string? ContactEmail { get; set; }
-        public bool? IsActive { get; set; }
+        // IsActive đã được tách ra endpoint riêng (Deactivate/Reactivate) — shop owner quyết định
+        // Status chỉ admin mới được thay đổi
         public string? BankName { get; set; }
         public string? BankAccountNumber { get; set; }
         public string? BankAccountName { get; set; }
