@@ -113,7 +113,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 LogoUrl = logoUrl,
                 BannerUrl = bannerUrl,
                 Status = ShopStatus.PendingApproval,
-                IsActive = true,
+                IsActive = false, // Mặc định là đóng cửa để khi được duyệt shop có thời gian chuẩn bị
                 CreatedAt = DateTime.UtcNow,
             };
 
@@ -201,9 +201,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (request.Status != ShopStatus.Active && request.Status != ShopStatus.Rejected)
                 throw new ArgumentException("Only Active or Rejected status is allowed through this endpoint.");
 
-            // Chỉ approve/reject shop đang PendingApproval
-            if (shop.Status != ShopStatus.PendingApproval)
-                throw new InvalidOperationException($"Cannot approve/reject shop with current status: {shop.Status}. Only PendingApproval shops can be processed.");
+            // Chỉ approve/reject shop đang PendingApproval hoặc Inactive (Admin muốn mở lại)
+            if (shop.Status != ShopStatus.PendingApproval && shop.Status != ShopStatus.Inactive)
+                throw new InvalidOperationException($"Cannot approve/reject shop with current status: {shop.Status}. Only PendingApproval or Inactive shops can be processed.");
 
             if (request.Status == ShopStatus.Active)
             {
@@ -309,16 +309,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 throw new InvalidOperationException("Shop is not currently banned.");
             }
 
-            shop.Status = ShopStatus.Active;
+            // Chuyển về PendingApproval để yêu cầu duyệt lại
+            shop.Status = ShopStatus.PendingApproval;
 
             // Giữ trạng thái ĐÓNG CỬA (IsActive = false)
-            // Lý do: Trong thời gian bị Ban, chủ shop có thể không chuẩn bị hàng.
-            // Nếu set IsActive = true ngay lập tức, đơn hàng có thể ập đến khi họ chưa sẵn sàng.
-            // chủ shop tự vào "Mở cửa" bằng hàm ReactivateMyShopAsync.
             shop.IsActive = false;
 
             // (Tùy chọn) Xóa ghi chú vi phạm cũ hoặc ghi log
-             shop.AdminNote = $"Unbanned at {DateTime.UtcNow}";
+             shop.AdminNote = $"Unbanned at {DateTime.UtcNow}. Shop needs approval again.";
 
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
