@@ -163,23 +163,58 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     CONSTRAINT `FK_OrderIssues_Users_UserId` FOREIGN KEY (`UserId`) REFERENCES `Users` (`Id`) ON DELETE RESTRICT
                 ) CHARACTER SET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;';
 
-                -- CASE 2: Table EXISTS -> Migrate Data (String -> Int) then Alter Column
-                -- Note: Only run these if table exists. We wrap in a block.
-                SET @sql_migrate_data = 'UPDATE OrderIssues SET Type = CASE Type WHEN \'CancelRequest\' THEN 0 WHEN \'ReturnRequest\' THEN 1 WHEN \'WarrantyClaim\' THEN 2 ELSE 0 END WHERE Type IN (\'CancelRequest\', \'ReturnRequest\', \'WarrantyClaim\');';
-                
-                SET @sql_migrate_data_2 = 'UPDATE OrderIssues SET Status = CASE Status WHEN \'Pending\' THEN 0 WHEN \'InProgress\' THEN 1 WHEN \'ShopAccepted\' THEN 2 WHEN \'Rejected\' THEN 3 WHEN \'AutoCancelled\' THEN 4 WHEN \'AwaitingReturn\' THEN 5 WHEN \'Returning\' THEN 6 WHEN \'Returned\' THEN 7 WHEN \'Completed\' THEN 8 ELSE 0 END WHERE Status IN (\'Pending\', \'InProgress\');';
-
-                SET @sql_alter = 'ALTER TABLE `OrderIssues` MODIFY COLUMN `Type` int NOT NULL;';
-                SET @sql_alter_2 = 'ALTER TABLE `OrderIssues` MODIFY COLUMN `Status` int NOT NULL;';
-
-                -- Execute Logic
-                SET @sql_final = IF(@table_exists = 0, @sql_create, CONCAT(@sql_migrate_data, '; ', @sql_migrate_data_2, '; ', @sql_alter, '; ', @sql_alter_2));
-                
-                PREPARE stmt FROM @sql_final;
-                EXECUTE stmt;
-                DEALLOCATE PREPARE stmt;
+                -- Exec logic separately
+                -- If table missing, create it
+                SET @sql_exec = IF(@table_exists = 0, @sql_create, 'SELECT 1');
+                PREPARE stmt FROM @sql_exec; EXECUTE stmt; DEALLOCATE PREPARE stmt;
             ");
             
+            // Migrate Data Step 1 (Type) - Only run if table existed BEFORE create step (meaning we might need migration) OR we just ignore and run update safely if types match
+            // Actually simpler: Just run UPDATE if table exists. We already created it if it was missing.
+            // But wait, the newly created table has INT column, UPDATE ... IN ('String') will fail or do nothing.
+            // Old table has VARCHAR column.
+            
+            // To be safe and avoid multi-statement syntax error in PREPARE: Split into separate blocks.
+            
+            migrationBuilder.Sql(@"
+               SET @table_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssues');
+               -- Check if column Type is NOT INT (meaning it's varchar and needs migration)
+               SET @col_is_string = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssues' AND COLUMN_NAME = 'Type' AND DATA_TYPE IN ('varchar', 'longtext', 'text'));
+               
+               SET @sql_migrate = IF(@table_exists = 1 AND @col_is_string = 1, 
+                    'UPDATE OrderIssues SET Type = CASE Type WHEN \'CancelRequest\' THEN 0 WHEN \'ReturnRequest\' THEN 1 WHEN \'WarrantyClaim\' THEN 2 ELSE 0 END WHERE Type IN (\'CancelRequest\', \'ReturnRequest\', \'WarrantyClaim\')', 
+                    'SELECT 1');
+               PREPARE stmt FROM @sql_migrate; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+            ");
+
+             migrationBuilder.Sql(@"
+               SET @table_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssues');
+               -- Check if column Status is NOT INT
+               SET @col_is_string = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssues' AND COLUMN_NAME = 'Status' AND DATA_TYPE IN ('varchar', 'longtext', 'text'));
+
+               SET @sql_migrate = IF(@table_exists = 1 AND @col_is_string = 1, 
+                    'UPDATE OrderIssues SET Status = CASE Status WHEN \'Pending\' THEN 0 WHEN \'InProgress\' THEN 1 WHEN \'ShopAccepted\' THEN 2 WHEN \'Rejected\' THEN 3 WHEN \'AutoCancelled\' THEN 4 WHEN \'AwaitingReturn\' THEN 5 WHEN \'Returning\' THEN 6 WHEN \'Returned\' THEN 7 WHEN \'Completed\' THEN 8 ELSE 0 END WHERE Status IN (\'Pending\', \'InProgress\')', 
+                    'SELECT 1');
+               PREPARE stmt FROM @sql_migrate; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+            ");
+
+            migrationBuilder.Sql(@"
+               SET @table_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssues');
+               SET @col_is_string = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssues' AND COLUMN_NAME = 'Type' AND DATA_TYPE IN ('varchar', 'longtext', 'text'));
+               
+               SET @sql_alter = IF(@table_exists = 1 AND @col_is_string = 1, 'ALTER TABLE `OrderIssues` MODIFY COLUMN `Type` int NOT NULL', 'SELECT 1');
+               PREPARE stmt FROM @sql_alter; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+            ");
+            
+            migrationBuilder.Sql(@"
+               SET @table_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssues');
+               SET @col_is_string = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssues' AND COLUMN_NAME = 'Status' AND DATA_TYPE IN ('varchar', 'longtext', 'text'));
+               
+               SET @sql_alter = IF(@table_exists = 1 AND @col_is_string = 1, 'ALTER TABLE `OrderIssues` MODIFY COLUMN `Status` int NOT NULL', 'SELECT 1');
+               PREPARE stmt FROM @sql_alter; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+            ");
+            
+
             // Note: Indices for OrderIssues are handled separately if created manually, but standard Create Table includes PK/FK. 
             // We should ensure Indices exist if we created the table.
              migrationBuilder.Sql(@"
@@ -221,32 +256,46 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     CONSTRAINT `FK_OrderIssueLogs_Users_ActionById` FOREIGN KEY (`ActionById`) REFERENCES `Users` (`Id`) ON DELETE RESTRICT
                 ) CHARACTER SET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;';
 
-                -- CASE 2: Table EXISTS -> Migrate Data then Alter
-                SET @sql_migrate_data = 'UPDATE OrderIssueLogs SET ActionByRole = CASE ActionByRole WHEN \'Admin\' THEN 0 WHEN \'Customer\' THEN 1 WHEN \'Shop\' THEN 2 ELSE 1 END WHERE ActionByRole IN (\'Admin\',\'Customer\',\'Shop\');';
-                SET @sql_migrate_data_2 = 'UPDATE OrderIssueLogs SET Action = CASE Action WHEN \'Create\' THEN 0 WHEN \'ShopApprove\' THEN 1 WHEN \'ShopReject\' THEN 2 WHEN \'UserUpdate\' THEN 3 WHEN \'UserEscalate\' THEN 4 WHEN \'AdminDecision\' THEN 5 WHEN \'SystemCancel\' THEN 6 WHEN \'UserCancel\' THEN 7 WHEN \'UserShippedReturn\' THEN 8 WHEN \'ShopReceivedReturn\' THEN 9 ELSE 0 END WHERE Action IN (\'Create\');';
-
-                SET @sql_alter = 'ALTER TABLE `OrderIssueLogs` MODIFY COLUMN `ActionByRole` int NOT NULL;';
-                SET @sql_alter_2 = 'ALTER TABLE `OrderIssueLogs` MODIFY COLUMN `Action` int NOT NULL;';
-
-                -- Execute Logic
-                 SET @sql_final = IF(@table_exists = 0, @sql_create, CONCAT(@sql_migrate_data, '; ', @sql_migrate_data_2, '; ', @sql_alter, '; ', @sql_alter_2));
-
-                PREPARE stmt FROM @sql_final;
-                EXECUTE stmt;
-                DEALLOCATE PREPARE stmt;
+                -- Exec Create if missing
+                SET @sql_exec = IF(@table_exists = 0, @sql_create, 'SELECT 1');
+                PREPARE stmt FROM @sql_exec; EXECUTE stmt; DEALLOCATE PREPARE stmt;
             ");
-            
-            // OrderIssueLogs Indices
-             migrationBuilder.Sql(@"
-                SET @table_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssueLogs');
-                
-                SET @idx_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssueLogs' AND INDEX_NAME = 'IX_OrderIssueLogs_OrderIssueId');
-                SET @sql_index = IF(@table_exists = 1 AND @idx_exists = 0, 'CREATE INDEX `IX_OrderIssueLogs_OrderIssueId` ON `OrderIssueLogs` (`OrderIssueId`)', 'SELECT 1');
-                PREPARE stmt FROM @sql_index; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-                SET @idx_exists_2 = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssueLogs' AND INDEX_NAME = 'IX_OrderIssueLogs_ActionById');
-                SET @sql_index_2 = IF(@table_exists = 1 AND @idx_exists_2 = 0, 'CREATE INDEX `IX_OrderIssueLogs_ActionById` ON `OrderIssueLogs` (`ActionById`)', 'SELECT 1');
-                PREPARE stmt FROM @sql_index_2; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+            // Split migrations block to avoid syntax error
+            migrationBuilder.Sql(@"
+               SET @table_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssueLogs');
+               SET @col_is_string = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssueLogs' AND COLUMN_NAME = 'ActionByRole' AND DATA_TYPE IN ('varchar', 'longtext', 'text'));
+               
+               SET @sql_migrate = IF(@table_exists = 1 AND @col_is_string = 1, 
+                    'UPDATE OrderIssueLogs SET ActionByRole = CASE ActionByRole WHEN \'Admin\' THEN 0 WHEN \'Customer\' THEN 1 WHEN \'Shop\' THEN 2 ELSE 1 END WHERE ActionByRole IN (\'Admin\',\'Customer\',\'Shop\')', 
+                    'SELECT 1');
+               PREPARE stmt FROM @sql_migrate; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+            ");
+
+            migrationBuilder.Sql(@"
+               SET @table_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssueLogs');
+               SET @col_is_string = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssueLogs' AND COLUMN_NAME = 'Action' AND DATA_TYPE IN ('varchar', 'longtext', 'text'));
+               
+               SET @sql_migrate = IF(@table_exists = 1 AND @col_is_string = 1, 
+                    'UPDATE OrderIssueLogs SET Action = CASE Action WHEN \'Create\' THEN 0 WHEN \'ShopApprove\' THEN 1 WHEN \'ShopReject\' THEN 2 WHEN \'UserUpdate\' THEN 3 WHEN \'UserEscalate\' THEN 4 WHEN \'AdminDecision\' THEN 5 WHEN \'SystemCancel\' THEN 6 WHEN \'UserCancel\' THEN 7 WHEN \'UserShippedReturn\' THEN 8 WHEN \'ShopReceivedReturn\' THEN 9 ELSE 0 END WHERE Action IN (\'Create\')', 
+                    'SELECT 1');
+               PREPARE stmt FROM @sql_migrate; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+            ");
+
+            migrationBuilder.Sql(@"
+               SET @table_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssueLogs');
+               SET @col_is_string = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssueLogs' AND COLUMN_NAME = 'ActionByRole' AND DATA_TYPE IN ('varchar', 'longtext', 'text'));
+
+               SET @sql_alter = IF(@table_exists = 1 AND @col_is_string = 1, 'ALTER TABLE `OrderIssueLogs` MODIFY COLUMN `ActionByRole` int NOT NULL', 'SELECT 1');
+               PREPARE stmt FROM @sql_alter; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+            ");
+
+            migrationBuilder.Sql(@"
+               SET @table_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssueLogs');
+               SET @col_is_string = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'OrderIssueLogs' AND COLUMN_NAME = 'Action' AND DATA_TYPE IN ('varchar', 'longtext', 'text'));
+
+               SET @sql_alter = IF(@table_exists = 1 AND @col_is_string = 1, 'ALTER TABLE `OrderIssueLogs` MODIFY COLUMN `Action` int NOT NULL', 'SELECT 1');
+               PREPARE stmt FROM @sql_alter; EXECUTE stmt; DEALLOCATE PREPARE stmt;
             ");
         }
 
