@@ -30,5 +30,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<(bool Success, string ErrorMessage)> UpgradeToShopAsync(Guid userId);
         Task<bool> RevokeAllTokensAsync(Guid userId);
         Task<(bool Success, string ErrorMessage)> DowngradeToCustomerAsync(Guid userId);
+        Task<(bool Success, string ErrorMessage)> SoftDeleteUserAsync(Guid userId);
+        Task<(bool Success, string ErrorMessage)> RestoreUserAsync(Guid userId);
+        Task<(bool Success, string ErrorMessage)> UnBanUserAsync(Guid userId);
     }
 }

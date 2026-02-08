@@ -26,6 +26,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             _categoryService = categoryService;
             _logger = logger;
         }
+
         [HttpGet]
         [SwaggerOperation(
     Summary = "Get All Categories",
@@ -47,6 +48,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return ServerErrorResponse<string>("An error occurred while fetching categories");
             }
         }
+
         [HttpGet("{id:guid}")]
         [SwaggerOperation(
     Summary = "Get Category by ID",
