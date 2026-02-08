@@ -4,6 +4,7 @@ using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260208140513_AddShopIdToCategory")]
+    partial class AddShopIdToCategory
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -647,15 +650,18 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Property<Guid?>("OrderGroupId")
                         .HasColumnType("char(36)");
 
-                    b.Property<int>("OrderStatus")
+                    b.Property<string>("OrderStatus")
+                        .IsRequired()
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(0);
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)")
+                        .HasDefaultValue("Pending");
 
-                    b.Property<int>("PaymentStatus")
+                    b.Property<string>("PaymentStatus")
+                        .IsRequired()
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(0);
+                        .HasColumnType("longtext")
+                        .HasDefaultValue("Pending");
 
                     b.Property<string>("ReceiverName")
                         .HasMaxLength(100)
@@ -726,10 +732,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<int>("PaymentStatus")
+                    b.Property<string>("PaymentStatus")
+                        .IsRequired()
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(0);
+                        .HasColumnType("longtext")
+                        .HasDefaultValue("Pending");
 
                     b.Property<decimal>("TotalGroupAmount")
                         .HasPrecision(18, 2)
@@ -789,11 +796,15 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("varchar(2000)");
 
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
 
-                    b.Property<int>("Type")
-                        .HasColumnType("int");
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
@@ -821,14 +832,18 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
-                    b.Property<int>("Action")
-                        .HasColumnType("int");
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
 
                     b.Property<Guid>("ActionById")
                         .HasColumnType("char(36)");
 
-                    b.Property<int>("ActionByRole")
-                        .HasColumnType("int");
+                    b.Property<string>("ActionByRole")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
 
                     b.Property<bool?>("AdminDecision")
                         .HasColumnType("tinyint(1)");
@@ -1053,8 +1068,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Property<Guid?>("RelatedOrderId")
                         .HasColumnType("char(36)");
 
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
 
                     b.Property<string>("StripePaymentIntentId")
                         .HasMaxLength(255)
@@ -1064,8 +1081,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("varchar(255)");
 
-                    b.Property<int>("Type")
-                        .HasColumnType("int");
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
@@ -1591,8 +1610,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("varchar(1000)");
 
-                    b.Property<int>("DiscountType")
-                        .HasColumnType("int");
+                    b.Property<string>("DiscountType")
+                        .IsRequired()
+                        .HasColumnType("longtext");
 
                     b.Property<DateTime>("EndDate")
                         .HasColumnType("datetime(6)");
@@ -1616,14 +1636,16 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Property<DateTime>("StartDate")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("longtext");
 
                     b.Property<Guid?>("TargetUserId")
                         .HasColumnType("char(36)");
 
-                    b.Property<int>("Type")
-                        .HasColumnType("int");
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("longtext");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
