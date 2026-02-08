@@ -9,6 +9,8 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct
         public string Name { get; set; } = string.Empty;
         public string? View3DUrl { get; set; }
         public decimal Price { get; set; }
+        public Guid ShopId { get; set; }
+        public string ShopName { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
     }
 

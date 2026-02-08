@@ -48,7 +48,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<AssembledProductDetailResponse>(item);
         }
 
-        public async Task<(Guid Id, string? ErrorMessage)> CreateAsync(CreateAssembledProductRequest request)
+        public async Task<(Guid Id, string? ErrorMessage)> CreateAsync(Guid userId, CreateAssembledProductRequest request)
         {
             if (request.Details == null || request.Details.Count == 0)
             {
@@ -60,6 +60,32 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 if (detail.Quantity <= 0)
                 {
                     return (Guid.Empty, "Quantity of each detail must be greater than 0");
+                }
+            }
+
+            var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+            if (shop == null)
+            {
+                return (Guid.Empty, "User does not have an active shop profile");
+            }
+
+            // Validate that all components belong to this shop
+            var modelIds = request.Details.Select(d => d.BaseKitId)
+                .Concat(request.Details.Select(d => d.ComponentId))
+                .Distinct()
+                .ToList();
+
+            var models = await _unitOfWork.Models.GetByIdsAsync(modelIds);
+            if (models.Count() != modelIds.Count)
+            {
+                 return (Guid.Empty, "One or more selected components do not exist");
+            }
+
+            foreach (var model in models)
+            {
+                if (model.ShopId != shop.Id)
+                {
+                    return (Guid.Empty, $"Component '{model.Name}' does not belong to your shop");
                 }
             }
 

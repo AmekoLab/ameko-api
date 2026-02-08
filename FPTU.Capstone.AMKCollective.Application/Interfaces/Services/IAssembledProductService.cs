@@ -12,7 +12,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<PaginatedResult<AssembledProductResponse>> GetAllAsync(int pageNumber, int pageSize);
         Task<IEnumerable<AssembledProductResponse>> GetByShopIdAsync(Guid shopId);
         Task<AssembledProductDetailResponse?> GetByIdAsync(Guid id);
-        Task<(Guid Id, string? ErrorMessage)> CreateAsync(CreateAssembledProductRequest request);
+        Task<(Guid Id, string? ErrorMessage)> CreateAsync(Guid userId, CreateAssembledProductRequest request);
         Task<bool> UpdateAsync(Guid id, UpdateAssembledProductRequest request);
         Task<bool> DeleteAsync(Guid id);
         Task<bool> RestoreAsync(Guid id);

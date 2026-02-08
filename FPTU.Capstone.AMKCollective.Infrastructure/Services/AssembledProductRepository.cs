@@ -22,6 +22,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             var query = _context.AssembledProducts
                 .Include(ap => ap.ProductAssembledDetails)
+                    .ThenInclude(pad => pad.BaseKit)
+                        .ThenInclude(m => m.Shop)
                 .Where(ap => !ap.IsDeleted);
 
             var totalCount = await query.CountAsync();
@@ -39,6 +41,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             // Join with ProductAssembledDetail and Model to filter by ShopId
             return await _context.AssembledProducts
                 .Include(ap => ap.ProductAssembledDetails)
+                    .ThenInclude(pad => pad.BaseKit)
+                        .ThenInclude(m => m.Shop)
                 .Where(ap => !ap.IsDeleted && ap.ProductAssembledDetails.Any(pad => pad.BaseKit.ShopId == shopId))
                 .OrderByDescending(ap => ap.CreatedAt)
                 .ToListAsync();

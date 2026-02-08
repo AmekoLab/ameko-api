@@ -28,7 +28,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         /// <param name="currentPage">The page number to retrieve.</param>
         /// <param name="pageSize">The number of items per page.</param>
         /// <returns>A paginated result containing assembled products.</returns>
-        [Authorize]
+       
         [HttpGet]
         [SwaggerOperation(
             Summary = "Get all assembled products",
@@ -93,10 +93,11 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             Description = "Creates a new assembled product with the provided name, price, and components."
         )]
         [SwaggerResponse(200, "Successfully created", typeof(Guid))]
-        [SwaggerResponse(400, "Validation failed (e.g. quantity <= 0)")]
+        [SwaggerResponse(400, "Validation failed")]
         public async Task<IActionResult> Create([FromBody] CreateAssembledProductRequest request)
         {
-            var result = await _service.CreateAsync(request);
+            var userId = GetCurrentUserId();
+            var result = await _service.CreateAsync(userId, request);
             if (!string.IsNullOrEmpty(result.ErrorMessage))
             {
                 return ErrorResponse<object>(result.ErrorMessage);
