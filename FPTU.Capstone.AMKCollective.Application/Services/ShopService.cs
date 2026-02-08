@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Shop;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using System;
 using System.Collections.Generic;
@@ -123,22 +124,36 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<ShopResponse>(shop);
         }
 
-        public async Task UpdateMyShopAsync(Guid userId, UpdateShopRequest request)
+        public async Task PatchMyShopAsync(Guid userId, PatchShopRequest request)
         {
             var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
             if (shop == null) throw new KeyNotFoundException("Shop not found");
 
-            // Shop bị ban không được phép cập nhật
+            // Chỉ Active shop được phép PATCH non-critical fields
             if (shop.Status == ShopStatus.Banned)
                 throw new InvalidOperationException("Your shop has been banned. You cannot update your profile.");
 
-            if (!string.IsNullOrEmpty(request.ShopName) && request.ShopName != shop.ShopName)
-            {
-                if (await _unitOfWork.Shops.IsShopNameExistsAsync(request.ShopName))
-                {
-                    throw new ArgumentException("Shop name is already taken.");
-                }
-            }
+            if (shop.Status == ShopStatus.Inactive)
+                throw new InvalidOperationException("Your shop is deactivated. You cannot update your profile.");
+
+            if (shop.Status == ShopStatus.Rejected)
+                throw new InvalidOperationException("Your shop registration was rejected. Please use the resubmit endpoint to modify your shop information.");
+
+            if (shop.Status == ShopStatus.PendingApproval)
+                throw new InvalidOperationException("Your shop is pending approval. You cannot update your profile at this time.");
+
+            // Chỉ update những field non-critical
+            if (!string.IsNullOrEmpty(request.Bio))
+                shop.Bio = request.Bio;
+
+            if (!string.IsNullOrEmpty(request.Address))
+                shop.Address = request.Address;
+
+            if (!string.IsNullOrEmpty(request.PhoneNumber))
+                shop.PhoneNumber = request.PhoneNumber;
+
+            if (!string.IsNullOrEmpty(request.ContactEmail))
+                shop.ContactEmail = request.ContactEmail;
 
             if (request.LogoImage != null)
             {
@@ -156,31 +171,81 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     "shops/banners");
             }
 
-            _mapper.Map(request, shop);
+            await _unitOfWork.Shops.UpdateAsync(shop);
+            await _unitOfWork.CommitAsync();
+        }
 
-            if (shop.Status == ShopStatus.Rejected)
+        public async Task UpdateMyShopRejectedAsync(Guid userId, UpdateShopRejectedRequest request)
+        {
+            var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+            if (shop == null) throw new KeyNotFoundException("Shop not found");
+
+            // Chỉ cho phép update khi shop bị Rejected
+            if (shop.Status != ShopStatus.Rejected)
+                throw new InvalidOperationException("You can only update shop information when status is Rejected.");
+
+            // Validate ShopName nếu thay đổi
+            if (!string.IsNullOrEmpty(request.ShopName) && request.ShopName != shop.ShopName)
             {
-                // --- Resubmit limit: 2 lần mỗi tháng ---
-                const int maxResubmitsPerMonth = 2;
-                var now = DateTime.UtcNow;
-
-                // Reset counter nếu đã sang tháng mới
-                if (shop.LastResubmitTime.HasValue &&
-                    (shop.LastResubmitTime.Value.Year != now.Year || shop.LastResubmitTime.Value.Month != now.Month))
-                {
-                    shop.ResubmitCount = 0;
-                }
-
-                if (shop.ResubmitCount >= maxResubmitsPerMonth)
-                {
-                    throw new InvalidOperationException(
-                        $"You have reached the maximum of {maxResubmitsPerMonth} resubmissions this month. Please try again next month.");
-                }
-
-                shop.ResubmitCount++;
-                shop.LastResubmitTime = now;
-                shop.Status = ShopStatus.PendingApproval;
+                if (await _unitOfWork.Shops.IsShopNameExistsAsync(request.ShopName))
+                    throw new ArgumentException("Shop name is already taken.");
+                shop.ShopName = request.ShopName;
             }
+
+            // Validate CitizenId nếu thay đổi
+            if (!string.IsNullOrEmpty(request.CitizenId) && request.CitizenId != shop.CitizenId)
+            {
+                if (await _unitOfWork.Shops.IsCitizenIdExistsAsync(request.CitizenId))
+                    throw new ArgumentException("Citizen ID is already registered.");
+                shop.CitizenId = request.CitizenId;
+            }
+
+            // Update các field critical
+            if (!string.IsNullOrEmpty(request.TaxCode))
+                shop.TaxCode = request.TaxCode;
+
+            if (!string.IsNullOrEmpty(request.BankName))
+                shop.BankName = request.BankName;
+
+            if (!string.IsNullOrEmpty(request.BankAccountNumber))
+                shop.BankAccountNumber = request.BankAccountNumber;
+
+            if (!string.IsNullOrEmpty(request.BankAccountName))
+                shop.BankAccountName = request.BankAccountName;
+
+            // Update non-critical fields
+            if (!string.IsNullOrEmpty(request.Bio))
+                shop.Bio = request.Bio;
+
+            if (!string.IsNullOrEmpty(request.Address))
+                shop.Address = request.Address;
+
+            if (!string.IsNullOrEmpty(request.PhoneNumber))
+                shop.PhoneNumber = request.PhoneNumber;
+
+            if (!string.IsNullOrEmpty(request.ContactEmail))
+                shop.ContactEmail = request.ContactEmail;
+
+            if (request.LogoImage != null)
+            {
+                shop.LogoUrl = await _storage.UploadAsync(
+                    request.LogoImage.OpenReadStream(),
+                    request.LogoImage.FileName,
+                    "shops/logos");
+            }
+
+            if (request.BannerImage != null)
+            {
+                shop.BannerUrl = await _storage.UploadAsync(
+                    request.BannerImage.OpenReadStream(),
+                    request.BannerImage.FileName,
+                    "shops/banners");
+            }
+
+            // Reset resubmit count và submit lại
+            shop.Status = ShopStatus.PendingApproval;
+            shop.ResubmitCount++;
+            shop.LastResubmitTime = DateTime.UtcNow;
 
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
@@ -226,6 +291,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
         }
+
+        [Obsolete("This API is deprecated and disabled.")]
 
         /// <summary>
         /// Admin: Deactivate shop — thay đổi Status sang Inactive + force IsActive = false

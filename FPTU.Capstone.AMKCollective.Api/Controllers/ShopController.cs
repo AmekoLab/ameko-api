@@ -138,23 +138,23 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
-        [HttpPut("profile")]
+        [HttpPatch("profile")]
         [Authorize]
         [SwaggerOperation(
-    Summary = "Update Shop Profile",
-    Description = "Updates the details of the authenticated user's shop."
+    Summary = "Update Shop Profile (Non-Critical Fields)",
+    Description = "Updates non-critical shop details (Bio, Address, Phone, Email, Logo, Banner). Can be used at any time."
 )]
         [SwaggerResponse(200, "Shop updated successfully")]
         [SwaggerResponse(401, "Unauthorized")]
         [SwaggerResponse(404, "Shop not found")]
-        [SwaggerResponse(400, "Validation error or resubmit limit reached")]
-        public async Task<IActionResult> UpdateMyShop([FromForm] UpdateShopRequest request)
+        [SwaggerResponse(400, "Shop has been banned")]
+        public async Task<IActionResult> PatchMyShop([FromForm] PatchShopRequest request)
         {
             try
             {
                 var userId = GetCurrentUserId();
-                await _shopService.UpdateMyShopAsync(userId, request);
-                return SuccessResponse("Update shop profile successfully");
+                await _shopService.PatchMyShopAsync(userId, request);
+                return SuccessResponse("Shop profile updated successfully");
             }
             catch (KeyNotFoundException ex)
             {
@@ -164,14 +164,47 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             {
                 return ErrorResponse<string>(ex.Message);
             }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error patching shop profile");
+                return ServerErrorResponse<string>("Error during shop profile update");
+            }
+        }
+
+        [HttpPut("profile/resubmit")]
+        [Authorize]
+        [SwaggerOperation(
+    Summary = "Update Shop Profile and Resubmit (Critical Fields)",
+    Description = "Updates critical shop information (ShopName, CitizenId, TaxCode, Bank details) and resubmits for approval. Only available when shop status is Rejected."
+)]
+        [SwaggerResponse(200, "Shop information updated and resubmitted for approval")]
+        [SwaggerResponse(401, "Unauthorized")]
+        [SwaggerResponse(404, "Shop not found")]
+        [SwaggerResponse(400, "Invalid status or validation error")]
+        public async Task<IActionResult> UpdateMyShopRejected([FromForm] UpdateShopRejectedRequest request)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                await _shopService.UpdateMyShopRejectedAsync(userId, request);
+                return SuccessResponse("Shop information updated and resubmitted for approval");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<string>(ex.Message);
+            }
             catch (ArgumentException ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
+            catch (InvalidOperationException ex)
             {
                 return ErrorResponse<string>(ex.Message);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating shop profile");
-                return ServerErrorResponse<string>("Error during update shop profile");
+                _logger.LogError(ex, "Error updating shop profile for resubmission");
+                return ServerErrorResponse<string>("Error during shop profile update");
             }
         }
 
@@ -348,6 +381,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
+        [Obsolete("This API is deprecated and disabled.")]
         /// <summary>
         /// Admin: Deactivate shop (not ban)
         /// </summary>
