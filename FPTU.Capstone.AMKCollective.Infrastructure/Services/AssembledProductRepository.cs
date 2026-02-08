@@ -38,7 +38,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         public async Task<IEnumerable<AssembledProduct>> GetByShopIdAsync(Guid shopId)
         {
-            // Join with ProductAssembledDetail and Model to filter by ShopId
+            //Tuan Note: Join with ProductAssembledDetail and Model to filter by ShopId
             return await _context.AssembledProducts
                 .Include(ap => ap.ProductAssembledDetails)
                     .ThenInclude(pad => pad.BaseKit)
@@ -65,14 +65,23 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         public async Task UpdateAsync(AssembledProduct assembledProduct)
         {
-            _context.AssembledProducts.Update(assembledProduct);
+            var entry = _context.Entry(assembledProduct);
+            //Tuan Note: Only call Update if the entity is detached
+            if (entry.State == EntityState.Detached)
+            {
+                _context.AssembledProducts.Update(assembledProduct);
+            }
             await Task.CompletedTask;
         }
 
         public async Task DeleteAsync(AssembledProduct assembledProduct)
         {
             assembledProduct.IsDeleted = true;
-            _context.AssembledProducts.Update(assembledProduct);
+            var entry = _context.Entry(assembledProduct);
+            if (entry.State == EntityState.Detached)
+            {
+                _context.AssembledProducts.Update(assembledProduct);
+            }
             await Task.CompletedTask;
         }
     }

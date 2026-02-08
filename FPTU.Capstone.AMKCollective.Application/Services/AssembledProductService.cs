@@ -69,7 +69,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 return (Guid.Empty, "User does not have an active shop profile");
             }
 
-            // Validate that all components belong to this shop
             var modelIds = request.Details.Select(d => d.BaseKitId)
                 .Concat(request.Details.Select(d => d.ComponentId))
                 .Distinct()
@@ -97,16 +96,71 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return (assembledProduct.Id, null);
         }
 
-        public async Task<bool> UpdateAsync(Guid id, UpdateAssembledProductRequest request)
+        public async Task<(bool Success, AssembledProductDetailResponse? Data, string? ErrorMessage)> UpdateAsync(Guid id, Guid userId, UpdateAssembledProductRequest request)
         {
             var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(id);
-            if (assembledProduct == null) return false;
+            if (assembledProduct == null) return (false, null, "Assembled product not found");
 
+            var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+            if (shop == null) return (false, null, "User does not have an active shop profile");     
+
+            var productShopId = assembledProduct.ProductAssembledDetails.FirstOrDefault()?.BaseKit.ShopId;
+            if (productShopId != shop.Id)
+            {
+                return (false, null, "You do not have permission to update this product");
+            }
+
+            // Update top-level properties (Details collection is ignored in AutoMapper)
             _mapper.Map(request, assembledProduct);
-            await _unitOfWork.AssembledProducts.UpdateAsync(assembledProduct);
+           
+            if (request.Details != null && request.Details.Count > 0)
+            {
+           
+                foreach (var detail in request.Details)
+                {
+                    if (detail.Quantity <= 0)
+                    {
+                        return (false, null, "Quantity of each detail must be greater than 0");
+                    }
+                }
+
+                var modelIds = request.Details.Select(d => d.BaseKitId)
+                    .Concat(request.Details.Select(d => d.ComponentId))
+                    .Distinct()
+                    .ToList();
+
+                var models = await _unitOfWork.Models.GetByIdsAsync(modelIds);
+                if (models.Count() != modelIds.Count)
+                {
+                    return (false, null, "One or more selected components do not exist");
+                }
+
+                foreach (var model in models)
+                {
+                    if (model.ShopId != shop.Id)
+                    {
+                        return (false, null, $"Component '{model.Name}' does not belong to your shop");
+                    }
+                }
+
+                // Explicitly manage collection replacement
+                assembledProduct.ProductAssembledDetails.Clear();
+                foreach (var detailReq in request.Details)
+                {
+                    var detail = _mapper.Map<ProductAssembledDetail>(detailReq);
+                    // Reset ID to let EF Core know it's a new record (ValueGeneratedOnAdd will kick in)
+                    detail.Id = Guid.Empty; 
+                    assembledProduct.ProductAssembledDetails.Add(detail);
+                }
+            }
+
             await _unitOfWork.CommitAsync();
 
-            return true;
+         
+            var updatedEntity = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(id);
+            var responseData = _mapper.Map<AssembledProductDetailResponse>(updatedEntity);
+
+            return (true, responseData, null);
         }
 
         public async Task<bool> DeleteAsync(Guid id)

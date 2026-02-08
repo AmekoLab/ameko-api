@@ -49,5 +49,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct
         public string Name { get; set; } = string.Empty;
         public string? View3DUrl { get; set; }
         public decimal Price { get; set; }
+        public List<ProductAssembledDetailRequest>? Details { get; set; }
     }
 }

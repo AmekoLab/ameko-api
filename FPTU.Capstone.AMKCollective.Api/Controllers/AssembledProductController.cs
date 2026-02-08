@@ -90,7 +90,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [HttpPost]
         [SwaggerOperation(
             Summary = "Create assembled product",
-            Description = "Creates a new assembled product with the provided name, price, and components."
+            Description = "Creates a new assembled product with the provided name, price, and components. Note: KitId and ComponentId come from API: Get/Parts"
         )]
         [SwaggerResponse(200, "Successfully created", typeof(Guid))]
         [SwaggerResponse(400, "Validation failed")]
@@ -116,17 +116,25 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [HttpPut("{id}")]
         [SwaggerOperation(
             Summary = "Update assembled product",
-            Description = "Updates the basic information (Name, Price, 3D View) of an existing assembled product."
+            Description = "Updates the information of an existing assembled product."
         )]
-        [SwaggerResponse(200, "Successfully updated")]
+        [SwaggerResponse(200, "Successfully updated", typeof(AssembledProductDetailResponse))]
+        [SwaggerResponse(400, "Validation failed (e.g. quantity <= 0, or component not yours)")]
         [SwaggerResponse(404, "Assembled product not found")]
         public async Task<IActionResult> Update(Guid id, [FromBody] UpdateAssembledProductRequest request)
         {
-            var result = await _service.UpdateAsync(id, request);
-            if (!result)
-                return NotFoundResponse<object>("Assembled product not found");
+            var userId = GetCurrentUserId();
+            var result = await _service.UpdateAsync(id, userId, request);
+            
+            if (!result.Success)
+            {
+                if (result.ErrorMessage == "Assembled product not found")
+                    return NotFoundResponse<object>(result.ErrorMessage);
+                
+                return ErrorResponse<object>(result.ErrorMessage ?? "Update failed");
+            }
 
-            return SuccessResponse("Assembled product updated successfully");
+            return SuccessResponse(result.Data, "Assembled product updated successfully");
         }
 
         /// <summary>

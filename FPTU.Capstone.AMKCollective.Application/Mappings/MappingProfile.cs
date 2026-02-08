@@ -72,7 +72,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
 
             CreateMap<ProductAssembledDetailRequest, ProductAssembledDetail>();
 
-            CreateMap<UpdateAssembledProductRequest, AssembledProduct>();
+            CreateMap<UpdateAssembledProductRequest, AssembledProduct>()
+                //Tuan Note: Do not map Details here to avoid overwriting existing details, please do not remove this line ^^
+                .ForMember(dest => dest.ProductAssembledDetails, opt => opt.Ignore());
             //==================ASSEMBLED PRODUCT=======================//
 
             //==================MODEL=======================//

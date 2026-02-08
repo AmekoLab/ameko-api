@@ -13,7 +13,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<IEnumerable<AssembledProductResponse>> GetByShopIdAsync(Guid shopId);
         Task<AssembledProductDetailResponse?> GetByIdAsync(Guid id);
         Task<(Guid Id, string? ErrorMessage)> CreateAsync(Guid userId, CreateAssembledProductRequest request);
-        Task<bool> UpdateAsync(Guid id, UpdateAssembledProductRequest request);
+        Task<(bool Success, AssembledProductDetailResponse? Data, string? ErrorMessage)> UpdateAsync(Guid id, Guid userId, UpdateAssembledProductRequest request);
         Task<bool> DeleteAsync(Guid id);
         Task<bool> RestoreAsync(Guid id);
     }
