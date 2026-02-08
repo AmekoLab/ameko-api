@@ -2,15 +2,84 @@ version: "3.8"
 
 services:
   api:
-    # By default this uses an image set in .env (IMAGE). Reviewers can pull the public image.
-    # To build locally instead, set IMAGE to empty and uncomment the 'build' section below.
-    image: ${IMAGE}
+    # Pull from Docker Hub (default) or build locally by uncommenting 'build' section
+    image: ${IMAGE:-your-dockerhub-username/fptu-capstone-amkcollective:latest}
+    container_name: amkcollective-api
+    restart: unless-stopped
     ports:
-      - "8080:80"
+      - "${API_PORT:-8080}:80"
     env_file:
       - .env
     environment:
+      # Database Configuration
       ConnectionStrings__DefaultConnection: "Server=${DB_HOST};Port=${DB_PORT};Database=${DB_NAME};User=${DB_USER};Password=${DB_PASSWORD};"
+
+      # JWT Settings
+      JwtSettings__SecretKey: "${JWT_SECRET_KEY}"
+      JwtSettings__Issuer: "${JWT_ISSUER:-ameko-be.com}"
+      JwtSettings__Audience: "${JWT_AUDIENCE:-ameko-fe.com}"
+      JwtSettings__ExpireMinutes: "${JWT_EXPIRE_MINUTES:-120}"
+
+      # Cloudinary Settings
+      CloudinarySettings__CloudName: "${CLOUDINARY_CLOUD_NAME}"
+      CloudinarySettings__ApiKey: "${CLOUDINARY_API_KEY}"
+      CloudinarySettings__ApiSecret: "${CLOUDINARY_API_SECRET}"
+
+      # Redis Settings
+      RedisSettings__ConnectionString: "${REDIS_CONNECTION_STRING}"
+      RedisSettings__InstanceName: "${REDIS_INSTANCE_NAME:-Ameko}"
+
+      # Email Settings
+      EmailSettings__From: "${EMAIL_FROM}"
+      EmailSettings__SmtpServer: "${EMAIL_SMTP_SERVER:-smtp.gmail.com}"
+      EmailSettings__Port: "${EMAIL_PORT:-587}"
+      EmailSettings__Username: "${EMAIL_USERNAME}"
+      EmailSettings__Password: "${EMAIL_PASSWORD}"
+
+      # CORS Settings
+      Cors__AllowedOrigins__0: "${CORS_ALLOWED_ORIGINS}"
+
+      # ASP.NET Core Settings
+      ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Production}"
+      ASPNETCORE_URLS: "http://+:80"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # Uncomment to build locally instead of pulling from Docker Hub
     # build:
     #   context: ./FPTU.Capstone.AMKCollective.Api
     #   dockerfile: Dockerfile
+    #   args:
+    #     CONFIGURATION: Release
+
+    networks:
+      - amkcollective-network
+
+  # Optional: Add a database service if needed
+  # db:
+  #   image: mysql:8.0
+  #   container_name: amkcollective-mysql
+  #   restart: unless-stopped
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+  #     MYSQL_DATABASE: ${DB_NAME}
+  #     MYSQL_USER: ${DB_USER}
+  #     MYSQL_PASSWORD: ${DB_PASSWORD}
+  #   ports:
+  #     - "${DB_PORT:-3306}:3306"
+  #   volumes:
+  #     - mysql-data:/var/lib/mysql
+  #   networks:
+  #     - amkcollective-network
+
+networks:
+  amkcollective-network:
+    driver: bridge
+
+# volumes:
+#   mysql-data:

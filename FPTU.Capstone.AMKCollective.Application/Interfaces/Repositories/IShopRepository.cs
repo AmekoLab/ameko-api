@@ -33,6 +33,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
             int pageNumber,
             int pageSize,
             CancellationToken token = default);
+        Task<(IEnumerable<ShopProfile> Items, int TotalCount)> GetAllPendingApprovalShopAsync(int page, int size);
 
         // --- WRITE ---
         Task CreateAsync(ShopProfile shop, CancellationToken token = default);

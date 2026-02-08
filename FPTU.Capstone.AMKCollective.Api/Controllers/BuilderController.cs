@@ -23,7 +23,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Bắt đầu quy trình Build. Tạo Session mới và trả về bước 1.
+        /// Start the Build process. Create a new session and return step 1.
         /// </summary>
         [HttpPost("start")]
         [SwaggerOperation(
@@ -36,7 +36,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var userId = GetUserId();
+                var userId = GetCurrentUserId();
                 var result = await _service.StartBuilderSessionAsync(request, userId);
                 return SuccessResponse(result);
             }
@@ -295,13 +295,5 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return NotFoundResponse<string>("Session expired or not found. Please start over.");
             }
         }
-
-        private Guid GetUserId()
-        {
-            var idClaim = User.FindFirst("id") ?? User.FindFirst(ClaimTypes.NameIdentifier);
-            if (idClaim == null) throw new UnauthorizedAccessException("Invalid Token");
-            return Guid.Parse(idClaim.Value);
-        }
-
     }
 }

@@ -38,6 +38,11 @@ internal class Program
         builder.Services.AddDbContext<ApplicationDbContext>(options =>
             options.UseMySql(connectionString, serverVersion));
         builder.Services.AddHostedService<OrderCancellationTimeoutWorker>();
+            options.UseMySql(connectionString, serverVersion, mySqlOptions =>
+                mySqlOptions.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(30),
+                    errorNumbersToAdd: null)));
 
         #region JWT Authentication
         // Configure JWT Authentication
@@ -142,15 +147,18 @@ internal class Program
 
         var app = builder.Build();
 
-        if (app.Environment.IsDevelopment())
-        {
+        // if (app.Environment.IsDevelopment())
+        // {
             app.UseSwagger();
             app.UseSwaggerUI();
 
             app.UseRewriter(new RewriteOptions().AddRedirect("^$", "swagger"));
-        }
+        // }
 
-        app.UseHttpsRedirection();
+        if (app.Environment.IsDevelopment())
+        {
+            app.UseHttpsRedirection();
+        }
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseCors("AllowFrontend");
