@@ -48,14 +48,27 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<AssembledProductDetailResponse>(item);
         }
 
-        public async Task<Guid> CreateAsync(CreateAssembledProductRequest request)
+        public async Task<(Guid Id, string? ErrorMessage)> CreateAsync(CreateAssembledProductRequest request)
         {
+            if (request.Details == null || request.Details.Count == 0)
+            {
+                return (Guid.Empty, "Assembled product must have at least one detail");
+            }
+
+            foreach (var detail in request.Details)
+            {
+                if (detail.Quantity <= 0)
+                {
+                    return (Guid.Empty, "Quantity of each detail must be greater than 0");
+                }
+            }
+
             var assembledProduct = _mapper.Map<AssembledProduct>(request);
             
             await _unitOfWork.AssembledProducts.AddAsync(assembledProduct);
             await _unitOfWork.CommitAsync();
 
-            return assembledProduct.Id;
+            return (assembledProduct.Id, null);
         }
 
         public async Task<bool> UpdateAsync(Guid id, UpdateAssembledProductRequest request)

@@ -93,10 +93,16 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             Description = "Creates a new assembled product with the provided name, price, and components."
         )]
         [SwaggerResponse(200, "Successfully created", typeof(Guid))]
+        [SwaggerResponse(400, "Validation failed (e.g. quantity <= 0)")]
         public async Task<IActionResult> Create([FromBody] CreateAssembledProductRequest request)
         {
-            var id = await _service.CreateAsync(request);
-            return SuccessResponse(id, "Assembled product created successfully");
+            var result = await _service.CreateAsync(request);
+            if (!string.IsNullOrEmpty(result.ErrorMessage))
+            {
+                return ErrorResponse<object>(result.ErrorMessage);
+            }
+
+            return SuccessResponse(result.Id, "Assembled product created successfully");
         }
 
         /// <summary>
