@@ -42,6 +42,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             //==================FOLLOW=======================//
             CreateMap<FollowRequest, Follow>();
             CreateMap<Follow, FollowResponse>();
+            CreateMap<Follow, FollowedUserResponse>()
+                .ForMember(dest => dest.UserId, opt => opt.MapFrom(src => src.Followed.Id));
+            CreateMap<Follow, FollowerResponse>()
+                .ForMember(dest => dest.UserId, opt => opt.MapFrom(src => src.Follower.Id));
 
             // TODO: Thêm mapping cho các entities khác ở đây
 

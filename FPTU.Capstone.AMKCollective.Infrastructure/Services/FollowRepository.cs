@@ -26,7 +26,18 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         public async Task<IEnumerable<Follow>> GetByFollower(Guid followerId)
         {
-            return await _context.Follows.Where(f => f.FollowerId == followerId).ToListAsync();
+            return await _context.Follows
+                .Include(f => f.Followed)
+                .Where(f => f.FollowerId == followerId)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<Follow>> GetByFollowedId(Guid followedId)
+        {
+            return await _context.Follows
+                .Include(f => f.Follower)
+                .Where(f => f.FollowedId == followedId)
+                .ToListAsync();
         }
 
         public void UnfollowUser(Follow follow)
