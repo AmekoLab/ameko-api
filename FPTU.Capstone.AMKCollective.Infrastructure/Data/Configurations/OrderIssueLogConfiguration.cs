@@ -12,13 +12,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.HasKey(oil => oil.Id);
 
             builder.Property(oil => oil.ActionByRole)
-                .HasConversion<string>()
-                .HasMaxLength(50)
                 .IsRequired();
 
             builder.Property(oil => oil.Action)
-                .HasConversion<string>()
-                .HasMaxLength(50)
                 .IsRequired();
 
             builder.Property(oil => oil.Comment)
