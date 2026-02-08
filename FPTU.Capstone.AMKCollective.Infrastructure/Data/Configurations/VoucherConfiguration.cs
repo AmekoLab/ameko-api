@@ -25,9 +25,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(v => v.MinOrderValue).HasPrecision(18, 2);
 
             // Enum Conversion
-            builder.Property(v => v.Type).HasConversion<string>();
-            builder.Property(v => v.DiscountType).HasConversion<string>();
-            builder.Property(v => v.Status).HasConversion<string>();
+            builder.Property(v => v.Type);
+            builder.Property(v => v.DiscountType);
+            builder.Property(v => v.Status);
 
             // Relationships
             builder.HasOne(v => v.Creator)

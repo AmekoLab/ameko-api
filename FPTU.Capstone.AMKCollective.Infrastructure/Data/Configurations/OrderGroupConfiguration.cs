@@ -16,7 +16,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .HasPrecision(18, 2)
                 .IsRequired();
             builder.Property(x => x.PaymentStatus)
-                .HasConversion<string>()
                 .HasDefaultValue(PaymentStatus.Pending);
 
            

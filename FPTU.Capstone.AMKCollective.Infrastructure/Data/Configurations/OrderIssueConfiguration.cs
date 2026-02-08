@@ -12,13 +12,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.HasKey(oi => oi.Id);
 
             builder.Property(oi => oi.Type)
-                .HasConversion<string>()
-                .HasMaxLength(50)
                 .IsRequired();
 
             builder.Property(oi => oi.Status)
-                .HasConversion<string>()
-                .HasMaxLength(50)
                 .IsRequired();
 
             builder.Property(oi => oi.Reason)

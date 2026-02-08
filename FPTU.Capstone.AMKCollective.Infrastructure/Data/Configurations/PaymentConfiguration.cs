@@ -21,12 +21,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .HasMaxLength(255);
             builder.Property(p => p.StripePaymentIntentId)
                 .HasMaxLength(255);
-            builder.Property(p => p.Status)
-            .HasConversion<string>() 
-            .HasMaxLength(50);
+            builder.Property(p => p.Status);
             builder.Property(p => p.Type)
-                .HasConversion<string>()   
-                .HasMaxLength(50)
                 .IsRequired();
 
             builder.HasOne(p => p.RelatedOrder)   
