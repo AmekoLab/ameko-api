@@ -11,10 +11,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // migrationBuilder.DropIndex(
-            //     name: "IX_ShopProfiles_CitizenId",
-            //     table: "ShopProfiles");
-
             migrationBuilder.AlterColumn<double>(
                 name: "Rating",
                 table: "ShopProfiles",
@@ -36,25 +32,34 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                 .Annotation("MySql:CharSet", "utf8mb4")
                 .OldAnnotation("MySql:CharSet", "utf8mb4");
 
-            migrationBuilder.AddColumn<DateTime>(
-                name: "LastResubmitTime",
-                table: "ShopProfiles",
-                type: "datetime(6)",
-                nullable: true);
+            // Safe ADD COLUMN - skip if column already exists
+            migrationBuilder.Sql(@"
+                SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ShopProfiles' AND COLUMN_NAME = 'LastResubmitTime');
+                SET @sql = IF(@col_exists = 0, 'ALTER TABLE `ShopProfiles` ADD `LastResubmitTime` datetime(6) NULL', 'SELECT 1');
+                PREPARE stmt FROM @sql;
+                EXECUTE stmt;
+                DEALLOCATE PREPARE stmt;
+            ");
 
-            migrationBuilder.AddColumn<int>(
-                name: "ResubmitCount",
-                table: "ShopProfiles",
-                type: "int",
-                nullable: false,
-                defaultValue: 0);
+            migrationBuilder.Sql(@"
+                SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ShopProfiles' AND COLUMN_NAME = 'ResubmitCount');
+                SET @sql = IF(@col_exists = 0, 'ALTER TABLE `ShopProfiles` ADD `ResubmitCount` int NOT NULL DEFAULT 0', 'SELECT 1');
+                PREPARE stmt FROM @sql;
+                EXECUTE stmt;
+                DEALLOCATE PREPARE stmt;
+            ");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_ShopProfiles_CitizenId",
-                table: "ShopProfiles",
-                column: "CitizenId",
-                unique: true,
-                filter: "`CitizenId` IS NOT NULL");
+            // Safe CREATE INDEX - skip if index already exists
+            migrationBuilder.Sql(@"
+                SET @idx_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS 
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ShopProfiles' AND INDEX_NAME = 'IX_ShopProfiles_CitizenId');
+                SET @sql = IF(@idx_exists = 0, 'CREATE UNIQUE INDEX `IX_ShopProfiles_CitizenId` ON `ShopProfiles` (`CitizenId`)', 'SELECT 1');
+                PREPARE stmt FROM @sql;
+                EXECUTE stmt;
+                DEALLOCATE PREPARE stmt;
+            ");
         }
 
         /// <inheritdoc />
