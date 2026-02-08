@@ -13,5 +13,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         void UnfollowUser(Follow follow); 
         Task<IEnumerable<Follow>> GetByFollower(Guid followerId);
         Task<Follow?> GetFollowRecord(Guid followerId, Guid followedId);
+        Task<IEnumerable<Follow>> GetByFollowedId(Guid followedId);
     }
 }

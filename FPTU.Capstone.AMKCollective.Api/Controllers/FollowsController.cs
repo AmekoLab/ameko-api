@@ -14,6 +14,16 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
     /// <summary>
     /// API Controller for handling follow/unfollow functionality between users
+    /// 
+    /// KEY CONCEPTS FOR FRONTEND:
+    /// - FOLLOWING (Đang theo dõi): Users that YOUR account is following
+    /// - FOLLOWERS (Người theo dõi): Users that are following YOUR account
+    /// 
+    /// ENDPOINTS SUMMARY:
+    /// 1. POST /toggle - Follow/Unfollow someone
+    /// 2. GET / - Get list of users YOU are following (YOUR Following list)
+    /// 3. POST /check - Check if YOU are following a specific user
+    /// 4. GET /followers/{userId} - Get list of users following that user (That user's Followers list)
     /// </summary>
     [Route("api/v1/[controller]")]
     [ApiController]
@@ -32,95 +42,100 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Current user follows another user
+        /// Toggle follow/unfollow for a user
+        /// 
+        /// FE INSTRUCTION:
+        /// Send the ID of the user you want to follow/unfollow as 'followedId'
+        /// This endpoint automatically detects if you're already following that user:
+        /// - If YES: Unfollows them
+        /// - If NO: Follows them
         /// </summary>
-        /// <param name="followedId">ID of the user to follow</param>
-        /// <returns>Follow success message</returns>
-        [HttpPost]
-        [SwaggerOperation(Summary = "Follow a user", Description = "Send a follow request to another user. User ID is extracted from the token.")]
-        [SwaggerResponse(200, "Followed successfully", typeof(ApiResponse<object>))]
+        /// <param name="request">Request containing followedId (ID of user to follow/unfollow)</param>
+        /// <returns>Follow/unfollow result message ("Followed successfully" or "Unfollowed successfully")</returns>
+        [HttpPost("toggle")]
+        [SwaggerOperation(Summary = "Toggle follow/unfollow - Smart endpoint that auto-follows or unfollows", Description = "Follow a user if not already following, or unfollow if already following. Determined automatically based on current relationship.")]
+        [SwaggerResponse(200, "Toggled successfully", typeof(ApiResponse<object>))]
         [SwaggerResponse(401, "Unauthorized access")]
-        public async Task<IActionResult> FollowUser([FromBody] Guid followedId)
+        public async Task<IActionResult> ToggleFollowUser([FromBody] FollowRequestDto request)
         {
-            var followerId = GetCurrentUserId();
-            var followRequest = new FollowRequest 
-            { 
-                FollowerId = followerId, 
-                FollowedId = followedId 
-            };
-            await _followService.FollowUser(followRequest);
-            return SuccessResponse("Followed successfully");
+            try
+            {
+                var followerId = GetCurrentUserId();
+                var followRequest = new FollowRequest 
+                { 
+                    FollowerId = followerId, 
+                    FollowedId = request.FollowedId 
+                };
+                var existingFollow = await _followService.GetFollowRecord(followerId, request.FollowedId);
+                var message = existingFollow != null ? "Unfollowed successfully" : "Followed successfully";
+                await _followService.ToggleFollowUser(followRequest);
+                return SuccessResponse(message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<string>("Error toggling follow");
+            }
         }
 
         /// <summary>
-        /// Current user unfollows another user
+        /// Get the list of users the current user is FOLLOWING (YOUR Following List)
+        /// 
+        /// FE INSTRUCTION:
+        /// Use this to display "Following" tab on user's profile
+        /// Shows all users that the logged-in user is following
         /// </summary>
-        /// <param name="followedId">ID of the user to unfollow</param>
-        /// <returns>Unfollow success message</returns>
-        [HttpPost("unfollow")]
-        [SwaggerOperation(Summary = "Unfollow a user", Description = "Remove a follow relationship with another user. User ID is extracted from the token.")]
-        [SwaggerResponse(200, "Unfollowed successfully", typeof(ApiResponse<object>))]
-        [SwaggerResponse(401, "Unauthorized access")]
-        public async Task<IActionResult> UnfollowUser([FromBody] Guid followedId)
-        {
-            var followerId = GetCurrentUserId();
-            var unfollowRequest = new FollowRequest 
-            { 
-                FollowerId = followerId, 
-                FollowedId = followedId 
-            };
-            await _followService.UnfollowUser(unfollowRequest);
-            return SuccessResponse("Unfollowed successfully");
-        }
-
-        /// <summary>
-        /// Get the list of users the current user is following
-        /// </summary>
-        /// <returns>List of followed users</returns>
+        /// <returns>List of users that YOU are following (FollowedUserResponse with their IDs)</returns>
         [HttpGet]
-        [SwaggerOperation(Summary = "Get followed users", Description = "Retrieve a list of users that the current user is following. User ID is extracted from the token.")]
-        [SwaggerResponse(200, "List of followed users retrieved successfully", typeof(ApiResponse<IEnumerable<FollowResponse>>))]
+        [SwaggerOperation(Summary = "Get MY following list", Description = "Retrieve a list of users that the current user (from token) is following. Requires authentication.")]
+        [SwaggerResponse(200, "List of followed users retrieved successfully", typeof(ApiResponse<IEnumerable<FollowedUserResponse>>))]
         [SwaggerResponse(401, "Unauthorized access")]
         public async Task<IActionResult> GetFollowsByCurrentUser()
         {
             var followerId = GetCurrentUserId();
-            var follows = await _followService.GetFollowsByFollower(followerId);
-            return SuccessResponse(follows, "List of users this follower is following");
+            var followedUsers = await _followService.GetFollowedUsersByFollower(followerId);
+            return SuccessResponse(followedUsers, "List of users this follower is following");
+        }
+
+
+        /// <summary>
+        /// Check if current user follows a specific user
+        /// 
+        /// FE INSTRUCTION:
+        /// Use this to determine if you should show "Follow" or "Unfollow" button
+        /// Returns { isFollowing: true/false } based on whether you're following that user
+        /// </summary>
+        /// <param name="request">Request containing userId (ID of user to check if you follow)</param>
+        /// <returns>{ isFollowing: true } if current user follows the user, { isFollowing: false } otherwise</returns>
+        [HttpPost("check")]
+        [Authorize]
+        [SwaggerOperation(Summary = "Check if I'm following a user", Description = "Returns true/false if the current user (from token) is following the specified user.")]
+        [SwaggerResponse(200, "Follow relationship check result", typeof(ApiResponse<object>))]
+        [SwaggerResponse(401, "Unauthorized access")]
+        public async Task<IActionResult> CheckIfFollowing([FromBody] CheckFollowingRequestDto request)
+        {
+            var currentUserId = GetCurrentUserId();
+            var follows = await _followService.GetFollowRecord(currentUserId, request.UserId);
+            return SuccessResponse(new { isFollowing = follows != null });
         }
 
         /// <summary>
-        /// Get the list of users a specific user is following
+        /// Get list of users following a specific user (That user's Followers List)
+        /// 
+        /// FE INSTRUCTION:
+        /// Use this to display "Followers" tab on any user's profile
+        /// Pass any userId (can be current user or any other user) to see their followers
+        /// This endpoint is public (AllowAnonymous) - can be called without login
         /// </summary>
-        /// <param name="followerId">ID of the user to check</param>
-        /// <returns>List of users followed by that user</returns>
-        [HttpGet("follower/{followerId}")]
+        /// <param name="userId">ID of the user whose followers you want to see</param>
+        /// <returns>List of users following that user (FollowerResponse with their IDs)</returns>
+        [HttpGet("followers/{userId}")]
         [AllowAnonymous]
-        [SwaggerOperation(Summary = "Get followed users by follower ID", Description = "Retrieve a list of users that a specific follower is following.")]
-        [SwaggerResponse(200, "List of followed users retrieved successfully", typeof(ApiResponse<IEnumerable<FollowResponse>>))]
-        public async Task<IActionResult> GetFollowsByFollower(Guid followerId)
+        [SwaggerOperation(Summary = "Get followers of any user - PUBLIC endpoint", Description = "Retrieve a list of users that are following the specified user. Can pass any userId - no authentication required.")]
+        [SwaggerResponse(200, "List of followers retrieved successfully", typeof(ApiResponse<IEnumerable<FollowerResponse>>))]
+        public async Task<IActionResult> GetFollowersByUserId(Guid userId)
         {
-            var follows = await _followService.GetFollowsByFollower(followerId);
-            return SuccessResponse(follows, "List of users this follower is following");
-        }
-
-        /// <summary>
-        /// Check follow relationship between two users
-        /// </summary>
-        /// <param name="followerId">ID of the follower</param>
-        /// <param name="followedId">ID of the followed user</param>
-        /// <returns>Follow relationship info if exists</returns>
-        [HttpGet("record")]
-        [AllowAnonymous]
-        [SwaggerOperation(Summary = "Get follow record between follower and followed", Description = "Retrieve the follow relationship record between a specific follower and followed user.")]
-        [SwaggerResponse(200, "Follow relationship record retrieved successfully", typeof(ApiResponse<FollowResponse>))]
-        public async Task<IActionResult> GetFollowRecord([FromQuery] Guid followerId, [FromQuery] Guid followedId)
-        {
-            var followRecord = await _followService.GetFollowRecord(followerId, followedId);
-            if (followRecord == null)
-            {
-                return NotFound();
-            }
-            return SuccessResponse(followRecord, "Follow relationship record between follower and followed user");
+            var followers = await _followService.GetFollowersByUserId(userId);
+            return SuccessResponse(followers, "List of followers of this user");
         }
     }
 }
