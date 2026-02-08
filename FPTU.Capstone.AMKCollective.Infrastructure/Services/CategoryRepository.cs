@@ -20,11 +20,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<Category?> GetByIdAsync(Guid id, bool includeSubCategories = false, CancellationToken cancellationToken = default)
         {
             var query = _context.Categories
-                .Where(c => c.Id == id && !c.IsDelete);
+                .Where(c => c.Id == id && !c.IsDeleted);
 
             if (includeSubCategories)
             {
-                query = query.Include(c => c.SubCategories.Where(sc => !sc.IsDelete));
+                query = query.Include(c => c.SubCategories.Where(sc => !sc.IsDeleted));
             }
 
             return await query.FirstOrDefaultAsync(cancellationToken);
@@ -32,7 +32,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         public async Task<IEnumerable<Category>> GetAllAsync(bool? isActive = null, Guid? parentId = null, bool includeSubCategories = false, CancellationToken cancellationToken = default)
         {
-            var query = _context.Categories.Where(c => !c.IsDelete);
+            var query = _context.Categories.Where(c => !c.IsDeleted);
 
             if (isActive.HasValue)
             {
@@ -50,7 +50,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
             if (includeSubCategories)
             {
-                query = query.Include(c => c.SubCategories.Where(sc => !sc.IsDelete));
+                query = query.Include(c => c.SubCategories.Where(sc => !sc.IsDeleted));
             }
 
             return await query.OrderBy(c => c.Name).ToListAsync(cancellationToken);
@@ -58,7 +58,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         public async Task<(IEnumerable<Category> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, bool? isActive = null, Guid? parentId = null, bool includeSubCategories = false, CancellationToken cancellationToken = default)
         {
-            var query = _context.Categories.Where(c => !c.IsDelete);
+            var query = _context.Categories.Where(c => !c.IsDeleted);
 
             if (isActive.HasValue)
             {
@@ -74,7 +74,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
             if (includeSubCategories)
             {
-                query = query.Include(c => c.SubCategories.Where(sc => !sc.IsDelete));
+                query = query.Include(c => c.SubCategories.Where(sc => !sc.IsDeleted));
             }
 
             var items = await query
@@ -114,7 +114,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             if (category == null)
                 return false;
 
-            category.IsDelete = true;
+            category.IsDeleted = true;
             category.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync(cancellationToken);
@@ -124,13 +124,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default)
         {
             return await _context.Categories
-                .AnyAsync(c => c.Id == id && !c.IsDelete, cancellationToken);
+                .AnyAsync(c => c.Id == id && !c.IsDeleted, cancellationToken);
         }
 
         public async Task<bool> HasSubCategoriesAsync(Guid categoryId, CancellationToken cancellationToken = default)
         {
             return await _context.Categories
-                .AnyAsync(c => c.ParentId == categoryId && !c.IsDelete, cancellationToken);
+                .AnyAsync(c => c.ParentId == categoryId && !c.IsDeleted, cancellationToken);
         }
 
         public async Task<bool> HasPartsAsync(Guid categoryId, CancellationToken cancellationToken = default)
@@ -142,7 +142,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<IEnumerable<Category>> GetSubCategoriesAsync(Guid parentId, bool includeInactive = false, CancellationToken cancellationToken = default)
         {
             var query = _context.Categories
-                .Where(c => c.ParentId == parentId && !c.IsDelete);
+                .Where(c => c.ParentId == parentId && !c.IsDeleted);
 
             if (!includeInactive)
             {
@@ -155,7 +155,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<IEnumerable<Category>> GetRootCategoriesAsync(bool includeInactive = false, CancellationToken cancellationToken = default)
         {
             var query = _context.Categories
-                .Where(c => c.ParentId == null && !c.IsDelete);
+                .Where(c => c.ParentId == null && !c.IsDeleted);
 
             if (!includeInactive)
             {
@@ -163,7 +163,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             }
 
             return await query
-                .Include(c => c.SubCategories.Where(sc => !sc.IsDelete && (includeInactive || sc.IsActive)))
+                .Include(c => c.SubCategories.Where(sc => !sc.IsDeleted && (includeInactive || sc.IsActive)))
                 .OrderBy(c => c.Name)
                 .ToListAsync(cancellationToken);
         }
@@ -203,7 +203,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<Category?> GetBySlugAsync(string slug, CancellationToken cancellationToken = default)
         {
             return await _context.Categories
-                .Where(c => c.Slug == slug && !c.IsDelete && c.IsActive)
+                .Where(c => c.Slug == slug && !c.IsDeleted && c.IsActive)
                 .FirstOrDefaultAsync(cancellationToken);
         }
     }

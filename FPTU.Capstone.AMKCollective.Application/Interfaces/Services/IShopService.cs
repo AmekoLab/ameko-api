@@ -15,7 +15,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetMarketplaceShopAsync(string? searchTerm, int page, int size);
         Task<ShopDetailResponse> GetMyShopAsync(Guid userId);
         Task<ShopResponse> RegisterShopAsync(Guid userId, CreateShopRequest request);
-        Task UpdateMyShopAsync(Guid userId, UpdateShopRequest request);
+        Task PatchMyShopAsync(Guid userId, PatchShopRequest request); 
+        Task UpdateMyShopRejectedAsync(Guid userId, UpdateShopRejectedRequest request); 
 
         Task<(IEnumerable<ShopDetailResponse> Items, int TotalCount)> GetShopForAdminAsync(string? searchTerm, ShopStatus? status, int page, int size);
         Task ApproveShopAsync(Guid shopId, ApproveShopRequest request);

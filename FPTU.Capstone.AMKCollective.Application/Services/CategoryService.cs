@@ -80,6 +80,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Slug = slug,
                 ParentId = request.ParentId,
                 IsActive = request.IsActive,
+                ShopId = request.ShopId,
                 ThumbnailURL = null
             };
 

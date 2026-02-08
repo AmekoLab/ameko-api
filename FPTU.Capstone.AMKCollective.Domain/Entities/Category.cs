@@ -9,7 +9,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public string? ThumbnailURL { get; set; }
         public Guid? ParentId { get; set; }
         public bool IsActive { get; set; } = true;
-        public bool IsDelete { get; set; } = false;
+        public Guid ShopId { get; set; }
 
         // Navigation Properties
         public virtual Category? Parent { get; set; }

@@ -300,6 +300,59 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             return SuccessResponse(new { UserId = id }, "User banned successfully");
         }
 
+        [Authorize(Roles = "Admin")]
+        [HttpPost("admin/soft-delete/{id}")]
+        [SwaggerOperation(
+            Summary = "Admin: Soft delete user",
+            Description = "Marks a user account as deleted without removing data from the database. Requires Admin role."
+        )]
+        [SwaggerResponse(200, "User soft-deleted successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
+        [SwaggerResponse(403, "Forbidden - Requires Admin role")]
+        [SwaggerResponse(404, "User not found")]
+        public async Task<IActionResult> SoftDeleteUser(Guid id)
+        {
+            var result = await _userService.SoftDeleteUserAsync(id);
+            if (!result.Success)
+                return ErrorResponse<object>(result.ErrorMessage);
+            return SuccessResponse(new { UserId = id }, "User soft-deleted successfully");
+        }
+
+        [Authorize(Roles = "Admin")]
+        [HttpPost("admin/restore/{id}")]
+        [SwaggerOperation(
+            Summary = "Admin: Restore user",
+            Description = "Reactivates a previously banned or soft-deleted user account. Requires Admin role."
+        )]
+        [SwaggerResponse(200, "User restored successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
+        [SwaggerResponse(403, "Forbidden - Requires Admin role")]
+        [SwaggerResponse(404, "User not found")]
+        public async Task<IActionResult> RestoreUser(Guid id)
+        {
+            var result = await _userService.RestoreUserAsync(id);
+            if (!result.Success)
+                return ErrorResponse<object>(result.ErrorMessage);
+            return SuccessResponse(new { UserId = id }, "User restored successfully");
+        }
+
+        [Authorize(Roles = "Admin")]
+        [HttpGet("admin/un-ban/{id}")]
+        [SwaggerOperation(
+            Summary = "Admin: Get unbanned users",
+            Description = "Retrieves a list of users who are currently not banned. Requires Admin role."
+        )]
+        [SwaggerResponse(200, "Successfully retrieved list of unbanned users", typeof(PaginatedResult<UserResponse>))]
+        [SwaggerResponse(401, "Unauthorized")]
+        [SwaggerResponse(403, "Forbidden - Requires Admin role")]
+        public async Task<IActionResult> GetUnBannedUsers(Guid id)
+        {
+            var result = await _userService.UnBanUserAsync(id);
+            if (!result.Success)
+                return ErrorResponse<object>(result.ErrorMessage);
+            return SuccessResponse(new { UserId = id }, "User unbanned successfully");
+        }
+
         #endregion
 
         #region Profile Update

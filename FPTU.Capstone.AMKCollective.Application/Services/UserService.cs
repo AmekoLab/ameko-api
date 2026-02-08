@@ -388,5 +388,43 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
             return (true, string.Empty);
         }
+
+        public async Task<(bool Success, string ErrorMessage)> SoftDeleteUserAsync(Guid userId)
+        {
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            if (user == null) return (false, "User not found");
+
+            user.IsDeleted = true;
+            user.Status = AccountStatus.Inactive;
+
+            await _unitOfWork.Users.UpdateAsync(user);
+            await _unitOfWork.CommitAsync();
+            return (true, string.Empty);
+        }
+
+        public async Task<(bool Success, string ErrorMessage)> RestoreUserAsync(Guid userId)
+        {
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            if (user == null) return (false, "User not found");
+
+            user.IsDeleted = false;
+            user.Status = AccountStatus.Active;
+
+            await _unitOfWork.Users.UpdateAsync(user);
+            await _unitOfWork.CommitAsync();
+            return (true, string.Empty);
+        }
+
+        public async Task<(bool Success, string ErrorMessage)> UnBanUserAsync(Guid userId)
+        {
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            if (user == null) return (false, "User not found");
+
+            user.Status = AccountStatus.Active;
+            await _unitOfWork.Users.UpdateAsync(user);
+            await _unitOfWork.CommitAsync();
+            return (true, string.Empty);
+        }
+
     }
 }

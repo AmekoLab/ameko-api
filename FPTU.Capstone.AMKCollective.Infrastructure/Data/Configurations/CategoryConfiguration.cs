@@ -29,7 +29,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(c => c.IsActive)
                 .HasDefaultValue(true);
 
-            builder.Property(c => c.IsDelete)
+            builder.Property(c => c.IsDeleted)
                 .HasDefaultValue(false);
             builder.HasOne(c => c.Parent)
                 .WithMany(c => c.SubCategories)
@@ -39,7 +39,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             // --- INDEXES ---
             builder.HasIndex(c => c.ParentId);
             builder.HasIndex(c => c.IsActive);
-            builder.HasIndex(c => c.IsDelete);
+            builder.HasIndex(c => c.IsDeleted);
             builder.HasIndex(c => c.Name);
 
             builder.HasIndex(c => c.Slug)
