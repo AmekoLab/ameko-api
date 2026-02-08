@@ -14,13 +14,31 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(p => p.Amount)
                 .HasPrecision(18, 2)
                 .IsRequired();
+            builder.Property(p => p.FeeAmount)
+                .HasPrecision(18, 2) 
+                .HasDefaultValue(0);
             builder.Property(p => p.StripeSessionId)
                 .HasMaxLength(255);
             builder.Property(p => p.StripePaymentIntentId)
                 .HasMaxLength(255);
             builder.Property(p => p.Status)
-                .HasConversion<string>()  
-                .HasMaxLength(50);
+            .HasConversion<string>() 
+            .HasMaxLength(50);
+            builder.Property(p => p.Type)
+                .HasConversion<string>()   
+                .HasMaxLength(50)
+                .IsRequired();
+
+            builder.HasOne(p => p.RelatedOrder)   
+                .WithMany()                     
+                .HasForeignKey(p => p.RelatedOrderId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.HasIndex(p => p.RelatedOrderId);
+            builder.HasOne(p => p.User)               
+                .WithMany(u => u.Payments)              
+                .HasForeignKey(p => p.UserId)         
+                .OnDelete(DeleteBehavior.Restrict);
             builder.HasIndex(p => p.StripeSessionId);
             builder.HasIndex(p => p.StripePaymentIntentId);
 
@@ -28,6 +46,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .WithMany(og => og.Payments)
                 .HasForeignKey(p => p.OrderGroupId)
                 .OnDelete(DeleteBehavior.Cascade);
+
         }
     }
 }

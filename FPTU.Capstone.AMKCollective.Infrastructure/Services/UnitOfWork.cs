@@ -19,7 +19,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         private IWalletRepository? _wallets;
         private IOrderIssueRepository? _orderIssues;
         private IOrderIssueLogRepository? _orderIssueLogs;
-
+        private IVoucherRepository? _voucher;
         public UnitOfWork(ApplicationDbContext context)
         {
             _context = context;
@@ -41,6 +41,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public IWalletRepository Wallets => _wallets ??= new WalletRepository(_context);
         public IOrderIssueRepository OrderIssues => _orderIssues ??= new OrderIssueRepository(_context);
         public IOrderIssueLogRepository OrderIssueLogs => _orderIssueLogs ??= new OrderIssueLogRepository(_context);
+        public IVoucherRepository Vouchers => _voucher ??= new VoucherRepository(_context);
 
         public async Task CommitAsync()
         {

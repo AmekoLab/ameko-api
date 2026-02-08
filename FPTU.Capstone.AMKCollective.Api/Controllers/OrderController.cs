@@ -2,6 +2,7 @@
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Order;
+using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Application.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -17,10 +18,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
     public class OrderController : BaseApiController
     {
         private readonly IOrderService _orderService;
+        private readonly IShopService _shopService;
 
-        public OrderController(IOrderService orderService)
+        public OrderController(IOrderService orderService, IShopService shopService)
         {
             _orderService = orderService;
+            _shopService = shopService;
         }
 
         // 1. Checkout
@@ -151,6 +154,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         // 8. Hủy đơn
+        [Obsolete("This API is deprecated and disabled. Please use /orders/cancel/v2 instead.")]
         [HttpPost("{orderId}/cancel")]
         [SwaggerOperation(
     Summary = "Cancel Order",
@@ -158,11 +162,69 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 )]
         [SwaggerResponse(200, "Order cancelled successfully")]
         [SwaggerResponse(401, "Unauthorized")]
-        public async Task<IActionResult> CancelOrder(Guid orderId, [FromBody] CancelOrderRequest request)
+        public async Task<IActionResult> CancelOrder(Guid orderId, [FromBody] Application.DTOs.OrderIssues.CancelOrderRequest request)
         {
             var userId = GetCurrentUserId();
             await _orderService.CancelOrderAsync(userId, orderId, request.Reason);
             return SuccessResponse("Order cancelled successfully");
+        }
+
+
+        /// <summary>
+        /// [Customer] Submit an order cancellation request (instead of immediate cancellation)
+        /// </summary>
+        [HttpPost("cancel-request")]
+        [Authorize]
+        public async Task<IActionResult> RequestCancelOrder([FromBody] Application.DTOs.OrderIssues.CancelOrderRequest request)
+        {
+            var userId = GetCurrentUserId(); // Get ID from Token
+
+            var result = await _orderService.RequestCancelOrderAsync(userId, request);
+
+            if (result.Status == Domain.Enums.OrderIssueStatus.Rejected)
+            {
+                // System auto-reject (due to Spam limit or Order already shipped)
+                // Using ErrorResponse from BaseApiController
+                return ErrorResponse<object>($"Cancellation request rejected. {result.ShopResponse}");
+            }
+
+            // Using SuccessResponse from BaseApiController
+            return SuccessResponse(result, "Request submitted successfully. Please wait for Shop approval.");
+        }
+
+        /// <summary>
+        /// [Shop Owner] Approve or Reject customer's cancellation request
+        /// </summary>
+        [HttpPost("process-issue")]
+        [Authorize]
+        public async Task<IActionResult> ProcessCancelRequest([FromBody] ProcessIssueRequest request)
+        {
+            var userId = GetCurrentUserId();
+
+            // 1. Get Shop info of the current logged-in User
+            // (Assuming ShopService has GetShopByUserIdAsync)
+            var shop = await _shopService.GetMyShopAsync(userId);
+
+            if (shop == null)
+            {
+                return ErrorResponse<object>("This account is not a Shop Owner.");
+            }
+
+            // 2. Call Service to process
+            await _orderService.ProcessCancelRequestAsync(userId, request);
+
+            return SuccessResponse(true, "Request processed successfully.");
+        }
+
+        // --- Helper: Get User ID ---
+        private Guid GetCurrentUserId()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
+            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out Guid userId))
+            {
+                return userId;
+            }
+            throw new UnauthorizedAccessException("User ID not found in token");
         }
     }
 }

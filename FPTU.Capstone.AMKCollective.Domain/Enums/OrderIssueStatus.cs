@@ -9,22 +9,22 @@ namespace FPTU.Capstone.AMKCollective.Domain.Enums
 {
     public enum OrderIssueStatus
     {
-        Pending, //Khách mới tạo yêu cầu
+        Pending = 0, //Khách mới tạo yêu cầu
 
-        InProgress, //Đã Valid/Có bằng chứng, chờ Shop xử lý
+        InProgress = 1, //Đã Valid/Có bằng chứng, chờ Shop xử lý
 
-        Approved, //Shop đồng ý yêu cầu
+        ShopAccepted = 2, //Shop đồng ý yêu cầu
 
-        Rejected, //Shop/Admin từ chối yêu cầu
+        Rejected = 3, //Shop/Admin từ chối yêu cầu
 
-        Cancelled, //Hủy yêu cầu (Khách rút lui, Timeout không gửi hàng, Shop không rep
+        AutoCancelled = 4, //Hủy yêu cầu (Khách rút lui, Timeout không gửi hàng, Shop không rep
 
-        AwaitingReturn, //Admin chấp thuận, chờ khách gửi hàng
+        AwaitingReturn = 5, //Admin chấp thuận, chờ khách gửi hàng
 
-        Returning, //Khách đã gửi hàng, đang vận chuyển
+        Returning = 6, //Khách đã gửi hàng, đang vận chuyển
 
-        Returned, //Shop đã nhận được hàng
+        Returned = 7, //Shop đã nhận được hàng
 
-        Completed //Hoàn tất (Đã hoàn tiền/Voucher/Đổi hàng)
+        Completed = 8 //Hoàn tất (Đã hoàn tiền/Voucher/Đổi hàng)
     }
 }

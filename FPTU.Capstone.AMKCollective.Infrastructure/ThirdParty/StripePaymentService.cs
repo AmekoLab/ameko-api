@@ -128,30 +128,60 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
         // Helper
         private async Task FulfillOrderAsync(Guid orderGroupId, string transactionId, string sessionId)
         {
-            var orderGroup = await _unitOfWork.OrderGroups.GetByIdAsync(orderGroupId);
-            if (orderGroup != null)
+            try
             {
-                orderGroup.PaymentStatus = PaymentStatus.Paid;
+                // 1. Lấy OrderGroup (Repository của bạn ĐÃ Include Orders rồi)
+                var orderGroup = await _unitOfWork.OrderGroups.GetByIdAsync(orderGroupId);
 
-                foreach (var order in orderGroup.Orders)
+                if (orderGroup != null)
                 {
-                    order.PaymentStatus = PaymentStatus.Paid;
+                    orderGroup.PaymentStatus = PaymentStatus.Paid;
+
+                    // 2. Update trạng thái Orders con
+                    if (orderGroup.Orders != null && orderGroup.Orders.Any())
+                    {
+                        foreach (var order in orderGroup.Orders)
+                        {
+                            order.PaymentStatus = PaymentStatus.Paid;
+                            order.OrderStatus = OrderStatus.Processing;
+                            await _unitOfWork.Orders.UpdateOrderAsync(order);
+                        }
+                    }
+
+                    // 3. Tạo Payment Log
+                    // Kiểm tra UserId để chắc chắn không bị lỗi Guid.Empty
+                    if (orderGroup.CustomerId == Guid.Empty)
+                    {
+                        throw new Exception("OrderGroup has invalid CustomerId (Guid.Empty)");
+                    }
+
+                    var payment = new FPTU.Capstone.AMKCollective.Domain.Entities.Payment
+                    {
+                        Id = Guid.NewGuid(),
+                        OrderGroupId = orderGroupId,
+                        UserId = orderGroup.CustomerId, 
+                        Amount = orderGroup.TotalGroupAmount,
+                        Currency = "vnd",
+                        StripePaymentIntentId = transactionId,
+                        StripeSessionId = sessionId,
+                        Method = PaymentMethod.CreditCard,
+                        Status = PaymentStatus.Paid,
+                        Type = PaymentType.OrderPayment,
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    await _unitOfWork.Payments.AddAsync(payment);
+
+                    // 4. Lưu tất cả thay đổi
+                    await _unitOfWork.CommitAsync();
                 }
-
-                var payment = new FPTU.Capstone.AMKCollective.Domain.Entities.Payment
-                {
-                    Id = Guid.NewGuid(),
-                    OrderGroupId = orderGroupId,
-                    Amount = orderGroup.TotalGroupAmount,
-                    Currency = "vnd",
-                    StripePaymentIntentId = transactionId,
-                    StripeSessionId = sessionId,
-                    Method = PaymentMethod.CreditCard,
-                    Status = PaymentStatus.Paid,
-                };
-
-                await _unitOfWork.Payments.AddAsync(payment);
-                await _unitOfWork.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                // Log lỗi chi tiết ra Console để debug nếu vẫn tạch
+                var innerMsg = ex.InnerException != null ? ex.InnerException.Message : "No inner exception";
+                Console.WriteLine($"[STRIPE WEBHOOK ERROR] {ex.Message} | Inner: {innerMsg}");
+                throw; // Ném lỗi lại để Stripe biết mà retry
             }
         }
 

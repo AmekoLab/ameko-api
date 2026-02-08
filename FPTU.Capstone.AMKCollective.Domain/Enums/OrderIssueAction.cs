@@ -9,24 +9,24 @@ namespace FPTU.Capstone.AMKCollective.Domain.Enums
 {
     public enum OrderIssueAction //dùng cho OrderIssueLog
     {
-        Create, //Tạo yêu cầu
+        Create = 0, //Tạo yêu cầu
 
-        ShopApprove, //Shop đồng ý
+        ShopApprove = 1, //Shop đồng ý
 
-        ShopReject, //Shop từ chối
+        ShopReject = 2, //Shop từ chối
 
-        UserUpdate, //Khách cập nhật thông tin
+        UserUpdate = 3, //Khách cập nhật thông tin
 
-        UserEscalate, //Khách khiếu nại lên Admin
+        UserEscalate = 4, //Khách khiếu nại lên Admin
 
-        AdminDecision, //Admin phán quyết
+        AdminDecision = 5, //Admin phán quyết
 
-        SystemCancel, //Hủy tự động (System)
+        SystemCancel = 6, //Hủy tự động (System)
 
-        UserCancel, //Khách tự hủy
+        UserCancel = 7, //Khách tự hủy
 
-        UserShippedReturn, // Khách confirm đã gửi
+        UserShippedReturn = 8, // Khách confirm đã gửi
 
-        ShopReceivedReturn // Shop confirm đã nhận
+        ShopReceivedReturn = 9 // Shop confirm đã nhận
     }
 }

@@ -17,6 +17,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<int> SaveChangesAsync(CancellationToken token = default);
 
         Task<Payment?> GetPaymentByOrderGroupIdAsync(Guid orderGroupId);
+        Task<IEnumerable<Payment>> GetByUserIdAsync(Guid userId, CancellationToken token = default);
 
     }
 }
