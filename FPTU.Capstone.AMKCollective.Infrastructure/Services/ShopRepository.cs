@@ -22,7 +22,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<ShopProfile?> GetByIdAsync(Guid id, CancellationToken token = default)
         {
             return await _context.ShopProfiles
-                .Include(s => s.User) 
+                .Include(s => s.User)
                 .FirstOrDefaultAsync(s => s.Id == id && !s.IsDeleted, token);
         }
 
@@ -62,8 +62,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             CancellationToken token = default)
         {
             var query = _context.ShopProfiles
-                .Include(s => s.User) 
-                .Where(s => !s.IsDeleted) 
+                .Include(s => s.User)
+                .Where(s => !s.IsDeleted)
                 .AsQueryable();
 
             // 1. Filter Status 
@@ -127,7 +127,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             CancellationToken token = default)
         {
             var query = _context.ShopProfiles
-                .AsNoTracking() 
+                .AsNoTracking()
                 .Where(s => !s.IsDeleted &&
                             s.Status == ShopStatus.Active &&
                             s.IsActive == true)
@@ -160,6 +160,22 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 shop.TotalRevenue += revenueAmount;
 
             }
+        }
+
+        public async Task<(IEnumerable<ShopProfile> Items, int TotalCount)> GetAllPendingApprovalShopAsync(int page, int size)
+        {
+            var query = _context.ShopProfiles
+                .Where(s => s.Status == ShopStatus.PendingApproval && !s.IsDeleted);
+
+            var totalCount = await query.CountAsync();
+
+            var items = await query
+                .OrderBy(s => s.CreatedAt)
+                .Skip((page - 1) * size)
+                .Take(size)
+                .ToListAsync();
+
+            return (items, totalCount);
         }
     }
 }

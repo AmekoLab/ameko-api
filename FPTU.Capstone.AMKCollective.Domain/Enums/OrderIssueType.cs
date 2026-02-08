@@ -9,10 +9,10 @@ namespace FPTU.Capstone.AMKCollective.Domain.Enums
 {
     public enum OrderIssueType //phân biệt khi nào bảo hành khi nào hủy đơn.
     {
-        CancelRequest, //Yêu cầu hủy đơn hàng
+        CancelRequest = 0, //Yêu cầu hủy đơn hàng
 
-        ReturnRequest, //Yêu cầu trả hàng/Hoàn tiền
+        ReturnRequest = 1, //Yêu cầu trả hàng/Hoàn tiền
 
-        WarrantyClaim //Yêu cầu bảo hành/Sửa chữa
+        WarrantyClaim = 2 //Yêu cầu bảo hành/Sửa chữa
     }
 }

@@ -23,5 +23,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         void Delete(Order order);
 
         Task<IEnumerable<Order>> GetShopOrdersAsync(Guid shopId, OrderStatus? status, int page, int size, CancellationToken token = default);
+        Task<IEnumerable<Order>> GetOrdersByGroupIdAsync(Guid orderGroupId, CancellationToken token = default);
     }
 }

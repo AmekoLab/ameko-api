@@ -23,7 +23,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Bắt đầu quy trình Build. Tạo Session mới và trả về bước 1.
+        /// Start the Build process. Create a new session and return step 1.
         /// </summary>
         [HttpPost("start")]
         [SwaggerOperation(
@@ -36,7 +36,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var userId = GetUserId();
+                var userId = GetCurrentUserId();
                 var result = await _service.StartBuilderSessionAsync(request, userId);
                 return SuccessResponse(result);
             }
@@ -183,7 +183,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         // POST: api/builder/options
         [HttpPost("options")]
         [SwaggerOperation(
-    Summary = "Create Kit Option (Admin)",
+    Summary = "Create Kit Option",
     Description = "Define a new selectable option slot for a keyboard kit."
 )]
         [SwaggerResponse(200, "Option created successfully")]
@@ -204,7 +204,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         // DELETE: api/builder/options/{id}
         [HttpDelete("options/{id}")]
         [SwaggerOperation(
-    Summary = "Delete Kit Option (Admin)",
+    Summary = "Delete Kit Option",
     Description = "Removes a configuration option from a kit."
 )]
         [SwaggerResponse(200, "Option deleted successfully")]
@@ -225,7 +225,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         // POST: api/builder/options/bulk
         [HttpPost("options/bulk")]
         [SwaggerOperation(
-    Summary = "Bulk Create Options (Admin)",
+    Summary = "Bulk Create Options",
     Description = "Import multiple kit options at once."
 )]
         [SwaggerResponse(200, "Bulk import successful")]
@@ -295,13 +295,5 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return NotFoundResponse<string>("Session expired or not found. Please start over.");
             }
         }
-
-        private Guid GetUserId()
-        {
-            var idClaim = User.FindFirst("id") ?? User.FindFirst(ClaimTypes.NameIdentifier);
-            if (idClaim == null) throw new UnauthorizedAccessException("Invalid Token");
-            return Guid.Parse(idClaim.Value);
-        }
-
     }
 }

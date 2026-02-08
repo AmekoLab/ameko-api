@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.IdentityModel.Tokens.Jwt;
+using FPTU.Capstone.AMKCollective.API.Workers;
 
 internal class Program
 {
@@ -35,7 +36,16 @@ internal class Program
         var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
         var serverVersion = new MySqlServerVersion(new Version(8, 0, 36));
         builder.Services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseMySql(connectionString, serverVersion));
+        {
+            options.UseMySql(connectionString, serverVersion, mySqlOptions =>
+            {
+                mySqlOptions.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(10),
+                    errorNumbersToAdd: null
+                );
+            });
+        });
 
         #region JWT Authentication
         // Configure JWT Authentication

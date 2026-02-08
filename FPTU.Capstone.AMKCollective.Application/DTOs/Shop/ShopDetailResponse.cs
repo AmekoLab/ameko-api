@@ -22,5 +22,8 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Shop
         public string? BankName { get; set; }
         public string? BankAccountNumber { get; set; }
         public string? BankAccountName { get; set; }
+        public int ResubmitCount { get; set; }
+        public DateTime? LastResubmitTime { get; set; }
+        public int RemainingResubmits { get; set; }
     }
 }

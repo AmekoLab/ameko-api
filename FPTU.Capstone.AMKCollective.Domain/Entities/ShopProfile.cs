@@ -30,7 +30,6 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
 
         public bool IsActive { get; set; } = true;
         
-
         public double Rating { get; set; } = 0;
         public int TotalSales { get; set; } = 0;
 
@@ -45,7 +44,10 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public string? BankAccountNumber { get; set; } 
 
         [MaxLength(100)]
-        public string? BankAccountName { get; set; } 
+        public string? BankAccountName { get; set; }
+
+        public int ResubmitCount { get; set; } = 0;
+        public DateTime? LastResubmitTime { get; set; }
 
         // Navigation Properties
         public virtual User User { get; set; } = null!;

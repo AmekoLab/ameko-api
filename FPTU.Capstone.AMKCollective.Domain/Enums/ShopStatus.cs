@@ -9,14 +9,14 @@ namespace FPTU.Capstone.AMKCollective.Domain.Enums
 {
     public enum ShopStatus
     {
-        PendingApproval, // Chờ Admin xét duyệt hồ sơ
+        PendingApproval =0, // Chờ Admin xét duyệt hồ sơ
 
-        Active, // Hoạt động bình thường
+        Active = 1, // Hoạt động bình thường
 
-        Inactive, // Tạm nghỉ/Ẩn
+        Inactive = 2, // Tạm nghỉ/Ẩn
 
-        Rejected, // Hồ sơ bị từ chối
+        Rejected = 3, // Hồ sơ bị từ chối
 
-        Banned // Bị cấm hoạt động
+        Banned = 4 // Bị cấm hoạt động
     }
 }

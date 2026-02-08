@@ -57,5 +57,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .OrderByDescending(p => p.CreatedAt) 
                 .FirstOrDefaultAsync();
         }
+
+        public async Task<IEnumerable<Payment>> GetByUserIdAsync(Guid userId, CancellationToken token = default)
+        {
+            return await _context.Payments
+                .Where(p => p.UserId == userId)
+                .OrderByDescending(p => p.CreatedAt) 
+                .ToListAsync(token);
+        }
     }
 }

@@ -1,0 +1,201 @@
+﻿using AutoMapper;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Voucher;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
+using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace FPTU.Capstone.AMKCollective.Application.Services
+{
+    public class VoucherService :IVoucherService
+    {
+        private readonly IUnitOfWork _unitOfWork;
+        private readonly IMapper _mapper;
+
+        public VoucherService(IUnitOfWork unitOfWork, IMapper mapper)
+        {
+            _unitOfWork = unitOfWork;
+            _mapper = mapper;
+        }
+
+        // 1. Tạo Voucher Khuyến mãi (Marketing)
+        public async Task<VoucherResponse> CreatePromotionalVoucherAsync(Guid userId, CreateVoucherRequest request)
+        {
+            // Validate: Code phải duy nhất
+            var existing = await _unitOfWork.Vouchers.GetByCodeAsync(request.Code);
+            if (existing != null)
+                throw new Exception($"Voucher code '{request.Code}' already exists.");
+
+            var voucher = _mapper.Map<Voucher>(request);
+            voucher.CreatorId = userId;
+
+            // Logic mặc định cho Promotion
+            voucher.Status = VoucherStatus.Active;
+            voucher.UsedCount = 0;
+
+            await _unitOfWork.Vouchers.AddAsync(voucher);
+            await _unitOfWork.CommitAsync();
+
+            return _mapper.Map<VoucherResponse>(voucher);
+        }
+
+        // 2. Tạo Voucher Thương lượng (Negotiation) - Dành cho Shop chốt deal
+        public async Task<VoucherResponse> CreateNegotiationVoucherAsync(Guid shopId, Guid targetUserId, decimal discountAmount, decimal minOrderValue)
+        {
+            // Sinh mã ngẫu nhiên: NEGO_ + 8 ký tự random
+            string code = "NEGO_" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
+
+            var voucher = new Voucher
+            {
+                Code = code,
+                Name = "Negotiation Voucher",
+                Description = "Special discount based on negotiation",
+                Type = VoucherType.Negotiation,
+                DiscountType = DiscountType.FixedAmount,
+                Value = discountAmount,
+                MaxDiscountAmount = null,
+                MinOrderValue = minOrderValue, // Ràng buộc: Phải mua đủ số tiền đã chốt
+
+                StartDate = DateTime.Now,
+                EndDate = DateTime.Now.AddDays(7), // Hạn 7 ngày để chốt đơn
+                UsageLimit = 1,
+                UsedCount = 0,
+                Status = VoucherStatus.Active,
+
+                CreatorId = shopId,
+                TargetUserId = targetUserId // Chỉ khách này dùng được
+            };
+
+            await _unitOfWork.Vouchers.AddAsync(voucher);
+            await _unitOfWork.CommitAsync();
+
+            return _mapper.Map<VoucherResponse>(voucher);
+        }
+
+        // 3. Tạo Voucher Đền bù (Compensation/Refund) - Dành cho System/Shop hủy đơn
+        public async Task<VoucherResponse> CreateCompensationVoucherAsync(Guid shopId, Guid targetUserId, decimal refundAmount)
+        {
+            // Sinh mã: REFUND_ + ...
+            string code = "REFUND_" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
+
+            var voucher = new Voucher
+            {
+                Code = code,
+                Name = "Refund Voucher",
+                Description = "Compensation for cancelled order",
+                Type = VoucherType.Compensation,
+                DiscountType = DiscountType.FixedAmount,
+                Value = refundAmount,
+                MaxDiscountAmount = null,
+                MinOrderValue = 0, // Không cần đơn tối thiểu, dùng cho đơn nào cũng được
+
+                StartDate = DateTime.Now,
+                EndDate = DateTime.Now.AddMonths(1), // Hạn 1 tháng (theo yêu cầu)
+                UsageLimit = 1,
+                UsedCount = 0,
+                Status = VoucherStatus.Active,
+
+                CreatorId = shopId, // Shop chịu trách nhiệm tạo (hoặc Admin)
+                TargetUserId = targetUserId
+            };
+
+            await _unitOfWork.Vouchers.AddAsync(voucher);
+            await _unitOfWork.CommitAsync();
+
+            return _mapper.Map<VoucherResponse>(voucher);
+        }
+
+        // 4. Áp dụng Voucher vào Đơn hàng (QUAN TRỌNG NHẤT)
+        public async Task<decimal> ApplyVoucherAsync(Guid userId, Guid orderId, string code)
+        {
+            var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
+            if (order == null) throw new Exception("Order not found.");
+
+            // Kiểm tra chủ sở hữu đơn hàng
+            if (order.CustomerId != userId) throw new Exception("Unauthorized to modify this order.");
+
+            // Lấy Voucher
+            var voucher = await _unitOfWork.Vouchers.GetByCodeAsync(code);
+            if (voucher == null) throw new Exception("Voucher not found.");
+
+            // --- VALIDATION LOGIC ---
+
+            // 1. Check Status & Date
+            if (voucher.Status != VoucherStatus.Active) throw new Exception("Voucher is not active.");
+            if (DateTime.Now < voucher.StartDate || DateTime.Now > voucher.EndDate) throw new Exception("Voucher is expired or not yet started.");
+
+            // 2. Check Usage Limit
+            if (voucher.UsedCount >= voucher.UsageLimit) throw new Exception("Voucher usage limit reached.");
+
+            // 3. Check Target User (Quyền riêng tư)
+            if (voucher.TargetUserId != null && voucher.TargetUserId != userId)
+                throw new Exception("This voucher is not applicable to you.");
+
+            // 4. Check Shop (Voucher shop nào dùng cho shop đó)
+            // Lưu ý: CreatorId là ShopId. Order.ShopId phải khớp.
+            // Nếu Order chưa có ShopId (InCart hỗn hợp), logic này cần điều chỉnh ở FE để tách Order trước.
+            // Giả định: Order InCart hiện tại ĐÃ tách theo Shop (1 Order - 1 Shop).
+            if (order.ShopId != null && voucher.CreatorId != order.ShopId)
+                throw new Exception("This voucher is not applicable for this shop's order.");
+
+            // 5. Check Min Order Value
+            if (order.SubTotal < voucher.MinOrderValue)
+                throw new Exception($"Order value must be at least {voucher.MinOrderValue:N0} VND to use this voucher.");
+
+            // --- CALCULATE DISCOUNT ---
+            decimal discount = 0;
+            if (voucher.DiscountType == DiscountType.FixedAmount)
+            {
+                discount = voucher.Value;
+            }
+            else // Percentage
+            {
+                discount = order.SubTotal * (voucher.Value / 100);
+                if (voucher.MaxDiscountAmount.HasValue && discount > voucher.MaxDiscountAmount.Value)
+                {
+                    discount = voucher.MaxDiscountAmount.Value;
+                }
+            }
+
+            // Đảm bảo không giảm quá giá trị đơn hàng (tránh âm tiền)
+            if (discount > order.SubTotal) discount = order.SubTotal;
+
+            // --- UPDATE ORDER ---
+            order.VoucherId = voucher.Id;
+            order.DiscountAmount = discount;
+            order.TotalAmount = (order.SubTotal + order.ShippingFee) - discount;
+
+            _unitOfWork.Orders.UpdateOrderAsync(order);
+            await _unitOfWork.CommitAsync();
+
+            return discount;
+        }
+
+        // 5. Hủy áp dụng Voucher (Remove)
+        public async Task RemoveVoucherAsync(Guid userId, Guid orderId)
+        {
+            var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
+            if (order == null) throw new Exception("Order not found.");
+            if (order.CustomerId != userId) throw new Exception("Unauthorized.");
+
+            order.VoucherId = null;
+            order.DiscountAmount = 0;
+            order.TotalAmount = order.SubTotal + order.ShippingFee;
+
+            _unitOfWork.Orders.UpdateOrderAsync(order);
+            await _unitOfWork.CommitAsync();
+        }
+
+        // 6. Lấy danh sách voucher hợp lệ cho User
+        public async Task<List<VoucherResponse>> GetMyVouchersAsync(Guid userId)
+        {
+            var vouchers = await _unitOfWork.Vouchers.GetValidVouchersForUserAsync(userId);
+            return _mapper.Map<List<VoucherResponse>>(vouchers);
+        }
+    }
+}
