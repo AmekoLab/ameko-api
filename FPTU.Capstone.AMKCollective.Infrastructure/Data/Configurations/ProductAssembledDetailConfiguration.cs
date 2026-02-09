@@ -26,6 +26,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .WithMany()
                 .HasForeignKey(p => p.ComponentId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Property(p => p.SoundUrl)
+                .HasMaxLength(500);
         }
     }
 }
