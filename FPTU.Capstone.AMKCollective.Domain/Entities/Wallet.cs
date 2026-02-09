@@ -23,6 +23,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
 
         // Navigation Properties
         public virtual User? User { get; set; }
+        public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
     }
 }
 

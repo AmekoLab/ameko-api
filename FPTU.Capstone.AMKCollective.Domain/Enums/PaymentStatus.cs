@@ -15,6 +15,10 @@ namespace FPTU.Capstone.AMKCollective.Domain.Enums
 
         Failed = 2, // Thanh toán thất bại
 
-        Refunded = 3 // Đã được hoàn tiền
+        Refunded = 3, // Đã được hoàn tiền
+        Released = 4 //giải ngân
+
+
+
     }
 }
