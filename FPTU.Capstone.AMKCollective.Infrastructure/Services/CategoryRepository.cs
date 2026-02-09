@@ -30,13 +30,23 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return await query.FirstOrDefaultAsync(cancellationToken);
         }
 
-        public async Task<IEnumerable<Category>> GetAllAsync(bool? isActive = null, Guid? parentId = null, bool includeSubCategories = false, CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<Category>> GetAllAsync(bool? isActive = null, Guid? parentId = null, bool includeSubCategories = false, Guid? shopId = null, CancellationToken cancellationToken = default)
         {
             var query = _context.Categories.Where(c => !c.IsDeleted);
 
             if (isActive.HasValue)
             {
                 query = query.Where(c => c.IsActive == isActive.Value);
+            }
+
+            // Filter by shop (null = global admin categories only, specific Guid = shop categories)
+            if (shopId.HasValue)
+            {
+                query = query.Where(c => c.ShopId == shopId.Value);
+            }
+            else
+            {
+                query = query.Where(c => c.ShopId == null); // Get only global categories
             }
 
             if (parentId.HasValue)
@@ -56,13 +66,27 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return await query.OrderBy(c => c.Name).ToListAsync(cancellationToken);
         }
 
-        public async Task<(IEnumerable<Category> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, bool? isActive = null, Guid? parentId = null, bool includeSubCategories = false, CancellationToken cancellationToken = default)
+        public async Task<(IEnumerable<Category> Items, int TotalCount)> GetPagedAsync(
+                int pageNumber, int pageSize, bool? isActive, Guid? parentId, bool  includeSubCategories,
+                Guid? shopId, // Tham số này là "Context Shop"
+                CancellationToken cancellationToken = default)
         {
-            var query = _context.Categories.Where(c => !c.IsDeleted);
-
+            var query = _context.Categories.AsQueryable();
             if (isActive.HasValue)
-            {
                 query = query.Where(c => c.IsActive == isActive.Value);
+
+            // Filter by shop (null = global admin categories only, specific Guid = shop categories)
+            if (shopId.HasValue)
+            {
+                // Nếu có ShopId (User đang xem Shop A, hoặc Shop A đang quản lý):
+                // Lấy danh mục Global (ShopId == null) HOẶC Danh mục của Shop đó
+                query = query.Where(c => c.ShopId == null || c.ShopId == shopId);
+            }
+            else
+            {
+                // Nếu không truyền ShopId (Khách xem trang chủ):
+                // CHỈ lấy danh mục Global
+                query = query.Where(c => c.ShopId == null);
             }
 
             if (parentId.HasValue)
@@ -200,11 +224,88 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return (items, totalCount);
         }
 
-        public async Task<Category?> GetBySlugAsync(string slug, CancellationToken cancellationToken = default)
+        public async Task<Category?> GetBySlugAsync(string slug, Guid? shopId = null, CancellationToken cancellationToken = default)
+        {
+            var query = _context.Categories
+                .Where(c => c.Slug == slug && !c.IsDeleted && c.IsActive);
+
+            // Filter by shop
+            if (shopId.HasValue)
+            {
+                query = query.Where(c => c.ShopId == shopId.Value);
+            }
+            else
+            {
+                query = query.Where(c => c.ShopId == null); // Only global categories
+            }
+
+            return await query.FirstOrDefaultAsync(cancellationToken);
+        }
+
+        // Get all GLOBAL categories (created by admin, ShopId = null)
+        public async Task<IEnumerable<Category>> GetGlobalCategoriesAsync(bool? isActive = null, CancellationToken cancellationToken = default)
+        {
+            var query = _context.Categories
+                .Where(c => !c.IsDeleted && c.ShopId == null);
+
+            if (isActive.HasValue)
+            {
+                query = query.Where(c => c.IsActive == isActive.Value);
+            }
+
+            return await query
+                .Where(c => c.ParentId == null) // Root categories only
+                .OrderBy(c => c.Name)
+                .ToListAsync(cancellationToken);
+        }
+
+        // Get all categories for a specific SHOP (ShopId != null)
+        public async Task<IEnumerable<Category>> GetShopCategoriesAsync(Guid shopId, bool? isActive = null, CancellationToken cancellationToken = default)
+        {
+            var query = _context.Categories
+                .Where(c => !c.IsDeleted && c.ShopId == shopId);
+
+            if (isActive.HasValue)
+            {
+                query = query.Where(c => c.IsActive == isActive.Value);
+            }
+
+            return await query
+                .Where(c => c.ParentId == null) // Root categories only
+                .OrderBy(c => c.Name)
+                .ToListAsync(cancellationToken);
+        }
+
+        // Get category by ID with ownership verification
+        public async Task<Category?> GetByIdForShopAsync(Guid id, Guid shopId, CancellationToken cancellationToken = default)
         {
             return await _context.Categories
-                .Where(c => c.Slug == slug && !c.IsDeleted && c.IsActive)
+                .Where(c => c.Id == id && c.ShopId == shopId && !c.IsDeleted)
                 .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        // Check if category belongs to a shop
+        public async Task<bool> IsShopCategoryAsync(Guid categoryId, Guid shopId, CancellationToken cancellationToken = default)
+        {
+            return await _context.Categories
+                .AnyAsync(c => c.Id == categoryId && c.ShopId == shopId && !c.IsDeleted, cancellationToken);
+        }
+
+        // Check if category is global (admin categories)
+        public async Task<bool> IsGlobalCategoryAsync(Guid categoryId, CancellationToken cancellationToken = default)
+        {
+            return await _context.Categories
+                .AnyAsync(c => c.Id == categoryId && c.ShopId == null && !c.IsDeleted, cancellationToken);
+        }
+        public async Task<bool> IsSlugDuplicateAsync(string slug, Guid? excludeId = null, CancellationToken cancellationToken = default)
+        {
+            var query = _context.Categories.AsQueryable();
+
+            if (excludeId.HasValue)
+            {
+                return await query.AnyAsync(c => c.Slug == slug && c.Id != excludeId.Value, cancellationToken);
+            }
+            return await query.AnyAsync(c => c.Slug == slug, cancellationToken);
         }
     }
 

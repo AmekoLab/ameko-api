@@ -10,15 +10,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
     public interface ICategoryRepository
     {
         Task<Category?> GetByIdAsync(Guid id, bool includeSubCategories = false, CancellationToken cancellationToken = default);
-        Task<IEnumerable<Category>> GetAllAsync(bool? isActive = null, Guid? parentId = null, bool includeSubCategories = false, CancellationToken cancellationToken = default);
-        Task<(IEnumerable<Category> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, bool? isActive = null, Guid? parentId = null, bool includeSubCategories = false, CancellationToken cancellationToken = default);
+        Task<IEnumerable<Category>> GetAllAsync(bool? isActive = null, Guid? parentId = null, bool includeSubCategories = false, Guid? shopId = null, CancellationToken cancellationToken = default);
+        Task<(IEnumerable<Category> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize, bool? isActive = null, Guid? parentId = null, bool includeSubCategories = false, Guid? shopId = null, CancellationToken cancellationToken = default);
         Task<Category> CreateAsync(Category category, CancellationToken cancellationToken = default);
         Task<Category> UpdateAsync(Category category, CancellationToken cancellationToken = default);
         Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
         Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default);
 
-        Task<Category?> GetBySlugAsync(string slug, CancellationToken cancellationToken = default);
-
+        Task<Category?> GetBySlugAsync(string slug, Guid? shopId = null, CancellationToken cancellationToken = default);
+        Task<bool> IsSlugDuplicateAsync(string slug, Guid? excludeId = null, CancellationToken cancellationToken = default);
 
         //=============================//
         Task<bool> HasSubCategoriesAsync(Guid categoryId, CancellationToken cancellationToken = default);
