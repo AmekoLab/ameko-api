@@ -41,5 +41,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<OrderIssueResponse> RequestCancelOrderAsync(Guid userId, DTOs.OrderIssues.CancelOrderRequest request, CancellationToken token = default);
 
         Task ProcessCancelRequestAsync(Guid userId, ProcessIssueRequest request, CancellationToken token = default);
+        
+        // BACKGROUND WORKER - Release held funds after warranty period
+        Task ReleaseFundsForEligibleOrdersAsync(CancellationToken token = default);
     }
 }

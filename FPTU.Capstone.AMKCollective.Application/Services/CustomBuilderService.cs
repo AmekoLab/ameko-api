@@ -174,40 +174,69 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.SessionId);
             if (session == null) throw new KeyNotFoundException("Session expired or not found");
-            var stepOptions = await _unitOfWork.KitDesignOptions.GetCompatibleOptionsForStepAsync(session.BaseKitId, request.StepName, null);
-            var selectedOption = stepOptions.FirstOrDefault(x => x.ComponentId == request.SelectedPartId);
 
-            if (selectedOption == null) throw new KeyNotFoundException("Selected part is not valid for this kit");
-
-            // 3. Update Session
+            // === NHÁNH HÌNH ẢNH TÍCH LŨY ===
+            // 1. Parse current selection
             var currentSelection = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson)
                                    ?? new Dictionary<string, SelectedPartResponse>();
 
+            // 2. Xác định tag lọc cho bước HIỆN TẠI dựa trên bước TRƯỚC ĐÓ
+            string? currentStepTag = null;
+            var previousPart = GetPreviousSelectedPart(currentSelection, request.StepName);
+            if (previousPart != null && !string.IsNullOrEmpty(previousPart.NextStepFilterRule))
+            {
+                currentStepTag = ParseTagFromRule(previousPart.NextStepFilterRule, request.StepName);
+            }
+
+            // 3. Query với tag lọc (quan trọng: lọc đúng nhánh)
+            var stepOptions = await _unitOfWork.KitDesignOptions.GetCompatibleOptionsForStepAsync(
+                session.BaseKitId, request.StepName, currentStepTag);
+
+            var selectedOption = stepOptions.FirstOrDefault(x => x.ComponentId == request.SelectedPartId);
+
+            if (selectedOption == null) throw new KeyNotFoundException("Selected part is not valid for this kit or branch");
+
+            // 4. Xóa các bước phía sau (user chọn lại)
             ClearSubsequentSteps(currentSelection, request.StepName);
+
+            // 5. Lưu selection với đầy đủ thông tin nhánh
             string categorySlug = selectedOption.Component.Category?.Slug ?? "";
             int qtyNeeded = GetRecipeQuantity(session.BaseKit.Specifications, categorySlug);
+
+            // Resolve ảnh tích lũy
+            string resolvedLayerImage = !string.IsNullOrEmpty(selectedOption.LayerImageUrl)
+                ? selectedOption.LayerImageUrl
+                : selectedOption.Component.DefaultLayerImageUrl ?? "";
+
             currentSelection[request.StepName] = new SelectedPartResponse
             {
                 Id = selectedOption.ComponentId,
                 Name = selectedOption.Component.Name,
                 Price = selectedOption.Component.Price,
                 ThumbnailUrl = selectedOption.Component.ThumbnailURL,
-                Quantity = qtyNeeded 
+                Quantity = qtyNeeded,
+                // === Lưu thông tin nhánh ===
+                KitDesignOptionId = selectedOption.Id,
+                LayerImageUrl = resolvedLayerImage,
+                NextStepFilterRule = selectedOption.NextStepFilterRule
             };
 
+            // 6. Tính tổng tiền
             decimal newTotal = session.BaseKit.Price;
             foreach (var item in currentSelection.Values)
             {
                 newTotal += (item.Price * item.Quantity);
             }
-            // -----------------------------------------------------------------------
 
+            // 7. Update session
             session.SelectedItemsJson = JsonSerializer.Serialize(currentSelection);
             session.TotalPrice = newTotal;
             var (nextStepName, nextStepOrder) = GetNextStepInfo(request.StepName);
             session.CurrentStep = nextStepName;
             await _unitOfWork.BuilderSessions.UpdateSessionAsync(session);
             await _unitOfWork.CommitAsync();
+
+            // 8. Lấy sản phẩm bước tiếp theo (đã lọc theo nhánh)
             List<CompatiblePartResponse> nextProducts = new();
             if (nextStepName != "complete")
             {
@@ -232,32 +261,43 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var currentSelection = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson)
                                    ?? new Dictionary<string, SelectedPartResponse>();
 
-            // 3. Xác định bước cần hiển thị dữ liệu (Quan Trọng)
-            // Nếu FE gửi requestStep (ví dụ user click tab "case") -> Dùng requestStep
-            // Nếu không -> Dùng CurrentStep đang lưu trong DB (resume nơi đang làm dở)
+            // 3. Xác định bước cần hiển thị
             var stepToProcess = requestStep ?? session.CurrentStep;
-
-            // Lấy Order để hiển thị (1, 2, 3...)
             var (_, stepOrder) = GetNextStepInfo(stepToProcess);
 
-            // 4. Logic lọc (Filter Logic) cho bước stepToProcess
+            // === NHÁNH HÌNH ẢNH TÍCH LŨY - Session Sync ===
+            // 4. Lấy tag lọc từ NextStepFilterRule đã lưu trong selection (KHÔNG cần query DB thêm)
             string? requiredTag = null;
-
-            // Tìm xem BƯỚC TRƯỚC ĐÓ đã chọn cái gì để lấy Rule
             var previousPart = GetPreviousSelectedPart(currentSelection, stepToProcess);
 
             if (previousPart != null)
             {
-                // Gọi DB lấy Rule của món cũ
-                var prevOption = await _unitOfWork.KitDesignOptions.GetOptionByComponentIdAsync(session.BaseKitId, previousPart.Id);
-
-                if (prevOption != null)
+                // Ưu tiên dùng NextStepFilterRule đã lưu trực tiếp (nhanh, chính xác)
+                if (!string.IsNullOrEmpty(previousPart.NextStepFilterRule))
                 {
-                    requiredTag = ParseTagFromRule(prevOption.NextStepFilterRule, stepToProcess);
+                    requiredTag = ParseTagFromRule(previousPart.NextStepFilterRule, stepToProcess);
+                }
+                else if (previousPart.KitDesignOptionId != Guid.Empty)
+                {
+                    // Fallback: nếu session cũ chưa có NextStepFilterRule, dùng KitDesignOptionId
+                    var prevOption = await _unitOfWork.KitDesignOptions.GetByIdAsync(previousPart.KitDesignOptionId);
+                    if (prevOption != null)
+                    {
+                        requiredTag = ParseTagFromRule(prevOption.NextStepFilterRule, stepToProcess);
+                    }
+                }
+                else
+                {
+                    // Legacy fallback: session cũ không có thông tin nhánh
+                    var prevOption = await _unitOfWork.KitDesignOptions.GetOptionByComponentIdAsync(session.BaseKitId, previousPart.Id);
+                    if (prevOption != null)
+                    {
+                        requiredTag = ParseTagFromRule(prevOption.NextStepFilterRule, stepToProcess);
+                    }
                 }
             }
 
-            // 5. Query DB lấy sản phẩm (đã lọc)
+            // 5. Query DB lấy sản phẩm (đã lọc theo nhánh)
             var availableProducts = await _unitOfWork.KitDesignOptions.GetCompatibleOptionsForStepAsync(session.BaseKitId, stepToProcess, requiredTag);
             var productDtos = _mapper.Map<List<CompatiblePartResponse>>(availableProducts);
 
@@ -324,10 +364,26 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return null;
         }
 
-        // 5. Construct Response (Giữ nguyên)
+        // 5. Construct Response (Nhánh hình ảnh tích lũy)
         private BuilderStepResponse ConstructResponse(BuilderSession session, string nextStepName, int nextOrder, List<CompatiblePartResponse> products)
         {
             var selectionDict = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson);
+
+            // Tìm ảnh tích lũy: lấy LayerImageUrl của linh kiện cuối cùng đã chọn (theo thứ tự step)
+            string? currentPreviewImage = null;
+            if (selectionDict != null && selectionDict.Any())
+            {
+                // Ưu tiên bước cao nhất đã chọn
+                var stepPriority = new[] { "keycap", "switch", "plate", "case" };
+                foreach (var step in stepPriority)
+                {
+                    if (selectionDict.TryGetValue(step, out var part) && !string.IsNullOrEmpty(part.LayerImageUrl))
+                    {
+                        currentPreviewImage = part.LayerImageUrl;
+                        break;
+                    }
+                }
+            }
 
             return new BuilderStepResponse
             {
@@ -340,7 +396,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         TotalPrice = session.TotalPrice,
                         UpdatedAt = DateTime.UtcNow,
                         Selection = selectionDict,
-                        IsComplete = nextStepName == "complete"
+                        IsComplete = nextStepName == "complete",
+                        CurrentPreviewImage = currentPreviewImage
                     },
                     NextStep = new NextStepResponse
                     {

@@ -20,12 +20,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
     {
         private readonly StripeSettings _stripeSettings;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IWalletService _walletService;
 
-        public StripePaymentService(IOptions<StripeSettings> stripeSettings, IUnitOfWork unitOfWork)
+        public StripePaymentService(IOptions<StripeSettings> stripeSettings, IUnitOfWork unitOfWork, IWalletService walletService)
         {
             _stripeSettings = stripeSettings.Value;
             StripeConfiguration.ApiKey = _stripeSettings.SecretKey;
             _unitOfWork = unitOfWork;
+            _walletService = walletService;
         }
 
         // 1. TẠO CHECKOUT SESSION (Gửi sang Stripe)
@@ -145,6 +147,19 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                             order.PaymentStatus = PaymentStatus.Paid;
                             order.OrderStatus = OrderStatus.Processing;
                             await _unitOfWork.Orders.UpdateOrderAsync(order);
+
+                            if (order.ShopId.HasValue)
+                            {
+                                var shopProfile = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+                                if (shopProfile != null)
+                                {
+                                    await _walletService.AddPendingSalesToWalletAsync(
+                                        shopProfile.UserId,
+                                        order.Id,
+                                        order.TotalAmount
+                                    );
+                                }
+                            }
                         }
                     }
 

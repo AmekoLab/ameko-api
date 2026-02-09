@@ -102,6 +102,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // Create Payment Log
             var transaction = _mapper.Map<Payment>(request);
             transaction.UserId = userId;
+            transaction.WalletId = wallet.Id;
             transaction.FeeAmount = fee;
             transaction.Type = PaymentType.Withdrawal;
             transaction.Status = PaymentStatus.Pending;
@@ -130,6 +131,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var transaction = new Payment
             {
                 UserId = userId,
+                WalletId = wallet.Id,
                 RelatedOrderId = orderId,
                 Amount = amount,
                 Type = PaymentType.PaymentByWallet,
@@ -157,6 +159,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var log = new Payment
             {
                 UserId = shopId,
+                WalletId = wallet.Id,
                 RelatedOrderId = orderId,
                 Amount = amount,
                 Type = PaymentType.SalesPending,
@@ -183,6 +186,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 var log = new Payment
                 {
                     UserId = shopId,
+                    WalletId = wallet.Id,
                     RelatedOrderId = orderId,
                     Amount = amount,
                     Type = PaymentType.SalesReleased,
@@ -207,6 +211,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var log = new Payment
             {
                 UserId = userId,
+                WalletId = wallet.Id,
                 Amount = amount,
                 Type = PaymentType.RefundToWallet,
                 Status = PaymentStatus.Paid,
@@ -245,6 +250,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 Id = Guid.NewGuid(),
                 UserId = shopId,
+                WalletId = wallet.Id,
                 RelatedOrderId = orderId,
                 Amount = -amount, // Số âm thể hiện bị trừ
                 Type = PaymentType.RefundToWallet, 
