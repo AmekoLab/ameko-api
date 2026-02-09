@@ -20,6 +20,35 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
 
             builder.Property(a => a.Price)
                 .HasPrecision(18, 2);
+
+            builder.Property(a => a.Image1)
+                .HasMaxLength(500);
+
+            builder.Property(a => a.Image2)
+                .HasMaxLength(500);
+
+            builder.Property(a => a.Image3)
+                .HasMaxLength(500);
+
+            builder.Property(a => a.Description)
+                .HasMaxLength(2000);
+
+            builder.Property(a => a.Quantity);
+
+            builder.Property(a => a.Layout)
+                .HasMaxLength(255);
+
+            builder.Property(a => a.Mounting)
+                .HasMaxLength(255);
+
+            builder.Property(a => a.PCB)
+                .HasMaxLength(255);
+
+            builder.Property(a => a.Connection)
+                .HasMaxLength(255);
+
+            builder.Property(a => a.Battery)
+                .HasMaxLength(255);
         }
     }
 }
