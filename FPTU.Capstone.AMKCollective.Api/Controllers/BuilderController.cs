@@ -372,5 +372,58 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return NotFoundResponse<string>("Session expired or not found. Please start over.");
             }
         }
+
+        /// <summary>
+        /// Remove a selected part from the session.
+        /// </summary>
+        /// <remarks>
+        /// Removes the item at the specified step and clears all subsequent steps to maintain compatibility.
+        /// Also reverts the preview image and recalculates the price.
+        /// </remarks>
+        [HttpDelete("session/{sessionId}/part/{stepName}")]
+        [SwaggerOperation(Summary = "Remove Part from Session")]
+        [SwaggerResponse(200, "Part removed successfully", typeof(ApiResponse<BuilderStepResponse>))]
+        [SwaggerResponse(404, "Session not found")]
+        public async Task<IActionResult> RemovePart(Guid sessionId, string stepName)
+        {
+            try
+            {
+                var result = await _service.RemovePartFromSessionAsync(sessionId, stepName);
+                return SuccessResponse(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<string>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error removing part {Step} from Session {SessionId}", stepName, sessionId);
+                return ServerErrorResponse<string>("An error occurred while removing the part.");
+            }
+        }
+
+        /// <summary>
+        /// [USER] Get list of active builder sessions.
+        /// </summary>
+        /// <remarks>
+        /// Returns a history of unfinished builds so the user can choose to resume one.
+        /// </remarks>
+        [HttpGet("sessions")]
+        [SwaggerOperation(Summary = "Get User Sessions")]
+        [SwaggerResponse(200, "List retrieved successfully", typeof(ApiResponse<List<BuilderSessionSummaryResponse>>))]
+        public async Task<IActionResult> GetUserSessions()
+        {
+            try
+            {
+                var userId = GetCurrentUserId(); 
+                var result = await _service.GetUserSessionsAsync(userId);
+                return SuccessResponse(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting sessions for user");
+                return ServerErrorResponse<string>("An error occurred while retrieving sessions.");
+            }
+        }
     }
 }

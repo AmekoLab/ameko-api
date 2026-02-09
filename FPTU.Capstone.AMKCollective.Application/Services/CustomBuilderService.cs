@@ -308,6 +308,151 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return ConstructResponse(session, nextStepName, nextStepOrder, nextProducts);
         }
 
+
+        public async Task<BuilderStepResponse> RemovePartFromSessionAsync(Guid sessionId, string stepName)
+        {
+            // 1. Lấy Session
+            var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(sessionId);
+            if (session == null || session.ExpiresAt < DateTime.UtcNow)
+            {
+                throw new KeyNotFoundException("Session not found or expired");
+            }
+
+            // 2. Parse JSON hiện tại
+            var currentSelection = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson)
+                                   ?? new Dictionary<string, SelectedPartResponse>();
+
+            // 3. Kiểm tra xem bước cần xóa có tồn tại trong selection không
+            if (currentSelection.ContainsKey(stepName))
+            {
+                // Xóa item tại bước đó
+                currentSelection.Remove(stepName);
+
+                // Lấy quy trình workflow để biết thứ tự các bước
+                var workflow = GetWorkflowFromKit(session.BaseKit);
+                var currentStepIndex = workflow.FindIndex(w => w.Step.Equals(stepName, StringComparison.OrdinalIgnoreCase));
+
+                // Nếu tìm thấy bước trong workflow, xóa tất cả các bước SAU bước này
+                // Lý do: Nếu xóa Case (bước 1), các lựa chọn Plate (bước 2) có thể không còn khớp tag tương thích nữa.
+                if (currentStepIndex != -1)
+                {
+                    for (int i = currentStepIndex + 1; i < workflow.Count; i++)
+                    {
+                        currentSelection.Remove(workflow[i].Step);
+                    }
+                }
+            }
+
+            // 4. Tính lại tổng tiền
+            decimal newTotal = session.BaseKit.Price;
+            foreach (var item in currentSelection.Values)
+            {
+                newTotal += (item.Price * item.Quantity);
+            }
+            session.TotalPrice = newTotal;
+
+            // 5. Đưa người dùng quay lại bước vừa xóa để chọn lại
+            session.CurrentStep = stepName;
+
+            // 6. Cập nhật và lưu DB
+            session.SelectedItemsJson = JsonSerializer.Serialize(currentSelection);
+            await _unitOfWork.BuilderSessions.UpdateSessionAsync(session);
+            await _unitOfWork.CommitAsync();
+
+            // 7. Lấy lại danh sách tùy chọn (Products) cho bước này để trả về FE
+            // Cần tính toán lại Tag lọc từ bước trước đó (vì bước hiện tại đã bị xóa)
+            string? requiredTag = null;
+            var workflowList = GetWorkflowFromKit(session.BaseKit);
+            var stepIndex = workflowList.FindIndex(w => w.Step.Equals(stepName, StringComparison.OrdinalIgnoreCase));
+            int stepOrder = (stepIndex == -1) ? 99 : stepIndex + 1;
+
+            if (stepIndex > 0)
+            {
+                var prevStepName = workflowList[stepIndex - 1].Step;
+                if (currentSelection.TryGetValue(prevStepName, out var prevPart))
+                {
+                    // Tái sử dụng hàm helper có sẵn
+                    if (!string.IsNullOrEmpty(prevPart.NextStepFilterRule))
+                    {
+                        requiredTag = ParseTagFromRule(prevPart.NextStepFilterRule, stepName);
+                    }
+                    // Fallback nếu trong JSON chưa lưu Rule (tương thích ngược)
+                    else if (prevPart.KitDesignOptionId != Guid.Empty)
+                    {
+                        var prevOption = await _unitOfWork.KitDesignOptions.GetByIdAsync(prevPart.KitDesignOptionId);
+                        if (prevOption != null)
+                        {
+                            requiredTag = ParseTagFromRule(prevOption.NextStepFilterRule, stepName);
+                        }
+                    }
+                }
+            }
+
+            var availableProducts = await _unitOfWork.KitDesignOptions.GetCompatibleOptionsForStepAsync(
+                session.BaseKitId, stepName, requiredTag);
+
+            var productDtos = _mapper.Map<List<CompatiblePartResponse>>(availableProducts);
+
+            // 8. Trả về kết quả (Hàm ConstructResponse sẽ tự tính toán lại ảnh Preview lùi về bước trước)
+            return ConstructResponse(session, stepName, stepOrder, productDtos);
+        }
+
+        public async Task<List<BuilderSessionSummaryResponse>> GetUserSessionsAsync(Guid userId)
+        {
+            // 1. Lấy danh sách từ Repo
+            var sessions = await _unitOfWork.BuilderSessions.GetActiveSessionsByUserIdAsync(userId);
+            var result = new List<BuilderSessionSummaryResponse>();
+
+            foreach (var session in sessions)
+            {
+                // 2. Xử lý ảnh Preview
+                // Mặc định lấy ảnh thumbnail của Kit
+                string previewImage = session.BaseKit.ThumbnailURL ?? "";
+
+                // Nếu muốn hiển thị ảnh custom chính xác (ảnh linh kiện cuối cùng đã chọn)
+                // Ta cần parse JSON nhẹ nhàng
+                if (!string.IsNullOrEmpty(session.SelectedItemsJson) && session.SelectedItemsJson != "{}")
+                {
+                    try
+                    {
+                        var selectionDict = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson);
+                        if (selectionDict != null && selectionDict.Any())
+                        {
+                            // Logic tìm ảnh mới nhất giống hàm ConstructResponse
+                            var workflow = GetWorkflowFromKit(session.BaseKit);
+                            for (int i = workflow.Count - 1; i >= 0; i--)
+                            {
+                                var stepName = workflow[i].Step;
+                                if (selectionDict.TryGetValue(stepName, out var part) && !string.IsNullOrEmpty(part.LayerImageUrl))
+                                {
+                                    previewImage = part.LayerImageUrl;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    catch { /* Ignore json error for summary list */ }
+                }
+
+                // 3. Map sang DTO
+                result.Add(new BuilderSessionSummaryResponse
+                {
+                    SessionId = session.Id,
+                    BaseKitId = session.BaseKitId,
+                    BaseKitName = session.BaseKit.Name,
+                    BaseKitThumbnail = session.BaseKit.ThumbnailURL,
+                    CurrentStep = session.CurrentStep,
+                    TotalPrice = session.TotalPrice,
+                    CurrentPreviewImage = previewImage,
+                    CreatedAt = session.CreatedAt,
+                    UpdatedAt = session.UpdatedAt ?? session.CreatedAt,
+                    ExpiresAt = session.ExpiresAt
+                });
+            }
+
+            return result;
+        }
+
         public async Task<BuilderStepResponse> GetExistingSessionAsync(Guid sessionId, string? requestStep = null)
         {
             // 1. Validate Session
