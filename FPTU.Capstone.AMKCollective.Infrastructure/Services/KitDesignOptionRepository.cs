@@ -76,9 +76,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         }
         public async Task CreateAsync(KitDesignOption option, CancellationToken token = default)
         {
-            // Check trùng để tránh lỗi Primary Key hoặc Unique Index
+            // Check trùng bao gồm cả Tags (Nhánh hình ảnh tích lũy)
+            // Cùng BaseKit + Component + Tags mới là trùng thật sự
             bool exists = await _context.KitDesignOptions.AnyAsync(
-                x => x.BaseKitId == option.BaseKitId && x.ComponentId == option.ComponentId, token);
+                x => x.BaseKitId == option.BaseKitId 
+                     && x.ComponentId == option.ComponentId
+                     && x.Tags == option.Tags, token);
 
             if (!exists)
             {
@@ -137,6 +140,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             return await _context.KitDesignOptions
                 .FirstOrDefaultAsync(x => x.BaseKitId == baseKitId && x.ComponentId == componentId);
+        }
+
+        public async Task<KitDesignOption?> GetByIdAsync(Guid id)
+        {
+            return await _context.KitDesignOptions
+                .Include(x => x.Component).ThenInclude(c => c.Category)
+                .FirstOrDefaultAsync(x => x.Id == id);
         }
     }
 }

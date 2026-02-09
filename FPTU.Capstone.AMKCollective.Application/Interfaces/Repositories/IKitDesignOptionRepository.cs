@@ -29,5 +29,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<IEnumerable<KitDesignOption>> GetCompatibleOptionsForStepAsync(Guid baseKitId, string stepName, string? requiredTag);
 
         Task<KitDesignOption?> GetOptionByComponentIdAsync(Guid baseKitId, Guid componentId);
+
+        /// <summary>Lấy KitDesignOption theo ID (dùng để restore session chính xác theo nhánh)</summary>
+        Task<KitDesignOption?> GetByIdAsync(Guid id);
     }
 }

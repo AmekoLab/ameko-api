@@ -42,31 +42,39 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<PartResponse> CreateAsync(Guid userId, CreateUpdatePartRequest request)
         {
+            // 1. Map dữ liệu cơ bản
             var entity = _mapper.Map<Model>(request);
 
             entity.ShopId = await GetShopIdFromUserId(userId);
             entity.Slug = GenerateSlug(entity.Name);
             entity.IsActive = true;
-            if ((request.RecipeSwitchCount.HasValue && request.RecipeSwitchCount > 0) ||
-                (request.RecipeStabilizerCount.HasValue && request.RecipeStabilizerCount > 0))
+
+            // Gán trực tiếp để tránh trường hợp AutoMapper bỏ qua hoặc map đè
+            if (!string.IsNullOrEmpty(request.Specifications))
             {
-                var recipeDict = new Dictionary<string, int>();
-
-                if (request.RecipeSwitchCount.HasValue && request.RecipeSwitchCount > 0)
-                {
-                    recipeDict.Add("switch", request.RecipeSwitchCount.Value);
-                }
-
-                if (request.RecipeStabilizerCount.HasValue && request.RecipeStabilizerCount > 0)
-                {
-                    recipeDict.Add("stabilizer", request.RecipeStabilizerCount.Value);
-                }
-                var specData = new
-                {
-                    recipe = recipeDict
-                };
-                entity.Specifications = JsonSerializer.Serialize(specData);
+                entity.Specifications = request.Specifications;
             }
+
+            // 2. Logic Fallback (Chỉ chạy khi FE không gửi JSON Specifications)
+            if (string.IsNullOrEmpty(entity.Specifications))
+            {
+                // Kiểm tra logic switch/stabilizer 
+                bool hasSwitch = request.RecipeSwitchCount.HasValue && request.RecipeSwitchCount > 0;
+                bool hasStab = request.RecipeStabilizerCount.HasValue && request.RecipeStabilizerCount > 0;
+
+                if (hasSwitch || hasStab)
+                {
+                    var recipeDict = new Dictionary<string, int>();
+                    if (hasSwitch) recipeDict.Add("switch", request.RecipeSwitchCount!.Value);
+                    if (hasStab) recipeDict.Add("stabilizer", request.RecipeStabilizerCount!.Value);
+
+                    var specData = new { recipe = recipeDict };
+                    entity.Specifications = JsonSerializer.Serialize(specData);
+                }
+            }
+            // ----------------------------------------
+
+            // 3. Upload ảnh (Giữ nguyên)
             if (request.ThumbnailImage != null)
             {
                 entity.ThumbnailURL = await _storage.UploadAsync(
@@ -74,6 +82,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     request.ThumbnailImage.FileName,
                     "products");
             }
+
             if (request.LayerImage != null)
             {
                 entity.DefaultLayerImageUrl = await _storage.UploadAsync(
@@ -85,7 +94,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Models.CreateAsync(entity);
             await _unitOfWork.CommitAsync();
 
-            return _mapper.Map<PartResponse>(entity);
+            // [FIX] Map response and manually assign Specifications to ensure it is returned
+            var response = _mapper.Map<PartResponse>(entity);
+            response.Specifications = entity.Specifications;
+            
+            // [DEBUG] Append debug info if spec is missing/present (Optional, remove later)
+            if (string.IsNullOrEmpty(response.Specifications))
+            {
+                // This means entity.Specifications was null/empty even after logic
+                // Implies request.Specifications was null/empty AND fallback logic didn't run or produced emptiness
+                // response.Description += " [DEBUG: Spec is NULL]";
+            }
+
+            return response;
         }
 
         public async Task UpdateAsync(Guid id, CreateUpdatePartRequest request)
@@ -104,8 +125,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             _mapper.Map(request, entity);
-            if ((request.RecipeSwitchCount.HasValue && request.RecipeSwitchCount > 0) ||
-                (request.RecipeStabilizerCount.HasValue && request.RecipeStabilizerCount > 0))
+
+            // [FIX] Cập nhật thủ công để đảm bảo Specifications được lưu nếu người dùng có gửi lên
+            if (!string.IsNullOrEmpty(request.Specifications))
+            {
+                entity.Specifications = request.Specifications;
+            }
+            
+            // Logic Fallback: Chỉ tự động tạo Specifications từ số lượng nếu trong DB vẫn trống
+            // (Nghĩa là người dùng không gửi Specifications lên)
+            if (string.IsNullOrEmpty(entity.Specifications) && 
+                ((request.RecipeSwitchCount.HasValue && request.RecipeSwitchCount > 0) ||
+                (request.RecipeStabilizerCount.HasValue && request.RecipeStabilizerCount > 0)))
             {
                 var recipeDict = new Dictionary<string, int>();
 

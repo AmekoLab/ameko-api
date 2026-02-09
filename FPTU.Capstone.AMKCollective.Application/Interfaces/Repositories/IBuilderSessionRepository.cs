@@ -22,5 +22,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task DeleteSessionAsync(Guid sessionId);
 
         Task<BuilderSession?> GetActiveSessionByUserIdAsync(Guid userId, Guid baseKitId);
+
+        Task<IEnumerable<BuilderSession>> GetActiveSessionsByUserIdAsync(Guid userId);
     }
 }

@@ -149,6 +149,10 @@ internal class Program
         });
         #endregion
 
+        // Register Background Workers
+        builder.Services.AddHostedService<OrderCancellationTimeoutWorker>();
+        builder.Services.AddHostedService<FundsReleaseWorker>();
+
         var app = builder.Build();
 
         // if (app.Environment.IsDevelopment())

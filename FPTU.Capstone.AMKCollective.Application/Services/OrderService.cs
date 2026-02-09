@@ -708,10 +708,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.BuilderSessionId.Value);
             if (session == null) throw new KeyNotFoundException("Session expired.");
+
+            // === Validate session hoàn tất (Nhánh hình ảnh tích lũy) ===
+            if (session.CurrentStep != "complete")
+            {
+                throw new InvalidOperationException(
+                    $"Builder session chưa hoàn tất. Bước hiện tại: '{session.CurrentStep}'. Vui lòng hoàn thành tất cả các bước trước khi thêm vào giỏ hàng.");
+            }
+
             var selectedParts = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson);
 
             // Check trùng
-            // check IsCustom và DesignConfig chứa SessionId
             var existingItem = cartOrder.OrderItems.FirstOrDefault(oi =>
                 oi.IsCustom == true &&
                 oi.DesignConfig != null &&
@@ -719,28 +726,45 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (existingItem != null)
             {
-                // Nếu đã có -> Cộng thêm số lượng bàn phím
                 existingItem.Quantity += request.Quantity;
                 existingItem.TotalPrice = existingItem.Quantity * existingItem.UnitPrice;
             }
             else
             {
-                // Nếu chưa -> Tạo mới
+                // Tìm ảnh tích lũy cuối cùng (preview image) để lưu vào order
+                string? finalPreviewImage = null;
+                if (selectedParts != null)
+                {
+                    var stepPriority = new[] { "keycap", "switch", "plate", "case" };
+                    foreach (var step in stepPriority)
+                    {
+                        if (selectedParts.TryGetValue(step, out var part) && !string.IsNullOrEmpty(part.LayerImageUrl))
+                        {
+                            finalPreviewImage = part.LayerImageUrl;
+                            break;
+                        }
+                    }
+                }
+
                 var newItem = new OrderItem
                 {
                     Id = Guid.NewGuid(),
                     OrderId = cartOrder.Id,
                     ProductId = baseKit.Id,
                     ProductName = $"{baseKit.Name} (Custom Build)",
-                    ProductImage = baseKit.ThumbnailURL ?? "",
+                    ProductImage = finalPreviewImage ?? baseKit.ThumbnailURL ?? "",
                     UnitPrice = baseKit.Price,
                     Quantity = request.Quantity,
                     IsCustom = true,
-                    DesignConfig = JsonSerializer.Serialize(new { SessionId = session.Id }),
+                    DesignConfig = JsonSerializer.Serialize(new
+                    {
+                        SessionId = session.Id,
+                        BaseKitId = session.BaseKitId,
+                        PreviewImage = finalPreviewImage
+                    }),
                     OrderItemComponents = new List<OrderItemComponent>()
                 };
 
-                //Loop qua từng linh kiện để tính tiền và số lượng
                 if (selectedParts != null)
                 {
                     foreach (var part in selectedParts.Values)
@@ -755,7 +779,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             PartName = part.Name,
                             PartPriceSnapshot = part.Price,
                             PartImageUrl = part.ThumbnailUrl,
-                            Quantity = qtyRecipe 
+                            Quantity = qtyRecipe
                         });
                     }
                 }
@@ -797,6 +821,52 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // Update trạng thái tiền
             order.PaymentStatus = PaymentStatus.Refunded;
+        }
+
+        public async Task ReleaseFundsForEligibleOrdersAsync(CancellationToken token = default)
+        {
+            // 1. Xác định thời điểm hết hạn bảo hành (30 ngày trước)
+            var warrantyThreshold = DateTime.UtcNow.AddDays(-30);
+
+            // 2. Lấy danh sách các đơn đủ điều kiện nhả tiền
+            // Điều kiện: Status=Completed, PaymentStatus=Paid (chưa Released), UpdatedAt <= 30 ngày trước
+            var eligibleOrders = await _unitOfWork.Orders
+                .GetOrdersEligibleForFundReleaseAsync(warrantyThreshold, token);
+
+            if (!eligibleOrders.Any())
+                return;
+
+            foreach (var order in eligibleOrders)
+            {
+                try
+                {
+                    if (!order.ShopId.HasValue)
+                        continue;
+
+                    // 3. Lấy thông tin Shop để get UserId
+                    var shop = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value, token);
+                    if (shop == null)
+                        continue;
+
+                    // 4. Nhả tiền (chuyển từ HeldBalance -> Balance)
+                    // ReleaseHeldMoneyAsync sẽ tự động:
+                    // - Update Wallet.HeldBalance và Wallet.Balance
+                    // - Tạo Payment log với Type=SalesReleased
+                    await _walletService.ReleaseHeldMoneyAsync(shop.UserId, order.Id, order.TotalAmount);
+
+                    // 5. Đánh dấu đơn đã nhả tiền
+                    order.PaymentStatus = PaymentStatus.Released;
+                    await _unitOfWork.Orders.UpdateOrderAsync(order, token);
+                }
+                catch (Exception ex)
+                {
+                    // Log error để monitoring, nhưng không throw để tiếp tục xử lý order tiếp theo
+                    System.Diagnostics.Debug.WriteLine($"Failed to release funds for order {order.Id}: {ex.Message}");
+                }
+            }
+
+            // 6. Commit tất cả changes
+            await _unitOfWork.CommitAsync();
         }
     }
 }

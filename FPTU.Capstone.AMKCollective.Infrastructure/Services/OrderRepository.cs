@@ -130,5 +130,16 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .AsSplitQuery() // Tối ưu hiệu năng khi có Include
                 .ToListAsync(token);
         }
+
+        public async Task<List<Order>> GetOrdersEligibleForFundReleaseAsync(DateTime warrantyThreshold, CancellationToken token = default)
+        {
+            return await _context.Orders
+                .Where(o => o.OrderStatus == OrderStatus.Completed
+                          && o.PaymentStatus == PaymentStatus.Paid
+                          && o.UpdatedAt.HasValue
+                          && o.UpdatedAt.Value <= warrantyThreshold
+                          && !o.IsDeleted)
+                .ToListAsync(token);
+        }
     }
 }

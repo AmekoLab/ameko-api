@@ -20,7 +20,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task ResetBuilderConfigAsync(Guid baseKitId);
         Task<bool> IsMatchAsync(Guid baseKitId, Guid componentId);
 
-
+        Task<BuilderStepResponse> RemovePartFromSessionAsync(Guid sessionId, string stepName);
         //SERVER-DRIVEN FLOW
         // 1. Bắt đầu phiên Build
         Task<BuilderStepResponse> StartBuilderSessionAsync(BuilderStartRequest request, Guid? userId);
@@ -29,5 +29,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<BuilderStepResponse> SelectPartAsync(BuilderSelectRequest request);
 
         Task<BuilderStepResponse> GetExistingSessionAsync(Guid sessionId, string? requestStep = null);
+        Task<List<BuilderSessionSummaryResponse>> GetUserSessionsAsync(Guid userId);
     }
 }

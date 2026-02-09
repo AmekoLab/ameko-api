@@ -58,5 +58,15 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .OrderByDescending(x => x.UpdatedAt)
                 .FirstOrDefaultAsync();
         }
+
+        public async Task<IEnumerable<BuilderSession>> GetActiveSessionsByUserIdAsync(Guid userId)
+        {
+            // Logic: Lấy tất cả session của user mà CHƯA HẾT HẠN (ExpiresAt > Now)
+            return await _context.BuilderSessions
+                .Include(x => x.BaseKit) // Include để lấy tên và ảnh Kit
+                .Where(x => x.UserId == userId && x.ExpiresAt > DateTime.UtcNow)
+                .OrderByDescending(x => x.UpdatedAt)
+                .ToListAsync();
+        }
     }
 }

@@ -10,5 +10,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Builder
     {
         public SessionInfoResponse Session { get; set; } = new();
         public NextStepResponse NextStep { get; set; } = new();
+        //Danh sách các bước (VD: ["case", "cable", "switch"...])
+        public List<string> WorkflowSteps { get; set; } = new();
     }
 }
