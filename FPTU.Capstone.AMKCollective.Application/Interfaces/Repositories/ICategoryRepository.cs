@@ -18,7 +18,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default);
 
         Task<Category?> GetBySlugAsync(string slug, Guid? shopId = null, CancellationToken cancellationToken = default);
-
+        Task<bool> IsSlugDuplicateAsync(string slug, Guid? excludeId = null, CancellationToken cancellationToken = default);
 
         //=============================//
         Task<bool> HasSubCategoriesAsync(Guid categoryId, CancellationToken cancellationToken = default);

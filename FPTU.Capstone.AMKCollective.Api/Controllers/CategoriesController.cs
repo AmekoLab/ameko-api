@@ -62,49 +62,28 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpGet]
-        [SwaggerOperation(
-    Summary = "Get All Categories",
-    Description = @"Returns a hierarchical list of categories with optional filtering.
-
-Query Parameters:
-- shopId (optional): Filter by shop
-  * Null/Omitted = Get GLOBAL categories (admin-created)
-  * ShopId = Get PRIVATE categories for that shop OR global categories"
-)]
-        [SwaggerResponse(200, "Categories retrieved successfully", typeof(ApiResponse<IEnumerable<CategorySummaryResponse>>))]
+        [SwaggerOperation(Summary = "Get Categories (Public & Shop Context)")]
         public async Task<IActionResult> GetCategories(
-            [FromQuery] GetCategoriesFilterRequest queryParams,
-            CancellationToken cancellationToken)
+    [FromQuery] GetCategoriesFilterRequest queryParams,
+    CancellationToken cancellationToken)
         {
-            try
+            var (role, userShopId) = await GetCurrentUserContextAsync();
+            if (role == "Shop" && userShopId.HasValue)
             {
-                // Auto-filter based on role
-                var (role, userShopId) = await GetCurrentUserContextAsync();
+                // Nếu là Shop đang đăng nhập: Bắt buộc ngữ cảnh là Shop của họ
+                // Để họ thấy được cả Global Category + Private Category của họ
+                queryParams.ShopId = userShopId;
+            }
+            else
+            {
+                // Nếu là Guest hoặc Customer:
+                // - Họ đang xem trang chủ -> Repository sẽ trả về Global.
+                // - Họ đang xem trang của Shop cụ thể -> Repository trả về Global + Shop đó.
+                // => KHÔNG CẦN LÀM GÌ CẢ, để nguyên giá trị FE gửi lên.
+            }
 
-                if (role == "Shop" && userShopId.HasValue)
-                {
-                    // Shop should see: Global (ShopId=null) AND Their Private (ShopId=userShopId)
-                    // But Repository logic "GetPagedAsync" currently does exclusive OR if queryParams.ShopId is set.
-                    // If shop passes their ID in queryParams, they get Private only.
-                    // If shop passes nothing, they get Global.
-                    // To get BOTH, we warn client or logic needs Update.
-                    // For safety: If they try to filter by ANOTHER shop ID, block/override it.
-                    if (queryParams.ShopId.HasValue && queryParams.ShopId != userShopId)
-                    {
-                        // Force override to own shop or return forbidden. 
-                        // Better to force override to prevent data leak.
-                        queryParams.ShopId = userShopId;
-                    }
-                }
-                
-                var categories = await _categoryService.GetCategoriesAsync(queryParams, cancellationToken);
-                return SuccessResponse(categories);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error occurred while fetching categories");
-                return ServerErrorResponse<string>("An error occurred while fetching categories");
-            }
+            var categories = await _categoryService.GetCategoriesAsync(queryParams, cancellationToken);
+            return SuccessResponse(categories);
         }
 
         [HttpGet("{id:guid}")]

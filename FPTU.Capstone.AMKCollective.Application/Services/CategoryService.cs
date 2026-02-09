@@ -67,19 +67,23 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 if (!parentExists) throw new ArgumentException("Parent category does not exist.");
             }
 
-            // [FIX 1] Check trùng Slug khi tạo mới
-            var slug = GenerateSlug(request.Name);
-            var existingSlug = await _unitOfWork.Categories.GetBySlugAsync(slug, shopId, cancellationToken);
-            if (existingSlug != null)
+            // Lấy tên Shop để làm Namespace cho Slug (nếu là Shop tạo)
+            string? shopName = null;
+            // Coi Guid.Empty là Admin -> không cần lấy tên
+            if (shopId.HasValue && shopId != Guid.Empty)
             {
-                slug = $"{slug}-{Guid.NewGuid().ToString().Substring(0, 4)}";
+                var shop = await _unitOfWork.Shops.GetByIdAsync(shopId.Value);
+                if (shop != null) shopName = shop.ShopName;
             }
+
+            //truyền shopName vào
+            string uniqueSlug = await GenerateUniqueSlugAsync(request.Name, shopName, null, cancellationToken);
 
             var category = new Category
             {
                 Id = Guid.NewGuid(),
                 Name = request.Name,
-                Slug = slug,
+                Slug = uniqueSlug,
                 ParentId = request.ParentId,
                 IsActive = request.IsActive,
                 ShopId = shopId, // Can be null (global) or specific Shop ID (private)
@@ -95,19 +99,22 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 );
             }
 
-            await _unitOfWork.Categories.CreateAsync(category); 
+            await _unitOfWork.Categories.CreateAsync(category);
             await _unitOfWork.CommitAsync();
 
             return MapToCategoryDto(category, false);
         }
 
-        public async Task<CategoryResponse> UpdateCategoryAsync(Guid id, UpdateCategoryRequest request, Guid? shopId, CancellationToken cancellationToken = default)
+        public async Task<CategoryResponse> UpdateCategoryAsync(Guid id, UpdateCategoryRequest request, Guid? requesterShopId, CancellationToken cancellationToken = default)
         {
             var category = await _unitOfWork.Categories.GetByIdAsync(id, false, cancellationToken);
             if (category == null) throw new KeyNotFoundException($"Category with id {id} not found.");
 
-            // Validate Owner
-            if (shopId.HasValue && category.ShopId != shopId)
+            //Logic check quyền: Admin (Guid.Empty hoặc null) được quyền sửa tất cả
+            bool isAdmin = !requesterShopId.HasValue || requesterShopId == Guid.Empty;
+
+            // Nếu không phải Admin VÀ ID người gọi không khớp ID chủ sở hữu category -> Chặn
+            if (!isAdmin && category.ShopId != requesterShopId)
             {
                 throw new UnauthorizedAccessException("You cannot update a category you do not own.");
             }
@@ -118,8 +125,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 var parentExists = await _unitOfWork.Categories.ExistsAsync(request.ParentId.Value, cancellationToken);
                 if (!parentExists) throw new ArgumentException("Parent category does not exist.");
             }
+
             if (!string.IsNullOrEmpty(request.Name))
             {
+                // Logic Slug khi Update
+                // Nếu đổi tên -> Phải tạo lại slug. Cần lấy lại ShopName của category đó (để giữ namespace cũ)
+                string? shopName = null;
+                if (category.ShopId != null && category.ShopId != Guid.Empty)
+                {
+                    var shop = await _unitOfWork.Shops.GetByIdAsync(category.ShopId.Value);
+                    shopName = shop?.ShopName;
+                }
+
+                // Truyền id vào tham số thứ 3 (excludeId) để tránh báo trùng với chính nó
+                category.Slug = await GenerateUniqueSlugAsync(request.Name, shopName, id, cancellationToken);
                 category.Name = request.Name;
             }
 
@@ -135,19 +154,21 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 );
             }
 
-            await _unitOfWork.Categories.UpdateAsync(category); 
+            await _unitOfWork.Categories.UpdateAsync(category);
             await _unitOfWork.CommitAsync();
 
             return MapToCategoryDto(category, false);
         }
 
-        public async Task<bool> DeleteCategoryAsync(Guid id, Guid? shopId, CancellationToken cancellationToken = default)
+        public async Task<bool> DeleteCategoryAsync(Guid id, Guid? requesterShopId, CancellationToken cancellationToken = default)
         {
             var category = await _unitOfWork.Categories.GetByIdAsync(id, false, cancellationToken);
             if (category == null) return false;
 
-            // Validate Owner
-            if (shopId.HasValue && category.ShopId != shopId)
+            //Logic check quyền xóa tương tự Update (Admin xóa được hết)
+            bool isAdmin = !requesterShopId.HasValue || requesterShopId == Guid.Empty;
+
+            if (!isAdmin && category.ShopId != requesterShopId)
             {
                 throw new UnauthorizedAccessException("You cannot delete a category you do not own.");
             }
@@ -251,6 +272,39 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 .Replace(" ", "-")
                 .Replace("&", "and")
                 .Replace("đ", "d"); // Thêm xử lý tiếng Việt đơn giản nếu cần
+        }
+
+        private async Task<string> GenerateUniqueSlugAsync(string name, string? shopName, Guid? excludeId = null, CancellationToken cancellationToken = default)
+        {
+            // Tạo slug gốc từ tên
+            string baseSlug = GenerateSlug(name);
+
+            // Nếu có tên Shop (tức là Shop tạo), ghép thêm vào slug
+            if (!string.IsNullOrEmpty(shopName))
+            {
+                baseSlug = $"{baseSlug}-{GenerateSlug(shopName)}";
+            }
+
+            string finalSlug = baseSlug;
+            int counter = 1;
+
+            // Vòng lặp kiểm tra trùng
+            while (true)
+            {
+                // Gọi Repository check trùng toàn hệ thống
+                var isDuplicate = await _unitOfWork.Categories.IsSlugDuplicateAsync(finalSlug, excludeId, cancellationToken);
+
+                if (!isDuplicate)
+                {
+                    break;
+                }
+
+                // Nếu trùng -> Thêm số đếm vào sau
+                finalSlug = $"{baseSlug}-{counter}";
+                counter++;
+            }
+
+            return finalSlug;
         }
     }
 }
