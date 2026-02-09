@@ -16,7 +16,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Builder
         public decimal Price { get; set; }
         public string ThumbnailUrl { get; set; } = string.Empty;
         /// <summary>Ảnh tích lũy - bao gồm nền của tất cả bước trước (theo nhánh)</summary>
-        public string LayerImageUrl { get; set; } = string.Empty;
+        public string? LayerImageUrl { get; set; }
         public bool IsDefault { get; set; }
         public StockStatus Status { get; set; }
 

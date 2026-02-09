@@ -23,8 +23,18 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Start the Build process. Create a new session and return step 1.
+        /// [USER] Starts a new Builder Session.
         /// </summary>
+        /// <remarks>
+        /// Call this when the user clicks "Build Now".
+        /// <br/>
+        /// <b>Logic:</b>
+        /// 1. Generates a new `SessionId`.
+        /// 2. Reads the `workflow` JSON from the Base Kit (e.g., finding that Step 1 is "case").
+        /// 3. Returns the list of compatible parts for Step 1.
+        /// </remarks>
+        /// <param name="request">Contains the `BaseKitId`.</param>
+        /// <returns>The Session ID and the configuration for the FIRST step.</returns>
         [HttpPost("start")]
         [SwaggerOperation(
             Summary = "Start Builder Session",
@@ -52,8 +62,20 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Chọn một linh kiện. Backend sẽ lưu lại và trả về bước tiếp theo.
+        /// [USER] Selects a part and moves to the Next Step.
         /// </summary>
+        /// <remarks>
+        /// <b>CORE API:</b> Call this when the user clicks on a component card.
+        /// <br/>
+        /// <b>Backend Logic:</b>
+        /// 1. Saves the selected part to the Session.
+        /// 2. Updates the `CurrentPreviewImage` (Visual Branching logic).
+        /// 3. Calculates the `TotalPrice`.
+        /// 4. Determines the <b>Next Step</b> based on the workflow JSON.
+        /// 5. Returns the <b>Filtered List</b> of parts for the next step (e.g., if Case Black is selected, only show Plates compatible with Case Black).
+        /// </remarks>
+        /// <param name="request">SessionId, Current StepName, and Selected PartId.</param>
+        /// <returns>The Next Step configuration, updated Preview Image URL, and updated Total Price.</returns>
         [HttpPost("select")]
         [SwaggerOperation(
     Summary = "Select Part for Builder",
@@ -83,7 +105,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
 
 
-        // GET: api/builder/config/{baseKitId}
+        /// <summary>
+        /// [ADMIN] Get the configuration rules of a Base Kit.
+        /// </summary>
+        /// <remarks>
+        /// Used by the Shop Owner dashboard to see what parts are linked to this Kit.
+        /// </remarks>
         [HttpGet("config/{baseKitId}")]
         [SwaggerOperation(
     Summary = "Get Builder Config",
@@ -109,7 +136,13 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
-        // GET: api/builder/search
+        /// <summary>
+        /// [USER] Search for compatible parts within the current session.
+        /// </summary>
+        /// <remarks>
+        /// Useful for a Search Bar inside the Builder UI. 
+        /// It ensures returned parts are compatible with previous selections (e.g., searching "FR4" only returns FR4 plates that fit the selected Case).
+        /// </remarks>
         [HttpGet("search")]
         [SwaggerOperation(
     Summary = "Search Compatible Parts",
@@ -131,7 +164,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
-        // POST: api/builder/validate
+        /// <summary>
+        /// [USER] Validates the entire configuration.
+        /// </summary>
+        /// <remarks>
+        /// Call this before "Add to Cart" to ensure all selected parts are compatible and stock is available.
+        /// </remarks>
         [HttpPost("validate")]
         [SwaggerOperation(
     Summary = "Validate Configuration",
@@ -159,7 +197,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
-        // GET: api/builder/check-match
+        /// <summary>
+        /// [UI HELPER] Quick check if a part fits the Kit.
+        /// </summary>
+        /// <remarks>
+        /// Can be used by UI to grey out incompatible items in a list without reloading the whole step.
+        /// </remarks>
         [HttpGet("check-match")]
         [SwaggerOperation(
     Summary = "Check Compatibility",
@@ -180,7 +223,19 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
-        // POST: api/builder/options
+        /// <summary>
+        ///  Create a specific Option (Rule) for a Kit.
+        /// </summary>
+        /// <remarks>
+        /// Links a Component to a Step of the Kit.
+        /// <br/>
+        /// <b>Payload fields:</b>
+        /// <ul>
+        /// <li>`StepName`: Which step this part belongs to (e.g., "case").</li>
+        /// <li>`NextStepFilterRule`: Tags to filter the NEXT step (e.g., "plate:case-black").</li>
+        /// <li>`LayerImage`: The accumulated image to display when this is selected.</li>
+        /// </ul>
+        /// </remarks>
         [HttpPost("options")]
         [SwaggerOperation(
     Summary = "Create Kit Option",
@@ -201,7 +256,9 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
-        // DELETE: api/builder/options/{id}
+        /// <summary>
+        /// Delete a specific Option.
+        /// </summary>
         [HttpDelete("options/{id}")]
         [SwaggerOperation(
     Summary = "Delete Kit Option",
@@ -222,7 +279,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
-        // POST: api/builder/options/bulk
+        /// <summary>
+        /// Bulk create options (Import).
+        /// </summary>
+        /// <remarks>
+        /// Useful for importing configuration from Excel/CSV.
+        /// </remarks>
         [HttpPost("options/bulk")]
         [SwaggerOperation(
     Summary = "Bulk Create Options",
@@ -250,7 +312,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
-        // DELETE: api/builder/config/{baseKitId}
+        /// <summary>
+        ///  Reset the entire configuration of a Kit.
+        /// </summary>
+        /// <remarks>
+        /// <b>Warning:</b> This deletes all links/options for the specified Kit. Use with caution.
+        /// </remarks>
         [HttpDelete("config/{baseKitId}")]
         [SwaggerOperation(
     Summary = "Reset Builder Config",
@@ -276,6 +343,16 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
+        /// <summary>
+        /// [USER] Resumes an existing Session.
+        /// </summary>
+        /// <remarks>
+        /// Call this if the user refreshes the page (F5) or returns to the builder later.
+        /// It restores the exact state (Current Step, Selected Parts, Preview Image).
+        /// </remarks>
+        /// <param name="sessionId">The ID of the active session.</param>
+        /// <param name="stepName">Optional: If provided, jumps to specific step view (if allowed).</param>
+        /// <returns>The full state of the session.</returns>
         [HttpGet("session/{sessionId}")]
         [SwaggerOperation(
     Summary = "Resume Session",

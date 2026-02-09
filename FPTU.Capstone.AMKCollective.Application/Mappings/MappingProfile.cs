@@ -81,6 +81,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             CreateMap<Model, PartResponse>()
                 .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Shop.ShopName))
                 .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.Name))
+                // [FIX] Explicitly map Specifications to ensure it's not skipped
+                .ForMember(dest => dest.Specifications, opt => opt.MapFrom(src => src.Specifications))
                 .ForMember(dest => dest.RecipeSwitchCount, opt => opt.MapFrom(src =>
                     GetRecipeValue(src.Specifications, "switch")))
                 .ForMember(dest => dest.RecipeStabilizerCount, opt => opt.MapFrom(src =>
@@ -91,7 +93,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             CreateMap<CreateUpdatePartRequest, Model>()
                 .ForMember(dest => dest.ThumbnailURL, opt => opt.Ignore())
                 .ForMember(dest => dest.DefaultLayerImageUrl, opt => opt.Ignore())
-                .ForMember(dest => dest.Slug, opt => opt.Ignore());
+                .ForMember(dest => dest.Slug, opt => opt.Ignore())
+                // [FIX] Explicitly map Specifications
+                .ForMember(dest => dest.Specifications, opt => opt.MapFrom(src => src.Specifications));
 
             //==================MODEL=======================//
 
