@@ -37,6 +37,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .OnDelete(DeleteBehavior.Restrict);
             builder.HasIndex(p => p.StripeSessionId);
             builder.HasIndex(p => p.StripePaymentIntentId);
+            builder.HasIndex(p => p.WalletId);
+
+            builder.HasOne(p => p.Wallet)
+                .WithMany(w => w.Payments)
+                .HasForeignKey(p => p.WalletId)
+                .OnDelete(DeleteBehavior.SetNull);
 
             builder.HasOne(p => p.OrderGroup)
                 .WithMany(og => og.Payments)

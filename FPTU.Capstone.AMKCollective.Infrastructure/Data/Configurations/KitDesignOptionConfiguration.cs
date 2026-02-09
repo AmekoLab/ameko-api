@@ -49,8 +49,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             // Indexes (recommend)
             // ----------------------------
             builder.HasIndex(x => new { x.BaseKitId, x.StepOrder });
-            builder.HasIndex(x => new { x.BaseKitId, x.ComponentId })
-                .IsUnique();
+
+            // Cho phép cùng 1 Component có nhiều bản ghi với Tags khác nhau (Nhánh hình ảnh tích lũy)
+            // KHÔNG dùng unique trên (BaseKitId, ComponentId) nữa
+            builder.HasIndex(x => new { x.BaseKitId, x.ComponentId });
+
+            // Index mới phục vụ lọc theo nhánh
+            builder.HasIndex(x => new { x.BaseKitId, x.StepName, x.Tags });
         }
     }
 }
