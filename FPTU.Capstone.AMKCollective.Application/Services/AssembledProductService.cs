@@ -110,7 +110,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 return (false, null, "You do not have permission to update this product");
             }
 
-            // Update top-level properties (Details collection is ignored in AutoMapper)
             _mapper.Map(request, assembledProduct);
            
             if (request.Details != null && request.Details.Count > 0)
@@ -143,13 +142,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     }
                 }
 
-                // Explicitly manage collection replacement
+                //Tuan Note: Clear existing details and add new ones. Because updating details is complex (add, update, delete), for simplicity we clear and re-add.
                 assembledProduct.ProductAssembledDetails.Clear();
                 foreach (var detailReq in request.Details)
                 {
                     var detail = _mapper.Map<ProductAssembledDetail>(detailReq);
-                    // Reset ID to let EF Core know it's a new record (ValueGeneratedOnAdd will kick in)
+                    //Tuan Note: Ensure new detail is added instead of updating existing one, Remove existing Id and set to empty. Because AutoMapper will map the Id from detailReq (which is default Guid.Empty) to detail.Id, causing EF to think it's an existing entity.
                     detail.Id = Guid.Empty; 
+                    detail.SoundUrl = detailReq.SoundUrl;
                     assembledProduct.ProductAssembledDetails.Add(detail);
                 }
             }
