@@ -11,9 +11,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
     {
         Task<IEnumerable<CategorySummaryResponse>> GetCategoriesAsync(GetCategoriesFilterRequest queryParams, CancellationToken cancellationToken = default);
         Task<CategoryResponse?> GetCategoryByIdAsync(Guid id, bool includeSubCategories = false, CancellationToken cancellationToken = default);
-        Task<CategoryResponse> CreateCategoryAsync(CreateCategoryRequest request, CancellationToken cancellationToken = default);
-        Task<CategoryResponse> UpdateCategoryAsync(Guid id, UpdateCategoryRequest request, CancellationToken cancellationToken = default);
-        Task<bool> DeleteCategoryAsync(Guid id, CancellationToken cancellationToken = default);
+        Task<CategoryResponse> CreateCategoryAsync(CreateCategoryRequest request, Guid? shopId, CancellationToken cancellationToken = default);
+        Task<CategoryResponse> UpdateCategoryAsync(Guid id, UpdateCategoryRequest request, Guid? shopId, CancellationToken cancellationToken = default);
+        Task<bool> DeleteCategoryAsync(Guid id, Guid? shopId, CancellationToken cancellationToken = default);
         Task<CategoryResponse?> GetCategoryBySlugAsync(string slug, CancellationToken cancellationToken = default);
 
         // parts

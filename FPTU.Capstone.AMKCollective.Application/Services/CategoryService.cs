@@ -32,6 +32,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 queryParams.IsActive,
                 queryParams.ParentId,
                 queryParams.IncludeSubCategories,
+                queryParams.ShopId, // Pass shopId filter
                 cancellationToken);
 
             // Manual mapping để kiểm soát dữ liệu tốt hơn
@@ -43,6 +44,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 ThumbnailURL = c.ThumbnailURL,
                 ParentId = c.ParentId,
                 IsActive = c.IsActive,
+                ShopId = c.ShopId,
                 SubCategoryCount = c.SubCategories.Count,
                 PartCount = c.Models.Count
             }).ToList();
@@ -57,7 +59,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return MapToCategoryDto(category, includeSubCategories);
         }
 
-        public async Task<CategoryResponse> CreateCategoryAsync(CreateCategoryRequest request, CancellationToken cancellationToken = default)
+        public async Task<CategoryResponse> CreateCategoryAsync(CreateCategoryRequest request, Guid? shopId, CancellationToken cancellationToken = default)
         {
             if (request.ParentId.HasValue)
             {
@@ -67,7 +69,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // [FIX 1] Check trùng Slug khi tạo mới
             var slug = GenerateSlug(request.Name);
-            var existingSlug = await _unitOfWork.Categories.GetBySlugAsync(slug, cancellationToken);
+            var existingSlug = await _unitOfWork.Categories.GetBySlugAsync(slug, shopId, cancellationToken);
             if (existingSlug != null)
             {
                 slug = $"{slug}-{Guid.NewGuid().ToString().Substring(0, 4)}";
@@ -80,7 +82,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Slug = slug,
                 ParentId = request.ParentId,
                 IsActive = request.IsActive,
-                ShopId = request.ShopId,
+                ShopId = shopId, // Can be null (global) or specific Shop ID (private)
                 ThumbnailURL = null
             };
 
@@ -99,10 +101,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return MapToCategoryDto(category, false);
         }
 
-        public async Task<CategoryResponse> UpdateCategoryAsync(Guid id, UpdateCategoryRequest request, CancellationToken cancellationToken = default)
+        public async Task<CategoryResponse> UpdateCategoryAsync(Guid id, UpdateCategoryRequest request, Guid? shopId, CancellationToken cancellationToken = default)
         {
             var category = await _unitOfWork.Categories.GetByIdAsync(id, false, cancellationToken);
             if (category == null) throw new KeyNotFoundException($"Category with id {id} not found.");
+
+            // Validate Owner
+            if (shopId.HasValue && category.ShopId != shopId)
+            {
+                throw new UnauthorizedAccessException("You cannot update a category you do not own.");
+            }
 
             if (request.ParentId.HasValue && request.ParentId.Value != category.ParentId)
             {
@@ -133,10 +141,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return MapToCategoryDto(category, false);
         }
 
-        public async Task<bool> DeleteCategoryAsync(Guid id, CancellationToken cancellationToken = default)
+        public async Task<bool> DeleteCategoryAsync(Guid id, Guid? shopId, CancellationToken cancellationToken = default)
         {
             var category = await _unitOfWork.Categories.GetByIdAsync(id, false, cancellationToken);
             if (category == null) return false;
+
+            // Validate Owner
+            if (shopId.HasValue && category.ShopId != shopId)
+            {
+                throw new UnauthorizedAccessException("You cannot delete a category you do not own.");
+            }
 
             var hasSubCategories = await _unitOfWork.Categories.HasSubCategoriesAsync(id, cancellationToken);
             if (hasSubCategories) throw new InvalidOperationException("Cannot delete category with subcategories.");
@@ -201,7 +215,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<CategoryResponse?> GetCategoryBySlugAsync(string slug, CancellationToken cancellationToken = default)
         {
-            var category = await _unitOfWork.Categories.GetBySlugAsync(slug, cancellationToken);
+            var category = await _unitOfWork.Categories.GetBySlugAsync(slug, null, cancellationToken);
             if (category == null) return null;
             return MapToCategoryDto(category, false);
         }
@@ -217,6 +231,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 ThumbnailURL = category.ThumbnailURL,
                 ParentId = category.ParentId,
                 IsActive = category.IsActive,
+                ShopId = category.ShopId,
                 CreatedAt = category.CreatedAt,
                 UpdatedAt = category.UpdatedAt
             };

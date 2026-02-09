@@ -14,8 +14,11 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Category
         public string Name { get; set; } = string.Empty;
         public Guid? ParentId { get; set; }
         public bool IsActive { get; set; } = true;
-       
-        public Guid ShopId { get; set; }
+
+        // ShopId removed - inferred from token
+        // public Guid? ShopId { get; set; }
+
         public IFormFile? ThumbnailImage { get; set; }
     }
 }
+        

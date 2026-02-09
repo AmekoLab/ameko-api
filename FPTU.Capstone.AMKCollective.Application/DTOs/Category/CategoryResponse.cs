@@ -17,5 +17,19 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Category
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
         public List<CategoryResponse>? SubCategories { get; set; }
+        
+        /// <summary>
+        /// Shop ID - indicates ownership
+        /// - Null: GLOBAL category (created by admin)
+        /// - Guid value: PRIVATE category (created by shop)
+        /// </summary>
+        public Guid? ShopId { get; set; }
+        
+        /// <summary>
+        /// Category type indicator
+        /// - "global": Admin-managed, available to all shops
+        /// - "private": Shop-specific, only for that shop
+        /// </summary>
+        public string CategoryType => ShopId.HasValue ? "private" : "global";
     }
 }
