@@ -8,6 +8,8 @@ using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Options;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 
 namespace FPTU.Capstone.AMKCollective.Application.Services
 {
@@ -17,13 +19,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IEmailService _emailService;
         private readonly IMapper _mapper;
         private readonly ITokenService _tokenService;
+        private readonly SecuritySettings _securitySettings;
 
-        public UserService(IUnitOfWork unitOfWork, IEmailService emailService, IMapper mapper, ITokenService tokenService)
+        public UserService(IUnitOfWork unitOfWork, IEmailService emailService, IMapper mapper, ITokenService tokenService, IOptions<SecuritySettings> securitySettings)
         {
             _unitOfWork = unitOfWork;
             _emailService = emailService;
             _mapper = mapper;
             _tokenService = tokenService;
+            _securitySettings = securitySettings.Value;
+        }
+
+        private string GenerateRandom6DigitCode()
+        {
+            return new Random().Next(100000, 999999).ToString();
         }
 
         public async Task<PaginatedResult<UserResponse>> GetAllAsync(int pageNumber, int pageSize)
@@ -231,8 +240,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 TokenSalt = parts[0]
             };
 
-            // Enforce limit of 5 tokens per user
-            if (user.RefreshTokens.Count >= 5)
+            // Enforce limit of tokens per user from settings
+            if (user.RefreshTokens.Count >= _securitySettings.RefreshTokenLimit)
             {
                 var oldestToken = user.RefreshTokens.OrderBy(rt => rt.CreatedAt).FirstOrDefault();
                 if (oldestToken != null)
@@ -250,9 +259,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var user = await _unitOfWork.Users.GetByEmailAsync(email);
             if (user == null) return (false, "User not found");
 
-            var activationCode = new Random().Next(100000, 999999).ToString();
+            var activationCode = GenerateRandom6DigitCode();
             user.VerificationCode = activationCode;
-            user.VerificationCodeExpiryTime = DateTime.UtcNow.AddMinutes(15);
+            user.VerificationCodeExpiryTime = DateTime.UtcNow.AddMinutes(_securitySettings.VerificationCodeExpiryMinutes);
             
             await _unitOfWork.Users.UpdateAsync(user);
             await _unitOfWork.CommitAsync();
@@ -288,7 +297,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var user = await _unitOfWork.Users.GetByEmailAsync(request.Email);
             if (user == null) return (false, "Email not found");
 
-            var resetCode = new Random().Next(100000, 999999).ToString();
+            var resetCode = GenerateRandom6DigitCode();
             user.ResetPasswordToken = resetCode;
             
             await _unitOfWork.Users.UpdateAsync(user);

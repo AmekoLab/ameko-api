@@ -22,6 +22,13 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         {
             _userService = userService;
         }
+
+        /// <summary>
+        /// Retrieves a paginated list of all users.
+        /// </summary>
+        /// <param name="currentPage">The page number to retrieve.</param>
+        /// <param name="pageSize">The number of items per page.</param>
+        /// <returns>A paginated result containing users.</returns>
         [SwaggerOperation(
             Summary = "Get all users",
             Description = "Returns a paginated list of all registered users. Admin role suggested for production." )]
@@ -34,7 +41,11 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             return SuccessResponse(users);
         }
 
-
+        /// <summary>
+        /// Authenticates a user and returns a JWT token.
+        /// </summary>
+        /// <param name="request">The login credentials.</param>
+        /// <returns>A login response with tokens.</returns>
         [HttpPost("login")]
         [SwaggerOperation(
             Summary = "Authenticate user",
@@ -46,7 +57,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         {
             var response = await _userService.LoginAsync(request);
             if (response == null)
-                return UnauthorizedResponse<LoginResponse>("Invalid username or password");
+                return UnauthorizedResponse<LoginResponse>("Invalid email or password");
 
             return SuccessResponse(response);
         }
@@ -54,6 +65,10 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
 
         #region Profile
 
+        /// <summary>
+        /// Retrieves the profile info for the authenticated user.
+        /// </summary>
+        /// <returns>The user profile details.</returns>
         [Authorize]
         [HttpGet("profile/{id}")]
         [SwaggerOperation(
@@ -76,6 +91,11 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
 
         #region Registration
 
+        /// <summary>
+        /// Registers a new user account.
+        /// </summary>
+        /// <param name="request">The registration details.</param>
+        /// <returns>A success message if registered.</returns>
         [HttpPost("register")]
         [SwaggerOperation(
             Summary = "Register new customer",
@@ -89,20 +109,18 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             if (!result.Success)
                 return ErrorResponse<object>(result.ErrorMessage);
 
-            return SuccessResponse(new
-            {
-                request.Username,
-                request.Email,
-                request.FirstName,
-                request.LastName,
-                request.Role
-            }, "Registration successful");
+            return SuccessResponse(new { message = "User registered successfully" });
         }
 
         #endregion
 
         #region Password Management
 
+        /// <summary>
+        /// Changes the password for the authenticated user.
+        /// </summary>
+        /// <param name="request">The password change details.</param>
+        /// <returns>A success message if changed.</returns>
         [Authorize]
         [HttpPost("change-password/{userId}")]
         [SwaggerOperation(
@@ -125,6 +143,11 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
 
         #region Logout & Token
 
+        /// <summary>
+        /// Logs out the authenticated user by revoking their refresh token.
+        /// </summary>
+        /// <param name="request">The logout request containing the refresh token.</param>
+        /// <returns>A success message if logged out.</returns>
         [Authorize]
         [HttpPost("logout/{userId}")]
         [SwaggerOperation(
@@ -143,6 +166,11 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             return SuccessResponse("Logout successful");
         }
 
+        /// <summary>
+        /// Refreshes the JWT token using a valid refresh token.
+        /// </summary>
+        /// <param name="request">The refresh token.</param>
+        /// <returns>A new token response.</returns>
         [HttpPost("refresh-token/{userId}")]
         [SwaggerOperation(
             Summary = "Refresh access token",
@@ -163,6 +191,11 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
 
         #region Admin Endpoints
 
+        /// <summary>
+        /// Admin: Creates a new confirmed user account.
+        /// </summary>
+        /// <param name="request">The user creation details.</param>
+        /// <returns>The created user information.</returns>
         [Authorize(Roles = "Admin")]
         [HttpPost("admin/create-user")]
         [SwaggerOperation(
@@ -194,6 +227,12 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             }, "User created successfully");
         }
 
+        /// <summary>
+        /// Admin: Updates an existing user's information.
+        /// </summary>
+        /// <param name="id">The ID of the user to update.</param>
+        /// <param name="request">The updated user details.</param>
+        /// <returns>A success response if updated.</returns>
         [Authorize(Roles = "Admin")]
         [HttpPut("admin/update-user/{id}")]
         [SwaggerOperation(
@@ -213,6 +252,11 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             return SuccessResponse(request, "User updated successfully");
         }
 
+        /// <summary>
+        /// Admin: Deletes a user account.
+        /// </summary>
+        /// <param name="id">The ID of the user to delete.</param>
+        /// <returns>A success response if deleted.</returns>
         [Authorize(Roles = "Admin")]
         [HttpDelete("admin/delete-user/{id}")]
         [SwaggerOperation(
@@ -232,6 +276,11 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             return SuccessResponse(new { UserId = id }, "User deleted successfully");
         }
 
+        /// <summary>
+        /// Admin: Bans a user account.
+        /// </summary>
+        /// <param name="id">The ID of the user to ban.</param>
+        /// <returns>A success response if banned.</returns>
         [Authorize(Roles = "Admin")]
         [HttpPost("admin/ban/{id}")]
         [SwaggerOperation(
@@ -308,6 +357,11 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
 
         #region Profile Update
 
+        /// <summary>
+        /// Updates the profile of the authenticated user.
+        /// </summary>
+        /// <param name="request">The updated profile information.</param>
+        /// <returns>A success message if updated.</returns>
         [Authorize]
         [HttpPut("profile/{id}")]
         [SwaggerOperation(
@@ -319,8 +373,8 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [SwaggerResponse(404, "User not found")]
         public async Task<IActionResult> UpdateProfile(Guid id, [FromBody] UpdateProfileRequest request)
         {
-            var result = await _userService.UpdateProfileAsync(id, request);
-            if (!result)
+            var success = await _userService.UpdateProfileAsync(id, request);
+            if (!success)
                 return NotFoundResponse<object>("User not found or update failed");
 
             return SuccessResponse(request, "Profile updated successfully");
@@ -330,6 +384,11 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
 
         #region Forgot / Reset Password
 
+        /// <summary>
+        /// Initiates the forgot password process.
+        /// </summary>
+        /// <param name="request">The request containing the user's email.</param>
+        /// <returns>A success response if the reset code was sent.</returns>
         [HttpPost("forgot-password")]
         [SwaggerOperation(
             Summary = "Forgot password",
@@ -349,6 +408,11 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             return SuccessResponse(new { Message = "Password reset code sent to email" }, "Reset code sent successfully");
         }
 
+        /// <summary>
+        /// Resets the user's password using a verification code.
+        /// </summary>
+        /// <param name="request">The new password and reset code.</param>
+        /// <returns>A success response if the password was reset.</returns>
         [HttpPost("reset-password")]
         [SwaggerOperation(
             Summary = "Reset password",        
@@ -374,6 +438,11 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         
         #region Account Activation
 
+        /// <summary>
+        /// Sends an account activation code to the user's email.
+        /// </summary>
+        /// <param name="email">The email to send the code to.</param>
+        /// <returns>A success response if the code was sent.</returns>
         [HttpPost("send-activation-code")]
         [SwaggerOperation(
     Summary = "Send activation code",
@@ -394,6 +463,11 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             return SuccessResponse(new { Email = email }, "Activation code sent successfully");
         }
 
+        /// <summary>
+        /// Verifies the activation code and activates the account.
+        /// </summary>
+        /// <param name="request">The verification code and email.</param>
+        /// <returns>A success response if the account was activated.</returns>
         [HttpPost("verify-activation-code")]
         [SwaggerOperation(
             Summary = "Verify activation code",
@@ -417,6 +491,11 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
 
         #region Role Management
 
+        /// <summary>
+        /// Upgrades a user account to the 'Shop' role.
+        /// </summary>
+        /// <param name="id">The ID of the user to upgrade.</param>
+        /// <returns>A success response if upgraded.</returns>
         [Authorize]
         [HttpPost("upgrade-to-shop/{id}")]
         [SwaggerOperation(

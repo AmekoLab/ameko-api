@@ -71,6 +71,7 @@ internal class Program
         #region Configure Settings  
         // Configure EmailSettings
         builder.Services.Configure<FPTU.Capstone.AMKCollective.Application.DTOs.Settings.EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
+        builder.Services.Configure<FPTU.Capstone.AMKCollective.Application.DTOs.Settings.SecuritySettings>(builder.Configuration.GetSection("SecuritySettings"));
         #endregion
 
         #region CORS

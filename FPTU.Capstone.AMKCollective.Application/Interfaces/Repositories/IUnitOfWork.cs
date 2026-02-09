@@ -14,6 +14,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         IShopRepository Shops { get; }
         IPaymentRepository Payments {  get; }
         IFollowRepository Follows { get; }
+        IAssembledProductRepository AssembledProducts { get; }
         IWalletRepository Wallets { get; }
         IOrderIssueRepository OrderIssues { get; }
         IOrderIssueLogRepository OrderIssueLogs { get; }

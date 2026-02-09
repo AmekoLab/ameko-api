@@ -4,6 +4,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Follow;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
+using FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Voucher;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Wallet;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
@@ -47,7 +48,34 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             CreateMap<Follow, FollowerResponse>()
                 .ForMember(dest => dest.UserId, opt => opt.MapFrom(src => src.Follower.Id));
 
-            // TODO: Thêm mapping cho các entities khác ở đây
+            //==================ASSEMBLED PRODUCT=======================//
+            CreateMap<AssembledProduct, AssembledProductResponse>()
+                .ForMember(dest => dest.ShopId, opt => opt.MapFrom(src => 
+                    src.ProductAssembledDetails.FirstOrDefault() != null && src.ProductAssembledDetails.First().BaseKit != null 
+                    ? src.ProductAssembledDetails.First().BaseKit.ShopId : Guid.Empty))
+                .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => 
+                    src.ProductAssembledDetails.FirstOrDefault() != null && 
+                    src.ProductAssembledDetails.First().BaseKit != null && 
+                    src.ProductAssembledDetails.First().BaseKit.Shop != null 
+                    ? src.ProductAssembledDetails.First().BaseKit.Shop.ShopName : string.Empty));
+
+            CreateMap<AssembledProduct, AssembledProductDetailResponse>()
+                .IncludeBase<AssembledProduct, AssembledProductResponse>()
+                .ForMember(dest => dest.Details, opt => opt.MapFrom(src => src.ProductAssembledDetails));
+
+            CreateMap<ProductAssembledDetail, ProductAssembledDetailResponse>()
+                .ForMember(dest => dest.BaseKitName, opt => opt.MapFrom(src => src.BaseKit != null ? src.BaseKit.Name : string.Empty))
+                .ForMember(dest => dest.ComponentName, opt => opt.MapFrom(src => src.Component != null ? src.Component.Name : string.Empty));
+
+            CreateMap<CreateAssembledProductRequest, AssembledProduct>()
+                .ForMember(dest => dest.ProductAssembledDetails, opt => opt.MapFrom(src => src.Details));
+
+            CreateMap<ProductAssembledDetailRequest, ProductAssembledDetail>();
+
+            CreateMap<UpdateAssembledProductRequest, AssembledProduct>()
+                //Tuan Note: Do not map Details here to avoid overwriting existing details, please do not remove this line ^^
+                .ForMember(dest => dest.ProductAssembledDetails, opt => opt.Ignore());
+            //==================ASSEMBLED PRODUCT=======================//
 
             //==================MODEL=======================//
             CreateMap<Model, PartResponse>()

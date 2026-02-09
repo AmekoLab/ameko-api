@@ -13,6 +13,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         private IBuilderSessionRepository? _builderSessions;
         private IShopRepository? _shops;
         private IFollowRepository? _follows;
+        private IAssembledProductRepository? _assembledProducts;
         private IOrderRepository? _order;
         private IOrderGroupRepository? _orderGroups;
         private IPaymentRepository? _payments;
@@ -33,6 +34,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public IBuilderSessionRepository BuilderSessions => _builderSessions ??= new BuilderSessionRepository(_context);
         public IShopRepository Shops => _shops ??= new ShopRepository(_context);
         public IFollowRepository Follows => _follows ??= new FollowRepository(_context);
+        public IAssembledProductRepository AssembledProducts => _assembledProducts ??= new AssembledProductRepository(_context);
 
         public IOrderRepository Orders => _order ??= new OrderRepository(_context);
         public IOrderGroupRepository OrderGroups => _orderGroups ??= new OrderGroupRepository(_context);

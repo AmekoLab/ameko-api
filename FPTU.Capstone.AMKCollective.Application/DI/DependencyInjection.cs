@@ -13,6 +13,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DI
             services.AddScoped<ICustomBuilderService, CustomBuilderService>();
             services.AddScoped<IProductService, ProductService>();          
             services.AddScoped<IFollowService, FollowService>();
+            services.AddScoped<IAssembledProductService, AssembledProductService>();
 
             return services;
         }
