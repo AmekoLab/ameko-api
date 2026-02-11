@@ -264,5 +264,81 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Payments.AddAsync(log);
             await _unitOfWork.CommitAsync();
         }
+
+
+
+        public async Task<PaginatedResult<WalletTransactionResponse>> GetTransactionsByFilterAsync(PaymentFilterRequest filter)
+        {
+            // Gọi Repository lấy dữ liệu đã phân trang
+            var (items, totalCount) = await _unitOfWork.Payments.GetPaymentsByFilterAsync(filter);
+
+            // Map Entity sang DTO
+            var mappedItems = _mapper.Map<List<WalletTransactionResponse>>(items);
+
+            // Trả về kết quả phân trang
+            return new PaginatedResult<WalletTransactionResponse>(mappedItems, totalCount, filter.PageNumber, filter.PageSize);
+        }
+
+
+
+        public async Task ApproveWithdrawalAsync(Guid adminId, Guid paymentId)
+        {
+            // 1. Lấy Payment và kiểm tra
+            var payment = await _unitOfWork.Payments.GetByIdAsync(paymentId);
+            if (payment == null) throw new KeyNotFoundException("Transaction not found");
+
+            // Chỉ được duyệt đơn Rút tiền (Withdrawal) đang chờ (Pending)
+            if (payment.Type != PaymentType.Withdrawal)
+                throw new InvalidOperationException("This transaction is not a withdrawal request.");
+
+            if (payment.Status != PaymentStatus.Pending)
+                throw new InvalidOperationException($"Cannot approve transaction with status '{payment.Status}'. Only 'Pending' requests can be approved.");
+
+            // 2. Cập nhật trạng thái
+            // Admin xác nhận đã chuyển khoản ngân hàng thành công bên ngoài hệ thống
+            payment.Status = PaymentStatus.Paid;
+            payment.Description += " | Approved by Admin"; // Ghi chú
+
+            _unitOfWork.Payments.Update(payment);
+            await _unitOfWork.CommitAsync();
+        }
+
+        public async Task RejectWithdrawalAsync(Guid adminId, Guid paymentId, string reason)
+        {
+            // 1. Lấy Payment
+            var payment = await _unitOfWork.Payments.GetByIdAsync(paymentId);
+            if (payment == null) throw new KeyNotFoundException("Transaction not found");
+
+            if (payment.Type != PaymentType.Withdrawal)
+                throw new InvalidOperationException("This transaction is not a withdrawal request.");
+
+            if (payment.Status != PaymentStatus.Pending)
+                throw new InvalidOperationException("Cannot reject this transaction. Only 'Pending' requests can be rejected.");
+
+            // 2. HOÀN TIỀN VỀ VÍ 
+            // Vì lúc Request đã trừ Balance rồi, giờ từ chối phải cộng lại cho Shop
+            // Dùng hàm GetByUserIdAsync vì 1 User chỉ có 1 Wallet
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(payment.UserId);
+
+            if (wallet != null)
+            {
+                // Hoàn lại cả tiền gốc + phí rút tiền (nếu có)
+                wallet.Balance += (payment.Amount + payment.FeeAmount);
+                _unitOfWork.Wallets.Update(wallet);
+            }
+            else
+            {
+                // Trường hợp Wallet bị xóa hoặc lỗi data
+                throw new Exception("Wallet not found to refund.");
+            }
+
+            // 3. Cập nhật trạng thái giao dịch
+            payment.Status = PaymentStatus.Failed; // Hoặc dùng Rejected nếu bạn thêm vào Enum
+            payment.Description += $" | Rejected: {reason}";
+
+            _unitOfWork.Payments.Update(payment);
+            await _unitOfWork.CommitAsync();
+        }
+
     }
 }

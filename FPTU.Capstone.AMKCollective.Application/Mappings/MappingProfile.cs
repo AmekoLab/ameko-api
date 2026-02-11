@@ -248,9 +248,22 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
 
             // Map UpdateRequest -> Entity
             CreateMap<UpdateVoucherRequest, Voucher>()
-                .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null)); 
+                .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
+            // =========================================================
+            // PAYMENT (PAYMENT -> DTO)
+            // =========================================================
+            CreateMap<Payment, PaymentResponse>()
+                // 1. Map Enum sang String 
+                .ForMember(dest => dest.Type, opt => opt.MapFrom(src => src.Type.ToString()))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()))
+                .ForMember(dest => dest.Method, opt => opt.MapFrom(src => src.Method.ToString()))
 
+                // 2. Map thông tin User (Flattening)
+                .ForMember(dest => dest.UserName, opt => opt.MapFrom(src =>
+                    src.User != null ? src.User.Username : "Unknown"))
+                .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src =>
+                    src.User != null && src.User.ShopProfile != null ? src.User.ShopProfile.ShopName : null));
         }
 
 

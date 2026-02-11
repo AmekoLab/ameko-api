@@ -13,5 +13,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
         public decimal PartPriceSnapshot { get; set; }
         public string PartImageUrl { get; set; } = string.Empty;
         public int Quantity { get; set; }
+        public string? Note { get; set; }
     }
 }

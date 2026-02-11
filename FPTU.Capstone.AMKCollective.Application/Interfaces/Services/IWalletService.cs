@@ -18,5 +18,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task ReleaseHeldMoneyAsync(Guid shopId, Guid orderId, decimal amount);
         Task RefundToWalletAsync(Guid userId, decimal amount, string reason);
         Task DeductFundsForRefundAsync(Guid shopId, Guid orderId, decimal amount, bool isOrderCompleted);
+
+        Task<PaginatedResult<WalletTransactionResponse>> GetTransactionsByFilterAsync(PaymentFilterRequest filter);
+        Task ApproveWithdrawalAsync(Guid adminId, Guid paymentId);
+        Task RejectWithdrawalAsync(Guid adminId, Guid paymentId, string reason);
     }
 }

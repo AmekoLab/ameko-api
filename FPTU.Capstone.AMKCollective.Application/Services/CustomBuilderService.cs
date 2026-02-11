@@ -509,6 +509,66 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // 6. Trả về kết quả
             return ConstructResponse(session, stepToProcess, stepOrder, productDtos);
         }
+
+        public async Task<Guid> CreateSessionFromOrderAsync(Guid orderItemId, Guid userId)
+        {
+            // 1. Lấy thông tin Order Item và các linh kiện con
+            // Lưu ý: Cần đảm bảo Repo Order lấy cả OrderItemComponents (Include)
+            var orderItem = await _unitOfWork.Orders.GetOrderItemByIdAsync(orderItemId);
+            if (orderItem == null) throw new KeyNotFoundException("Order item not found");
+            if (!orderItem.IsCustom || orderItem.ProductId == null) throw new InvalidOperationException("Not a custom kit");
+
+            // 2. Lấy cấu hình gốc của Kit để map ngược ComponentId -> StepName (VD: ID 123 -> "case")
+            var baseKitId = orderItem.ProductId.Value;
+            var allOptions = await _unitOfWork.KitDesignOptions.GetOptionsByBaseKitAsync(baseKitId);
+
+            // 3. Tái tạo Dictionary cho Session
+            var selection = new Dictionary<string, SelectedPartResponse>();
+
+            foreach (var comp in orderItem.OrderItemComponents)
+            {
+                // Tìm xem linh kiện này thuộc Step nào (VD: Case hay Plate?)
+                var option = allOptions.FirstOrDefault(x => x.ComponentId == comp.PartId);
+
+                // Nếu tìm thấy option khớp, add vào dictionary
+                if (option != null)
+                {
+                    selection[option.StepName] = new SelectedPartResponse
+                    {
+                        Id = comp.PartId,
+                        Name = comp.PartName ?? "",
+                        Price = comp.PartPriceSnapshot, // Hoặc lấy giá mới nhất từ bảng Model nếu muốn
+                        ThumbnailUrl = comp.PartImageUrl,
+                        Quantity = comp.Quantity,
+
+                        // Các trường phục vụ logic nhánh
+                        KitDesignOptionId = option.Id,
+                        LayerImageUrl = option.LayerImageUrl ?? "",
+                        NextStepFilterRule = option.NextStepFilterRule
+                    };
+                }
+            }
+
+            // 4. Tạo Session Mới (State là Complete để FE load lên là xong luôn)
+            var newSession = new BuilderSession
+            {
+                Id = Guid.NewGuid(),
+                BaseKitId = baseKitId,
+                UserId = userId,
+                CurrentStep = "complete", // Đánh dấu là đã hoàn thành
+                SelectedItemsJson = JsonSerializer.Serialize(selection),
+                TotalPrice = orderItem.UnitPrice, // Lấy giá tại thời điểm mua hoặc tính lại
+                ExpiresAt = DateTime.UtcNow.AddHours(48),
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _unitOfWork.BuilderSessions.CreateSessionAsync(newSession);
+            await _unitOfWork.CommitAsync();
+
+            return newSession.Id;
+        }
+
+
         // --- HELPER FUNCTIONS ---
 
         // 1. Logic thứ tự các bước (Hard-code)

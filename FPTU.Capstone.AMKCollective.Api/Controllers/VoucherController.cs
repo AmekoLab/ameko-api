@@ -1,8 +1,10 @@
 ﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Voucher;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Swashbuckle.AspNetCore.Annotations;
 using System.Security.Claims;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
@@ -134,6 +136,140 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return ServerErrorResponse<object>(ex.Message);
             }
         }
+
+        /// <summary>
+        /// Get Shop's Vouchers (Filter & Pagination).
+        /// Role: Shop Owner.
+        /// Description: Retrieves a paginated list of vouchers created by the current shop with optional filters (status, date, code).
+        /// </summary>
+        [HttpGet("shop")]
+        [SwaggerOperation(Summary = "Get Shop's Vouchers with Filter")]
+        public async Task<IActionResult> GetVouchersByShop([FromQuery] VoucherFilterRequest filter)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var result = await _voucherService.GetVouchersByShopAsync(userId, filter);
+                return SuccessResponse(result, "Get shop vouchers successfully");
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Get Voucher Details.
+        /// Role: Shop Owner.
+        /// Description: Retrieves detailed information of a specific voucher by ID.
+        /// </summary>
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetVoucherById(Guid id)
+        {
+            try
+            {
+                var result = await _voucherService.GetVoucherByIdAsync(id);
+                return SuccessResponse(result, "Get voucher details successfully");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return ErrorResponse<object>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Update Voucher.
+        /// Role: Shop Owner.
+        /// Description: Updates allowed fields (Name, Description, EndDate, UsageLimit, Status) of an existing voucher.
+        /// </summary>
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateVoucher(Guid id, [FromBody] UpdateVoucherRequest request)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var result = await _voucherService.UpdateVoucherAsync(userId, id, request);
+                return SuccessResponse(result, "Voucher updated successfully");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return ErrorResponse<object>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ErrorResponse<object>(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Delete Voucher.
+        /// Role: Shop Owner.
+        /// Description: Soft deletes a voucher. This is only allowed if the voucher has NOT been used by any customer.
+        /// </summary>
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteVoucher(Guid id)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                await _voucherService.DeleteVoucherAsync(userId, id);
+                return SuccessResponse("Voucher deleted successfully");
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Returns 400 if voucher is already used
+                return ErrorResponse<object>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ErrorResponse<object>(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Toggle Voucher Status.
+        /// Role: Shop Owner.
+        /// Description: Quickly switches the voucher status between 'Active' and 'Disabled' (Deactivate).
+        /// </summary>
+        [HttpPatch("{id}/status")]
+        public async Task<IActionResult> ToggleVoucherStatus(Guid id)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                await _voucherService.ToggleVoucherStatusAsync(userId, id);
+                return SuccessResponse("Voucher status updated successfully");
+            }
+            catch (Exception ex)
+            {
+                return ErrorResponse<object>(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Get Shop's Public Vouchers.
+        /// Role: Public / Guest / Customer.
+        /// Description: Retrieves all active, public vouchers for a specific shop. Useful for Shop Detail page.
+        /// </summary>
+        [HttpGet("shop/{shopId}/public")]
+        [AllowAnonymous] // Allow guests to see shop's vouchers
+        public async Task<IActionResult> GetShopPublicVouchers(Guid shopId)
+        {
+            try
+            {
+                var vouchers = await _voucherService.GetShopPublicVouchersAsync(shopId);
+                return SuccessResponse(vouchers, "Get shop public vouchers successfully");
+            }
+            catch (Exception ex)
+            {
+                return ErrorResponse<object>(ex.Message);
+            }
+        }
+
 
         // Helper private để lấy User Id từ Token
         private Guid GetCurrentUserId()

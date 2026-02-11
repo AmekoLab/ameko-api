@@ -92,9 +92,92 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<OrderResponse> GetMyCartAsync(Guid userId, CancellationToken token = default)
         {
+            // 1. Lấy dữ liệu Giỏ hàng từ DB (Đã bao gồm OrderItems và Components của Custom)
             var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
-            if (cartOrder == null) return null; // Hoặc trả về new OrderDto rỗng
-            return _mapper.Map<OrderResponse>(cartOrder);
+
+            // Nếu chưa có giỏ hàng, trả về null hoặc object rỗng tùy convention
+            if (cartOrder == null) return null;
+
+            // 2. Map sang DTO trước để thao tác trên dữ liệu trả về (không sửa trực tiếp vào Entity đang tracking)
+            var result = _mapper.Map<OrderResponse>(cartOrder);
+
+            // Biến cờ để đánh dấu xem giỏ hàng có vấn đề gì không (nếu cần hiển thị alert tổng)
+            bool hasStockIssue = false;
+
+            // 3. Duyệt qua từng sản phẩm trong giỏ để Validate Real-time
+            foreach (var itemDto in result.OrderItems)
+            {
+                // ---------------------------------------------------------
+                // CASE 1: SẢN PHẨM CUSTOM (BUILDER) - ƯU TIÊN SỐ 1
+                // ---------------------------------------------------------
+                if (itemDto.IsCustom && itemDto.OrderItemComponents != null && itemDto.OrderItemComponents.Any())
+                {
+                    decimal currentCustomTotal = 0;
+
+                    // A. Check giá Base Kit (nếu Kit cũng tính tiền và có ID)
+                    if (itemDto.ProductId.HasValue)
+                    {
+                        var baseKit = await _unitOfWork.Models.GetByIdAsync(itemDto.ProductId.Value);
+                        if (baseKit != null)
+                        {
+                            currentCustomTotal += baseKit.Price;
+                            // Nếu Base Kit hết hàng
+                            if (baseKit.StockQuantity < itemDto.Quantity)
+                            {
+                                itemDto.Note = $"Base Kit '{baseKit.Name}' is currently out of stock.";
+                                hasStockIssue = true;
+                            }
+                        }
+                    }
+
+                    // B. Check từng linh kiện con (Switch, Keycap...)
+                    foreach (var compDto in itemDto.OrderItemComponents)
+                    {
+                        var part = await _unitOfWork.Models.GetByIdAsync(compDto.PartId);
+
+                        if (part != null)
+                        {
+                            // Tính tổng số lượng linh kiện cần: (Số lượng mỗi phím) * (Số lượng phím đặt mua)
+                            int totalPartNeeded = compDto.Quantity * itemDto.Quantity;
+
+                            // Check Kho: Nếu kho < số cần thiết
+                            if (part.StockQuantity < totalPartNeeded)
+                            {
+                                compDto.Note = $"Only {part.StockQuantity} units are available (Required: {totalPartNeeded}).";
+                                itemDto.Note = "Some components are not available in sufficient quantity.";
+                                // Đánh dấu item cha
+                                hasStockIssue = true;
+                            }
+
+                            // Check Giá: Cập nhật giá mới nhất nếu Shop có thay đổi giá linh kiện
+                            // (Logic: Cart luôn hiển thị giá mới nhất)
+                            compDto.PartPriceSnapshot = part.Price;
+
+                            // Cộng dồn vào tổng tiền set Custom
+                            currentCustomTotal += (part.Price * compDto.Quantity);
+                        }
+                    }
+
+                    // Cập nhật lại giá tổng của món Custom này theo thời giá hiện tại
+                    itemDto.UnitPrice = currentCustomTotal;
+                    itemDto.TotalPrice = itemDto.UnitPrice * itemDto.Quantity;
+                }
+
+                // ---------------------------------------------------------
+                // CASE 2: ASSEMBLED PRODUCT  -- ĐỂ ĐÂY CHỨ CHƯA BIẾT LÀM SAO 
+                // ---------------------------------------------------------
+                
+
+            }
+               
+
+            // 4. Tính lại tổng tiền giỏ hàng (Sau khi đã update giá các item)
+            result.TotalAmount = result.OrderItems.Sum(i => i.TotalPrice);
+
+            // (Optional) Nếu logic Discount phức tạp thì gọi Service tính lại, tạm thời set 0 hoặc giữ nguyên
+            // result.DiscountAmount = ...; 
+
+            return result;
         }
 
         public async Task RemoveItemFromCartAsync(Guid userId, Guid orderItemId, CancellationToken token = default)

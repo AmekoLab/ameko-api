@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Voucher;
 
 namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 {
@@ -73,5 +74,74 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             voucher.IsDeleted = true;
             _context.Vouchers.Update(voucher);
         }
+
+        public async Task<bool> IsVoucherUsedAsync(Guid voucherId)
+        {
+            // Kiểm tra trong bảng Log xem có record nào không
+            return await _context.VoucherUsageLogs.AnyAsync(x => x.VoucherId == voucherId && !x.IsDeleted);
+        }
+
+        public async Task<(IEnumerable<Voucher> Items, int TotalCount)> GetVouchersByFilterAsync(Guid creatorId, VoucherFilterRequest filter)
+        {
+            var query = _context.Vouchers
+                .Where(v => v.CreatorId == creatorId && !v.IsDeleted);
+
+            // 1. Filter by Code/Name
+            if (!string.IsNullOrEmpty(filter.SearchCode))
+            {
+                var text = filter.SearchCode.ToLower();
+                query = query.Where(v => v.Code.ToLower().Contains(text) || v.Name.ToLower().Contains(text));
+            }
+
+            // 2. Filter by Status
+            if (filter.Status.HasValue)
+            {
+                query = query.Where(v => v.Status == filter.Status.Value);
+            }
+
+            // 3. Filter Expired
+            if (filter.IsExpired.HasValue)
+            {
+                var now = DateTime.UtcNow; 
+                if (filter.IsExpired.Value)
+                    query = query.Where(v => v.EndDate < now);
+                else
+                    query = query.Where(v => v.EndDate >= now);
+            }
+
+            // 4. Date Range
+            if (filter.FromDate.HasValue)
+                query = query.Where(v => v.StartDate >= filter.FromDate.Value);
+            if (filter.ToDate.HasValue)
+                query = query.Where(v => v.StartDate <= filter.ToDate.Value);
+
+            // Count total before paging
+            var totalCount = await query.CountAsync();
+
+            // Paging & Sort
+            var items = await query
+                .OrderByDescending(v => v.CreatedAt)
+                .Skip((filter.PageNumber - 1) * filter.PageSize)
+                .Take(filter.PageSize)
+                .ToListAsync();
+
+            return (items, totalCount);
+        }
+
+        public async Task<IEnumerable<Voucher>> GetPublicVouchersByShopAsync(Guid shopUserId)
+        {
+            var now = DateTime.UtcNow;
+            return await _context.Vouchers
+                .Where(v => v.CreatorId == shopUserId 
+                            && !v.IsDeleted
+                            && v.Status == VoucherStatus.Active
+                            && v.StartDate <= now 
+                            && v.EndDate >= now
+                            && v.TargetUserId == null // Chỉ lấy voucher không active riêng cho ai
+                            && v.UsedCount < v.UsageLimit) // Còn lượt dùng
+                .OrderByDescending(v => v.CreatedAt)
+                .ToListAsync();
+        }
     }
 }
+    
