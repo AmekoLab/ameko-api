@@ -9,7 +9,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
     {
         public Guid UserId { get; set; }
         public string Title { get; set; } = string.Empty;
-
+        public Guid? AssembledProductId { get; set; }
         // Navigation Properties
         public virtual User User { get; set; } = null!;
         public virtual ICollection<PostReaction> PostReactions { get; set; } = new List<PostReaction>();
