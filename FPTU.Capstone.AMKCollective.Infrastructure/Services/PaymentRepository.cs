@@ -142,5 +142,57 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .OrderBy(p => p.CreatedAt)
                 .ToListAsync();
         }
+
+        public async Task<Payment?> GetPaymentBySessionIdAsync(string sessionId)
+        {
+            return await _context.Payments
+                .FirstOrDefaultAsync(p => p.StripeSessionId == sessionId);
+        }
+
+        public async Task<(decimal TotalRevenue, decimal TotalWithdrawn, decimal PendingWithdrawal, decimal ThisMonthRevenue)> GetPaymentStatsByWalletIdAsync(Guid walletId)
+        {
+            // Tạo query cơ bản lọc theo WalletId
+            var query = _context.Payments.Where(p => p.WalletId == walletId);
+
+            // Tổng thu nhập (SalesReleased + Deposit đã Paid)
+            var totalRevenue = await query
+                .Where(p => (p.Type == PaymentType.SalesReleased || p.Type == PaymentType.Deposit)
+                            && p.Status == PaymentStatus.Paid)
+                .SumAsync(p => p.Amount);
+
+            // Tổng tiền đã rút
+            var totalWithdrawn = await query
+                .Where(p => p.Type == PaymentType.Withdrawal && p.Status == PaymentStatus.Paid)
+                .SumAsync(p => p.Amount);
+
+            // Tiền đang chờ rút
+            var pendingWithdrawal = await query
+                .Where(p => p.Type == PaymentType.Withdrawal && p.Status == PaymentStatus.Pending)
+                .SumAsync(p => p.Amount);
+
+            // Doanh thu tháng này
+            var startOfMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+            var thisMonthRevenue = await query
+                .Where(p => (p.Type == PaymentType.SalesReleased)
+                            && p.Status == PaymentStatus.Paid
+                            && p.CreatedAt >= startOfMonth)
+                .SumAsync(p => p.Amount);
+
+            return (totalRevenue, totalWithdrawn, pendingWithdrawal, thisMonthRevenue);
+        }
+        public async Task<List<Payment>> GetHeldPaymentsByWalletIdAsync(Guid walletId)
+        {
+            return await _context.Payments
+                .Include(p => p.RelatedOrder) 
+                .Where(p => p.WalletId == walletId
+                         && p.Type == PaymentType.SalesPending
+                         && p.Status == PaymentStatus.Paid // Đã ghi nhận
+                                                           // Chỉ lấy những khoản mà đơn hàng CHƯA hoàn tất
+                         && p.RelatedOrder != null
+                         && p.RelatedOrder.OrderStatus != OrderStatus.Completed
+                         && p.RelatedOrder.OrderStatus != OrderStatus.Cancelled)
+                .OrderByDescending(p => p.CreatedAt)
+                .ToListAsync();
+        }
     }
 }

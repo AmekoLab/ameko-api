@@ -24,5 +24,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task RejectWithdrawalAsync(Guid adminId, Guid paymentId, string reason);
 
         Task AdjustBalanceAsync(Guid adminId, AdjustBalanceRequest request);
+        Task<string> CreateDepositTransactionAsync(Guid userId, DepositRequest request);
+
+        Task<WalletStatisticsResponse> GetWalletStatisticsAsync(Guid userId);
+        Task<List<HeldTransactionResponse>> GetHeldTransactionsAsync(Guid userId);
+        //PIN
+        Task<bool> IsPinCreatedAsync(Guid userId); // Kiểm tra xem user đã có PIN chưa
+        Task SetupPinAsync(Guid userId, SetupWalletPinRequest request);
+        Task ChangePinAsync(Guid userId, ChangeWalletPinRequest request);
+        Task<bool> VerifyPinAsync(Guid userId, string pin); // Hàm dùng chung cho các feature sau này
+        Task SendPinResetCodeAsync(Guid userId);
+        Task ResetPinWithOtpAsync(Guid userId, ResetWalletPinRequest request);
     }
 }
+

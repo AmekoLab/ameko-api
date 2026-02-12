@@ -30,5 +30,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task ReactivateMyShopAsync(Guid userId);
 
         Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetAllPendingApprovalShopAsync(int page, int size);
+
+        Task UpdateBankInfoAsync(Guid userId, UpdateBankInfoRequest request);
     }
 }

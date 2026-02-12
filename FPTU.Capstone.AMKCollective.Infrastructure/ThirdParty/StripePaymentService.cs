@@ -43,11 +43,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                 SuccessUrl = request.SuccessUrl + "?session_id={CHECKOUT_SESSION_ID}",
                 CancelUrl = request.CancelUrl,
                 ClientReferenceId = orderGroup.Id.ToString(),
-
                 Metadata = new Dictionary<string, string>
-        {
-            { "OrderGroupId", orderGroup.Id.ToString() }
-        },
+                {
+                    { "Type", "OrderPayment" },
+                    { "OrderGroupId", orderGroup.Id.ToString() }
+                },
                 LineItems = new List<SessionLineItemOptions>()
             };
 
@@ -108,22 +108,75 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                 if (stripeEvent.Type == EventTypes.CheckoutSessionCompleted)
                 {
                     var session = stripeEvent.Data.Object as Session;
-                    string orderGroupIdStr = session.ClientReferenceId;
 
-                    if (string.IsNullOrEmpty(orderGroupIdStr))
+                    // Lấy loại giao dịch từ Metadata
+                    string transactionType = "";
+                    if (session.Metadata != null && session.Metadata.TryGetValue("Type", out var typeVal))
                     {
-                        session.Metadata?.TryGetValue("OrderGroupId", out orderGroupIdStr);
+                        transactionType = typeVal;
                     }
 
-                    if (!string.IsNullOrEmpty(orderGroupIdStr) && Guid.TryParse(orderGroupIdStr, out Guid orderGroupId))
+                    // CASE 1: NẠP TIỀN (DEPOSIT)
+                    if (transactionType == "Deposit")
                     {
-                        await FulfillOrderAsync(orderGroupId, session.PaymentIntentId, session.Id);
+                        // Tìm Payment Pending trong DB
+                        var payment = await _unitOfWork.Payments.GetPaymentBySessionIdAsync(session.Id);
+
+                        if (payment != null && payment.Status != PaymentStatus.Paid)
+                        {
+                            // Update Payment
+                            payment.Status = PaymentStatus.Paid;
+                            payment.StripePaymentIntentId = session.PaymentIntentId;
+                            payment.Description += " | Success";
+
+                            // Update Wallet Balance
+                            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(payment.UserId);
+                            if (wallet == null)
+                            {
+                                wallet = new Wallet
+                                {
+                                    UserId = payment.UserId,
+                                    Balance = 0,
+                                    HeldBalance = 0,
+                                    Currency = "VND",
+                                    IsActive = true
+                                };
+                                await _unitOfWork.Wallets.AddAsync(wallet);
+                            }
+
+                            // Cộng tiền
+                            wallet.Balance += payment.Amount;
+                            _unitOfWork.Wallets.Update(wallet);
+
+                            // C. Lưu tất cả thay đổi
+                            _unitOfWork.Payments.Update(payment);
+                            await _unitOfWork.CommitAsync();
+                        }
+                    }
+                    // CASE 2: THANH TOÁN ĐƠN HÀNG 
+                    else
+                    {
+                        string orderGroupIdStr = session.ClientReferenceId;
+                        if (string.IsNullOrEmpty(orderGroupIdStr))
+                        {
+                            session.Metadata?.TryGetValue("OrderGroupId", out orderGroupIdStr);
+                        }
+
+                        if (!string.IsNullOrEmpty(orderGroupIdStr) && Guid.TryParse(orderGroupIdStr, out Guid orderGroupId))
+                        {
+                            await FulfillOrderAsync(orderGroupId, session.PaymentIntentId, session.Id);
+                        }
                     }
                 }
             }
             catch (StripeException e)
             {
                 throw new Exception($"Stripe Webhook Error: {e.Message}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WEBHOOK CRITICAL ERROR] {ex.Message}");
+                throw;
             }
         }
 
@@ -198,6 +251,52 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                 Console.WriteLine($"[STRIPE WEBHOOK ERROR] {ex.Message} | Inner: {innerMsg}");
                 throw; // Ném lỗi lại để Stripe biết mà retry
             }
+        }
+
+        public async Task<CheckoutSessionResponse> CreateDepositSessionAsync(decimal amount, string userEmail, string userIdString, string successUrl, string cancelUrl)
+        {
+            var options = new SessionCreateOptions
+            {
+                PaymentMethodTypes = new List<string> { "card" },
+                Mode = "payment",
+                SuccessUrl = successUrl,
+                CancelUrl = cancelUrl,
+                CustomerEmail = userEmail,
+
+                Metadata = new Dictionary<string, string>
+                {
+                    { "Type", "Deposit" },
+                    { "UserId", userIdString }
+                },
+
+                LineItems = new List<SessionLineItemOptions>
+                {
+                    new SessionLineItemOptions
+                    {
+                        PriceData = new SessionLineItemPriceDataOptions
+                        {
+                            Currency = "vnd",
+                            UnitAmount = (long)amount,
+                            ProductData = new SessionLineItemPriceDataProductDataOptions
+                            {
+                                Name = "Top up to AMK (Deposit)",
+                                Description = $"Top up amount: {amount:N0} VND"
+                            }
+                        },
+                        Quantity = 1
+                    }
+                }
+            };
+
+            var service = new SessionService();
+            Session session = await service.CreateAsync(options);
+
+            return new CheckoutSessionResponse
+            {
+                SessionId = session.Id,
+                PaymentUrl = session.Url, 
+                PaymentIntentId = session.PaymentIntentId
+            };
         }
 
         public async Task RefundPaymentAsync(Guid orderGroupId)

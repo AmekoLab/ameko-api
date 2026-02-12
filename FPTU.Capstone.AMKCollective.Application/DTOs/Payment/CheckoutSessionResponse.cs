@@ -10,5 +10,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Payment
     {
         public string SessionId { get; set; } = string.Empty;
         public string PaymentUrl { get; set; } = string.Empty;
+        public string? PaymentIntentId { get; set; }
     }
 }

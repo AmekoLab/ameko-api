@@ -13,7 +13,8 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Wallet
         [Range(10000, double.MaxValue, ErrorMessage = "The minimum withdrawal amount is 10,000 VND")]
         public decimal Amount { get; set; }
 
-        public string? BankName { get; set; } // Tên ngân hàng (nếu cần lưu vào Description)
-        public string? BankAccountNumber { get; set; } // Số tài khoản (nếu cần lưu vào Description)
+        [Required(ErrorMessage = "Please enter your PIN for verification.")]
+        [StringLength(6, MinimumLength = 6, ErrorMessage = "PIN must be 6 digits.")]
+        public string WalletPin { get; set; }
     }
 }

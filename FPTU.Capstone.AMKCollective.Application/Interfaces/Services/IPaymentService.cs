@@ -14,5 +14,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task ProcessWebhookAsync(string json, string stripeSignature);
 
         Task RefundPaymentAsync(Guid orderGroupId);
+        Task<CheckoutSessionResponse> CreateDepositSessionAsync(decimal amount, string userEmail, string userIdString, string successUrl, string cancelUrl);
     }
 }
