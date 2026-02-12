@@ -264,6 +264,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                     src.User != null ? src.User.Username : "Unknown"))
                 .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src =>
                     src.User != null && src.User.ShopProfile != null ? src.User.ShopProfile.ShopName : null));
+
+
+            CreateMap<AdjustBalanceRequest, Payment>()
+                .ForMember(dest => dest.Amount, opt => opt.MapFrom(src => src.Amount))
+                .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.Reason))
+                    // Các field khác như Type, Status sẽ gán trong Service
+                .ForMember(dest => dest.UserId, opt => opt.Ignore());
         }
 
 

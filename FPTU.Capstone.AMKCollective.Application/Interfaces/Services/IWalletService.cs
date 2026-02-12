@@ -22,5 +22,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<PaginatedResult<WalletTransactionResponse>> GetTransactionsByFilterAsync(PaymentFilterRequest filter);
         Task ApproveWithdrawalAsync(Guid adminId, Guid paymentId);
         Task RejectWithdrawalAsync(Guid adminId, Guid paymentId, string reason);
+
+        Task AdjustBalanceAsync(Guid adminId, AdjustBalanceRequest request);
     }
 }

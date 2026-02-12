@@ -222,6 +222,53 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
+        /// <summary>
+        /// [Admin] Manually adjusts a user's wallet balance (Add or Deduct funds).
+        /// Description: Creates a transaction record (ManualAdjustment) and updates the balance immediately.
+        /// Use cases: Compensation, Penalty, or correcting system errors.
+        /// </summary>
+        /// <param name="request">
+        /// Contains:
+        /// - UserId: The target user's ID.
+        /// - Amount: Positive value to ADD, Negative value to DEDUCT.
+        /// - Reason: The reason for this adjustment (Required for audit).
+        /// </param>
+        /// <returns>Success message upon completion.</returns>
+        [HttpPost("admin/adjust-balance")]
+        // [Authorize(Roles = "Admin")] // Uncomment this in production
+        public async Task<IActionResult> AdjustBalance([FromBody] AdjustBalanceRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+                return ErrorResponse<object>("Validation failed", errors);
+            }
+
+            try
+            {
+                var adminId = GetCurrentUserId(); // Get ID of the Admin performing this action
+
+                await _walletService.AdjustBalanceAsync(adminId, request);
+
+                string actionType = request.Amount >= 0 ? "credited to" : "deducted from";
+                return SuccessResponse($"Successfully {actionType} the wallet. Amount: {Math.Abs(request.Amount):N0} VND.");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                // Returns 404 if User or Wallet is not found
+                return NotFoundResponse<object>(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Returns 400 for logic errors (e.g., Insufficient balance to deduct)
+                return ErrorResponse<object>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
 
         // Helper để lấy ID từ Token (JWT)
         private Guid GetCurrentUserId()

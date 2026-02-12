@@ -110,7 +110,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<VoucherResponse>(voucher);
         }
 
-        // 4. Áp dụng Voucher vào Đơn hàng (QUAN TRỌNG NHẤT)
+        // 4. Áp dụng Voucher vào Đơn hàng 
         public async Task<decimal> ApplyVoucherAsync(Guid userId, Guid orderId, string code)
         {
             var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
@@ -136,12 +136,51 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (voucher.TargetUserId != null && voucher.TargetUserId != userId)
                 throw new Exception("This voucher is not applicable to you.");
 
-            // 4. Check Shop (Voucher shop nào dùng cho shop đó)
-            // Lưu ý: CreatorId là ShopId. Order.ShopId phải khớp.
-            // Nếu Order chưa có ShopId (InCart hỗn hợp), logic này cần điều chỉnh ở FE để tách Order trước.
-            // Giả định: Order InCart hiện tại ĐÃ tách theo Shop (1 Order - 1 Shop).
-            if (order.ShopId != null && voucher.CreatorId != order.ShopId)
-                throw new Exception("This voucher is not applicable for this shop's order.");
+            // 4. Check Scope (Validate quyền Shop Owner vs Admin Global)
+            if (order.ShopId.HasValue)
+            {
+                // Load Shop Profile để lấy UserId của chủ shop
+                if (order.Shop == null)
+                {
+                    order.Shop = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+                }
+
+                if (order.Shop != null)
+                {
+                    // Lấy thông tin người tạo Voucher (check xem là Admin hay Shop)
+                    var voucherCreator = await _unitOfWork.Users.GetByIdAsync(voucher.CreatorId);
+
+                    // Logic check:
+                    // - Là Shop Owner: CreatorId trùng với UserId của Shop
+                    // - Là Admin: Role của Creator là Admin
+                    bool isShopOwner = voucher.CreatorId == order.Shop.UserId;
+
+                    // Nếu voucherCreator load lên bị null hoặc Role null thì mặc định false
+                    bool isAdmin = voucherCreator != null && voucherCreator.Role != null && voucherCreator.Role.Name == RoleType.Admin;
+
+                    switch (voucher.Type)
+                    {
+                        case VoucherType.Negotiation:
+                            // Voucher thương lượng: Bắt buộc Shop phải tự tạo cho khách
+                            if (!isShopOwner)
+                                throw new Exception("This negotiation voucher is not valid for this shop.");
+                            break;
+
+                        case VoucherType.Promotion:
+                            // Voucher khuyến mãi:
+                            // - Nếu Shop tạo: Chỉ áp dụng cho Shop đó.
+                            // - Nếu Admin tạo: Áp dụng được (Global).
+                            if (!isShopOwner && !isAdmin)
+                                throw new Exception("This promotion voucher is not applicable for this shop's order.");
+                            break;
+
+                        case VoucherType.Compensation:
+                            // Voucher đền bù: Thường do hệ thống/Admin tạo
+                            // Luôn cho phép áp dụng (Global)
+                            break;
+                    }
+                }
+            }
 
             // 5. Check Min Order Value
             if (order.SubTotal < voucher.MinOrderValue)
@@ -166,6 +205,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (discount > order.SubTotal) discount = order.SubTotal;
 
             // --- UPDATE ORDER ---
+            // Lưu ý: Logic này sẽ GHI ĐÈ voucher cũ nếu có (chưa stacking)
             order.VoucherId = voucher.Id;
             order.DiscountAmount = discount;
             order.TotalAmount = (order.SubTotal + order.ShippingFee) - discount;

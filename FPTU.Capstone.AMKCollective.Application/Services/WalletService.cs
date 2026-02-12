@@ -340,5 +340,46 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
         }
 
+        public async Task AdjustBalanceAsync(Guid adminId, AdjustBalanceRequest request)
+        {
+            // 1. Lấy ví của User mục tiêu
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(request.UserId);
+            if (wallet == null)
+            {
+                // Nếu chưa có ví thì tạo mới (Tùy logic, thường Shop mới có ví)
+                await CreateWalletAsync(request.UserId);
+                wallet = await _unitOfWork.Wallets.GetByUserIdAsync(request.UserId);
+            }
+
+            // 2. Kiểm tra số dư nếu là phép trừ
+            if (request.Amount < 0 && wallet.Balance < Math.Abs(request.Amount))
+            {
+                //TODO: chưa biết có nên cho balance âm không
+                // throw new InvalidOperationException("Insufficient balance to deduct.");
+            }
+
+            // 3. Cập nhật số dư
+            wallet.Balance += request.Amount;
+            _unitOfWork.Wallets.Update(wallet);
+
+            // 4. Tạo Transaction Log
+            var transaction = _mapper.Map<Payment>(request);
+            transaction.Id = Guid.NewGuid();
+            transaction.WalletId = wallet.Id; 
+            transaction.UserId = request.UserId; // Chủ ví
+
+            transaction.Type = PaymentType.ManualAdjustment;
+            transaction.Status = PaymentStatus.Paid; // Điều chỉnh xong ngay lập tức
+            transaction.Method = PaymentMethod.Wallet; 
+            transaction.Currency = "VND";
+
+            // Lưu vết Admin nào đã thực hiện (Optional - ghi vào description hoặc 1 field CreatedBy nếu có)
+            transaction.Description = $"{request.Reason} (Adjusted by Admin)";
+            transaction.CreatedBy = adminId;
+
+            await _unitOfWork.Payments.AddAsync(transaction);
+            await _unitOfWork.CommitAsync();
+        }
+
     }
 }
