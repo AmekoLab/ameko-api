@@ -487,5 +487,34 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return ServerErrorResponse<string>("Error during unban shop");
             }
         }
+
+        /// <summary>
+        /// Updates the shop’s bank information. Requires both password and PIN for verification.
+        /// </summary>
+        [HttpPut("bank-info")]
+        public async Task<IActionResult> UpdateBankInfo([FromBody] UpdateBankInfoRequest request)
+        {
+            if (!ModelState.IsValid)
+                return ErrorResponse<object>("Validation failed", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList());
+
+            try
+            {
+                var userId = GetCurrentUserId();
+                await _shopService.UpdateBankInfoAsync(userId, request);
+                return SuccessResponse("Bank information updated successfully.");
+            }
+            catch (UnauthorizedAccessException ex) // Sai Pass hoặc PIN
+            {
+                return ErrorResponse<object>(ex.Message);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<object>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
     }
 }

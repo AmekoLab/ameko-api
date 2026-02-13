@@ -1,5 +1,7 @@
-﻿using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
+﻿using FPTU.Capstone.AMKCollective.Application.DTOs.Payment;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -22,6 +24,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task AddAsync(Payment payment, CancellationToken token = default)
         {
             await _context.Payments.AddAsync(payment, token);
+        }
+
+        public void Update(Payment payment)
+        {
+            _context.Payments.Update(payment);
         }
 
         public async Task<Payment?> GetByStripeSessionIdAsync(string sessionId, CancellationToken token = default)
@@ -64,6 +71,128 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Where(p => p.UserId == userId)
                 .OrderByDescending(p => p.CreatedAt) 
                 .ToListAsync(token);
+        }
+
+        public async Task<Payment?> GetByIdAsync(Guid id)
+        {
+            return await _context.Payments
+                .Include(p => p.User) 
+                .FirstOrDefaultAsync(p => p.Id == id);
+        }
+
+        public async Task<(IEnumerable<Payment> Items, int TotalCount)> GetPaymentsByFilterAsync(PaymentFilterRequest filter)
+        {
+            var query = _context.Payments.AsQueryable();
+
+            // 1. Filter by User
+            if (filter.UserId.HasValue)
+            {
+                query = query.Where(p => p.UserId == filter.UserId.Value);
+            }
+
+            // 2. Filter by Type (Ví dụ: Chỉ lấy Withdraw)
+            if (filter.Type.HasValue)
+            {
+                query = query.Where(p => p.Type == filter.Type.Value);
+            }
+
+            // 3. Filter by Status
+            if (filter.Status.HasValue)
+            {
+                query = query.Where(p => p.Status == filter.Status.Value);
+            }
+
+            // 4. Filter by Date Range
+            if (filter.FromDate.HasValue)
+            {
+                query = query.Where(p => p.CreatedAt >= filter.FromDate.Value);
+            }
+            if (filter.ToDate.HasValue)
+            {
+                query = query.Where(p => p.CreatedAt <= filter.ToDate.Value);
+            }
+
+            // Count total before paging
+            var totalCount = await query.CountAsync();
+
+            // 5. Sorting
+            if (filter.SortBy.Equals("Amount", StringComparison.OrdinalIgnoreCase))
+            {
+                query = filter.IsAscending ? query.OrderBy(p => p.Amount) : query.OrderByDescending(p => p.Amount);
+            }
+            else // Default by CreatedAt
+            {
+                query = filter.IsAscending ? query.OrderBy(p => p.CreatedAt) : query.OrderByDescending(p => p.CreatedAt);
+            }
+
+            // 6. Paging
+            var items = await query
+                .Skip((filter.PageNumber - 1) * filter.PageSize)
+                .Take(filter.PageSize)
+                .ToListAsync();
+
+            return (items, totalCount);
+        }
+
+        public async Task<IEnumerable<Payment>> GetPendingWithdrawalsAsync()
+        {
+            // nhanh các đơn rút tiền đang chờ
+            return await _context.Payments
+                .Where(p => p.Type == PaymentType.Withdrawal && p.Status == PaymentStatus.Pending)
+                .OrderBy(p => p.CreatedAt)
+                .ToListAsync();
+        }
+
+        public async Task<Payment?> GetPaymentBySessionIdAsync(string sessionId)
+        {
+            return await _context.Payments
+                .FirstOrDefaultAsync(p => p.StripeSessionId == sessionId);
+        }
+
+        public async Task<(decimal TotalRevenue, decimal TotalWithdrawn, decimal PendingWithdrawal, decimal ThisMonthRevenue)> GetPaymentStatsByWalletIdAsync(Guid walletId)
+        {
+            // Tạo query cơ bản lọc theo WalletId
+            var query = _context.Payments.Where(p => p.WalletId == walletId);
+
+            // Tổng thu nhập (SalesReleased + Deposit đã Paid)
+            var totalRevenue = await query
+                .Where(p => (p.Type == PaymentType.SalesReleased || p.Type == PaymentType.Deposit)
+                            && p.Status == PaymentStatus.Paid)
+                .SumAsync(p => p.Amount);
+
+            // Tổng tiền đã rút
+            var totalWithdrawn = await query
+                .Where(p => p.Type == PaymentType.Withdrawal && p.Status == PaymentStatus.Paid)
+                .SumAsync(p => p.Amount);
+
+            // Tiền đang chờ rút
+            var pendingWithdrawal = await query
+                .Where(p => p.Type == PaymentType.Withdrawal && p.Status == PaymentStatus.Pending)
+                .SumAsync(p => p.Amount);
+
+            // Doanh thu tháng này
+            var startOfMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+            var thisMonthRevenue = await query
+                .Where(p => (p.Type == PaymentType.SalesReleased)
+                            && p.Status == PaymentStatus.Paid
+                            && p.CreatedAt >= startOfMonth)
+                .SumAsync(p => p.Amount);
+
+            return (totalRevenue, totalWithdrawn, pendingWithdrawal, thisMonthRevenue);
+        }
+        public async Task<List<Payment>> GetHeldPaymentsByWalletIdAsync(Guid walletId)
+        {
+            return await _context.Payments
+                .Include(p => p.RelatedOrder) 
+                .Where(p => p.WalletId == walletId
+                         && p.Type == PaymentType.SalesPending
+                         && p.Status == PaymentStatus.Paid // Đã ghi nhận
+                                                           // Chỉ lấy những khoản mà đơn hàng CHƯA hoàn tất
+                         && p.RelatedOrder != null
+                         && p.RelatedOrder.OrderStatus != OrderStatus.Completed
+                         && p.RelatedOrder.OrderStatus != OrderStatus.Cancelled)
+                .OrderByDescending(p => p.CreatedAt)
+                .ToListAsync();
         }
     }
 }

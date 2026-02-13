@@ -214,7 +214,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // =========================================================
 
             // Map từ Wallet Entity -> WalletResponse DTO
-            CreateMap<Wallet, WalletResponse>();
+            CreateMap<Wallet, WalletResponse>()
+            .ForMember(dest => dest.HasPin, opt => opt.MapFrom(src => !string.IsNullOrEmpty(src.PinHash)));
 
             // Map từ Payment Entity -> WalletTransactionResponse DTO
             // Lưu ý: Cần convert Enum sang String cho Type và Status
@@ -248,8 +249,41 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
 
             // Map UpdateRequest -> Entity
             CreateMap<UpdateVoucherRequest, Voucher>()
-                .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null)); 
+                .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
+            // =========================================================
+            // PAYMENT (PAYMENT -> DTO)
+            // =========================================================
+            CreateMap<Payment, PaymentResponse>()
+                // 1. Map Enum sang String 
+                .ForMember(dest => dest.Type, opt => opt.MapFrom(src => src.Type.ToString()))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()))
+                .ForMember(dest => dest.Method, opt => opt.MapFrom(src => src.Method.ToString()))
+
+                // 2. Map thông tin User (Flattening)
+                .ForMember(dest => dest.UserName, opt => opt.MapFrom(src =>
+                    src.User != null ? src.User.Username : "Unknown"))
+                .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src =>
+                    src.User != null && src.User.ShopProfile != null ? src.User.ShopProfile.ShopName : null));
+
+
+            CreateMap<AdjustBalanceRequest, Payment>()
+                .ForMember(dest => dest.Amount, opt => opt.MapFrom(src => src.Amount))
+                .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.Reason))
+                    // Các field khác như Type, Status sẽ gán trong Service
+                .ForMember(dest => dest.UserId, opt => opt.Ignore());
+
+            CreateMap<Payment, HeldTransactionResponse>()
+                .ForMember(dest => dest.TransactionId, opt => opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.Date, opt => opt.MapFrom(src => src.CreatedAt)) // Map Date <- CreatedAt
+                .ForMember(dest => dest.OrderId, opt => opt.MapFrom(src => src.RelatedOrderId))
+
+                // Map OrderStatus từ bảng Order liên quan
+                .ForMember(dest => dest.OrderStatus, opt => opt.MapFrom(src =>
+                src.RelatedOrder != null ? src.RelatedOrder.OrderStatus.ToString() : "Unknown"))
+
+                // Gán cứng lý do 
+                .ForMember(dest => dest.Reason, opt => opt.MapFrom(src => "Reserved Funds (Until Order is Completed)"));
 
         }
 

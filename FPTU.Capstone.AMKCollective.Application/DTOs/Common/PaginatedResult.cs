@@ -9,5 +9,15 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Common
         public int TotalPages => PageSize > 0 ? (int)Math.Ceiling(TotalCount / (double)PageSize) : 0;
         public bool HasPreviousPage => CurrentPage > 1;
         public bool HasNextPage => CurrentPage < TotalPages;
+
+        public PaginatedResult() { }
+
+        public PaginatedResult(IEnumerable<T> items, int count, int pageNumber, int pageSize)
+        {
+            Items = items;
+            TotalCount = count;
+            CurrentPage = pageNumber;
+            PageSize = pageSize;
+        }
     }
 }

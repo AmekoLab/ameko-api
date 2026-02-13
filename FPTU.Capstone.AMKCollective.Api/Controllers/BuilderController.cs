@@ -3,6 +3,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Builder;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Swashbuckle.AspNetCore.Annotations;
@@ -423,6 +424,63 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             {
                 _logger.LogError(ex, "Error getting sessions for user");
                 return ServerErrorResponse<string>("An error occurred while retrieving sessions.");
+            }
+        }
+
+
+        /// <summary>
+        /// [USER] Re-creates a Builder Session from an existing Order Item.
+        /// </summary>
+        /// <remarks>
+        /// This endpoint is used when a user wants to "Edit" a custom keyboard configuration in their Cart 
+        /// or "Re-order" a previously purchased configuration from Order History.
+        /// <br/>
+        /// <b>Logic:</b>
+        /// 1. Validates that the Order Item exists and belongs to the current user.
+        /// 2. Retrieves all components (Case, Switch, Keycap, etc.) from the Order Item snapshot.
+        /// 3. Creates a NEW active Builder Session initialized with these components.
+        /// 4. Returns the <c>sessionId</c>. Frontend should redirect the user to <c>/builder?sessionId={newSessionId}</c>.
+        /// </remarks>
+        /// <param name="orderItemId">The unique identifier of the Order Item (Cart Item) to be edited or copied.</param>
+        /// <returns>An object containing the new <c>sessionId</c>.</returns>
+        [HttpPost("from-order/{orderItemId}")]
+        [Authorize]
+        [SwaggerOperation(
+            Summary = "Create Session from Order Item",
+            Description = "Generates a new builder session based on the configuration of an existing order item. Useful for editing cart items or re-ordering."
+        )]
+        [SwaggerResponse(200, "Session created successfully", typeof(ApiResponse<object>))]
+        [SwaggerResponse(401, "Unauthorized (User not logged in or invalid token)")]
+        [SwaggerResponse(404, "Order item not found or does not belong to user")]
+        [SwaggerResponse(500, "Internal server error")]
+        public async Task<IActionResult> CreateSessionFromOrder(Guid orderItemId)
+        {
+            try
+            {
+                // 1. Get current User ID from Token (Method inherited from BaseApiController)
+                var userId = GetCurrentUserId();
+
+                // 2. Call Service to create new session
+                var newSessionId = await _service.CreateSessionFromOrderAsync(orderItemId, userId);
+
+                // 3. Return Success Response with Data
+                return SuccessResponse(new { sessionId = newSessionId }, "Session re-created successfully.");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                // Returns 404 if order item is not found
+                return NotFoundResponse<string>(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                // Returns 401 if user tries to access someone else's order item
+                return UnauthorizedResponse<string>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                // Log the error and return 500
+                _logger.LogError(ex, "Error re-creating session from OrderItem {Id}", orderItemId);
+                return ServerErrorResponse<string>("An error occurred while re-creating the session.");
             }
         }
     }

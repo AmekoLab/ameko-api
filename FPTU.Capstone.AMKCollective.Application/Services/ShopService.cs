@@ -1,15 +1,16 @@
 ﻿using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Shop;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
+using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
+using Microsoft.AspNetCore.Identity;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using FPTU.Capstone.AMKCollective.Domain.Enums;
-using FPTU.Capstone.AMKCollective.Domain.Entities;
-using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 
 namespace FPTU.Capstone.AMKCollective.Application.Services
 {
@@ -19,17 +20,26 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IStorageService _storage;
         private readonly IMapper _mapper;
         private readonly IUserService _userService; // Inject thêm UserService
+        private readonly IWalletService _walletService;
+        private readonly IEmailService _emailService;
+        private readonly UserManager<User> _userManager;
 
         public ShopService(
             IUnitOfWork unitOfWork,
             IStorageService storage,
             IMapper mapper,
-            IUserService userService)
+            IUserService userService,
+            IWalletService walletService,  
+            IEmailService emailService,
+            UserManager<User> userManager)
         {
             _unitOfWork = unitOfWork;
             _storage = storage;
             _mapper = mapper;
             _userService = userService;
+            _walletService = walletService;
+            _emailService = emailService;
+            _userManager = userManager;
         }
 
         public async Task<ShopResponse> GetShopPublicProfileAsync(Guid shopId)
@@ -387,6 +397,60 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
+        }
+
+        public async Task UpdateBankInfoAsync(Guid userId, UpdateBankInfoRequest request)
+        {
+            // 1. Lấy thông tin User và Shop
+            var user = await _userManager.FindByIdAsync(userId.ToString());
+            if (user == null) throw new KeyNotFoundException("User not found");
+
+            var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+            if (shop == null) throw new KeyNotFoundException("Shop profile not found");
+
+            // 2. [LỚP BẢO MẬT 1] Kiểm tra Mật khẩu đăng nhập
+            var isPasswordCorrect = await _userManager.CheckPasswordAsync(user, request.CurrentPassword);
+            if (!isPasswordCorrect)
+            {
+                throw new UnauthorizedAccessException("Incorrect password");
+            }
+
+            // 3. [LỚP BẢO MẬT 2] Kiểm tra Mã PIN Ví
+            var isPinCorrect = await _walletService.VerifyPinAsync(userId, request.WalletPin);
+            if (!isPinCorrect)
+            {
+                throw new UnauthorizedAccessException("Incorrect Pin");
+            }
+
+            // 4. Nếu qua cả 2 lớp -> Update thông tin ngân hàng
+            shop.BankName = request.BankName;
+            shop.BankAccountNumber = request.BankAccountNumber;
+            shop.BankAccountName = request.BankAccountName;
+
+            _unitOfWork.Shops.UpdateAsync(shop);
+            await _unitOfWork.CommitAsync();
+
+            // 5. Gửi Email cảnh báo (Security Alert)
+            try
+            {
+                string subject = "[AMK Collective] Security Alert: Bank Account Updated";
+                string body = $@"
+                    <h3>Bank Information Changed</h3>
+                    <p>Hello {user.Username},</p>
+                    <p>The bank account information for your shop <b>{shop.ShopName}</b> has just been updated.</p>
+                    <ul>
+                        <li><b>New Bank:</b> {request.BankName}</li>
+                        <li><b>Account Number:</b> ****{request.BankAccountNumber.Substring(Math.Max(0, request.BankAccountNumber.Length - 4))}</li>
+                    </ul>
+                    <p style='color:red'>If you did not perform this action, please contact support and change your password immediately.</p>
+                ";
+                await _emailService.SendEmailAsync(user.Email, subject, body);
+            }
+            catch (Exception ex)
+            {
+                // Không throw lỗi nếu gửi mail thất bại, chỉ log lại để không chặn luồng chính
+                Console.WriteLine($"Failed to send security alert email: {ex.Message}");
+            }
         }
     }
 }

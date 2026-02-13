@@ -20,6 +20,9 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public string Currency { get; set; } = "VND";
 
         public bool IsActive { get; set; } = true;
+        public string? PinHash { get; set; }
+        public string? PinResetCode { get; set; } // Mã OTP 
+        public DateTime? PinResetExpiry { get; set; } // Thời gian hết hạn
 
         // Navigation Properties
         public virtual User? User { get; set; }

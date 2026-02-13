@@ -141,5 +141,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                           && !o.IsDeleted)
                 .ToListAsync(token);
         }
+
+        public async Task<OrderItem?> GetOrderItemByIdAsync(Guid id, CancellationToken token = default)
+        {
+            return await _context.OrderItems
+                .AsNoTracking()
+                .Include(oi => oi.OrderItemComponents) 
+                .Include(oi => oi.Product) 
+                .FirstOrDefaultAsync(oi => oi.Id == id, token);
+        }
     }
 }

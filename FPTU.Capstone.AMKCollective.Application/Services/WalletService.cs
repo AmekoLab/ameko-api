@@ -4,6 +4,7 @@ using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
+using Microsoft.AspNetCore.Identity;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,11 +17,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        //private readonly UserManager<User> _userManager;
+        private readonly IPasswordHasher<User> _passwordHasher;
+        private readonly IEmailService _emailService;
+        private readonly IPaymentService _paymentService;
 
-        public WalletService (IUnitOfWork unitOfWork, IMapper mapper)
+        public WalletService (IUnitOfWork unitOfWork, IMapper mapper, //UserManager<User> userManager,
+            IPasswordHasher<User> passwordHasher, IEmailService emailService, IPaymentService paymentService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
+           // _userManager = userManager;
+            _passwordHasher = passwordHasher;
+            _emailService = emailService;
+            _paymentService = paymentService;
         }
 
         public async Task<WalletResponse?> GetWalletByUserIdAsync(Guid userId)
@@ -57,64 +67,78 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task RequestWithdrawalAsync(Guid userId, WithdrawRequest request)
         {
-            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            // 1. [SECURITY] Xác thực mã PIN
+            var isPinValid = await VerifyPinAsync(userId, request.WalletPin);
+            if (!isPinValid)
+            {
+                throw new UnauthorizedAccessException("Incorrect wallet PIN.");
+            }
+
+            // 2. Lấy thông tin Wallet và Shop
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+            if (wallet == null) throw new InvalidOperationException("Wallet does not exist.");
 
-            if (user == null || wallet == null)
-                throw new Exception("Invalid user or wallet data.");
+            var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+            if (shop == null) throw new InvalidOperationException("Shop profile not found.");
 
-            decimal fee = 0;
-            decimal minBalanceRequirement = 0;
 
-            // [FIXED] Compare Enum directly, not string
-            if (user.Role.Name == RoleType.Shop)
+            // 3. Kiểm tra thông tin ngân hàng của Shop
+            if (string.IsNullOrEmpty(shop.BankAccountNumber) || string.IsNullOrEmpty(shop.BankName))
             {
-                // Rule 2: Shop only withdraws on 15th
-                if (DateTime.Now.Day != 15)
-                    throw new Exception("Shops can only withdraw money on the 15th of each month.");
+                throw new InvalidOperationException("You have not updated your bank account information. Please go to Shop Settings to update it.");
 
-                // Rule 3: 0.2% fee
-                fee = request.Amount * 0.002m;
-
-                // Rule 1: Min balance 1,000,000
-                minBalanceRequirement = 1_000_000;
-            }
-            else // Customer
-            {
-                // Rule 4: Min withdrawal 10k, no fee
-                if (request.Amount < 10_000)
-                    throw new Exception("Minimum withdrawal amount is 10,000 VND.");
-
-                fee = 0;
-                minBalanceRequirement = 0;
             }
 
-            decimal totalDeduction = request.Amount + fee;
-            if (wallet.Balance < totalDeduction + minBalanceRequirement)
+            // 4. Tính toán phí và kiểm tra số dư
+            // TODO: đưa số này vào constant hoặc setting
+            // Giả sử phí sàn là 0.2%
+            decimal feePercent = 0.002m;
+            decimal feeAmount = request.Amount * feePercent;
+            decimal totalDeduct = request.Amount + feeAmount;
+
+            if (wallet.Balance < totalDeduct)
             {
-                throw new Exception($"Insufficient balance. You must maintain at least {minBalanceRequirement:N0} VND and pay a fee of {fee:N0} VND.");
+                throw new InvalidOperationException($"Insufficient balance. You need {totalDeduct:N0} VND (including fees) to complete this transaction.");
+
             }
 
-            // Deduct balance
-            wallet.Balance -= totalDeduction;
+            // Rule: Phải giữ lại tối thiểu 2.000.000 VND trong ví?
+            
+            if (wallet.Balance - totalDeduct < 2000000)
+            {
+                throw new InvalidOperationException("The remaining balance after withdrawal must be at least 2,000,000 VND.");
+            }
+            
+
+            // 5. Tạo Giao dịch Rút tiền (Payment)
+            var payment = new Payment
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                WalletId = wallet.Id,
+                Amount = request.Amount,
+                FeeAmount = feeAmount, // Lưu phí riêng để thống kê
+                Currency = "VND",
+                Type = PaymentType.Withdrawal, 
+                Status = PaymentStatus.Pending, // Chờ Admin duyệt
+                Method = PaymentMethod.BankTransfer,
+                CreatedAt = DateTime.UtcNow,
+
+                // Snapshot lại thông tin ngân hàng TẠI THỜI ĐIỂM RÚT
+                // Để lỡ sau này Shop đổi bank thì giao dịch cũ vẫn lưu bank cũ
+                Description = $"Withdraw to: {shop.BankName} - {shop.BankAccountNumber} - {shop.BankAccountName}",
+                BillingAddress = $"{shop.BankName}|{shop.BankAccountNumber}|{shop.BankAccountName}" // Lưu cấu trúc để Admin dễ parse
+            };
+
+            // 6. Trừ tiền trong ví ngay lập tức (Chuyển sang trạng thái chờ)
+            wallet.Balance -= totalDeduct;           
+
+            await _unitOfWork.Payments.AddAsync(payment);
             _unitOfWork.Wallets.Update(wallet);
 
-            // Create Payment Log
-            var transaction = _mapper.Map<Payment>(request);
-            transaction.UserId = userId;
-            transaction.WalletId = wallet.Id;
-            transaction.FeeAmount = fee;
-            transaction.Type = PaymentType.Withdrawal;
-            transaction.Status = PaymentStatus.Pending;
-
-            // [FIXED] Use proposed enum value
-            transaction.Method = PaymentMethod.BankTransfer;
-
-            transaction.Description = $"Withdrawal to {request.BankName} - Account: {request.BankAccountNumber}. Fee: {fee:N0}";
-            transaction.Currency = "VND";
-
-            await _unitOfWork.Payments.AddAsync(transaction);
             await _unitOfWork.CommitAsync();
+
+            // TODO: gửi thông báo cho admin khi có đơn rút mới.
         }
 
         public async Task PayOrderWithWalletAsync(Guid userId, Guid orderId, decimal amount)
@@ -263,6 +287,333 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.Payments.AddAsync(log);
             await _unitOfWork.CommitAsync();
+        }
+
+
+
+        public async Task<PaginatedResult<WalletTransactionResponse>> GetTransactionsByFilterAsync(PaymentFilterRequest filter)
+        {
+            // Gọi Repository lấy dữ liệu đã phân trang
+            var (items, totalCount) = await _unitOfWork.Payments.GetPaymentsByFilterAsync(filter);
+
+            // Map Entity sang DTO
+            var mappedItems = _mapper.Map<List<WalletTransactionResponse>>(items);
+
+            // Trả về kết quả phân trang
+            return new PaginatedResult<WalletTransactionResponse>(mappedItems, totalCount, filter.PageNumber, filter.PageSize);
+        }
+
+
+
+        public async Task ApproveWithdrawalAsync(Guid adminId, Guid paymentId)
+        {
+            // 1. Lấy Payment và kiểm tra
+            var payment = await _unitOfWork.Payments.GetByIdAsync(paymentId);
+            if (payment == null) throw new KeyNotFoundException("Transaction not found");
+
+            // Chỉ được duyệt đơn Rút tiền (Withdrawal) đang chờ (Pending)
+            if (payment.Type != PaymentType.Withdrawal)
+                throw new InvalidOperationException("This transaction is not a withdrawal request.");
+
+            if (payment.Status != PaymentStatus.Pending)
+                throw new InvalidOperationException($"Cannot approve transaction with status '{payment.Status}'. Only 'Pending' requests can be approved.");
+
+            // 2. Cập nhật trạng thái
+            // Admin xác nhận đã chuyển khoản ngân hàng thành công bên ngoài hệ thống
+            payment.Status = PaymentStatus.Paid;
+            payment.Description += $" | Approved by Admin ID: {adminId}"; // Ghi chú
+
+            _unitOfWork.Payments.Update(payment);
+            await _unitOfWork.CommitAsync();
+        }
+
+        public async Task RejectWithdrawalAsync(Guid adminId, Guid paymentId, string reason)
+        {
+            // 1. Lấy Payment
+            var payment = await _unitOfWork.Payments.GetByIdAsync(paymentId);
+            if (payment == null) throw new KeyNotFoundException("Transaction not found");
+
+            if (payment.Type != PaymentType.Withdrawal)
+                throw new InvalidOperationException("This transaction is not a withdrawal request.");
+
+            if (payment.Status != PaymentStatus.Pending)
+                throw new InvalidOperationException("Cannot reject this transaction. Only 'Pending' requests can be rejected.");
+
+            // 2. HOÀN TIỀN VỀ VÍ 
+            // Vì lúc Request đã trừ Balance rồi, giờ từ chối phải cộng lại cho Shop
+            // Dùng hàm GetByUserIdAsync vì 1 User chỉ có 1 Wallet
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(payment.UserId);
+
+            if (wallet != null)
+            {
+                // Hoàn lại cả tiền gốc + phí rút tiền 
+                wallet.Balance += (payment.Amount + payment.FeeAmount);
+                _unitOfWork.Wallets.Update(wallet);
+            }
+            else
+            {
+                // Trường hợp Wallet bị xóa hoặc lỗi data
+                throw new Exception("Wallet not found to refund.");
+            }
+
+            // 3. Cập nhật trạng thái giao dịch
+            payment.Status = PaymentStatus.Failed; // Hoặc dùng Rejected nếu bạn thêm vào Enum
+            payment.Description += $" | Rejected by Admin ID: {adminId}. Reason: {reason}";
+
+            _unitOfWork.Payments.Update(payment);
+            await _unitOfWork.CommitAsync();
+        }
+
+        public async Task AdjustBalanceAsync(Guid adminId, AdjustBalanceRequest request)
+        {
+            // 1. Lấy ví của User mục tiêu
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(request.UserId);
+            if (wallet == null)
+            {
+                // Nếu chưa có ví thì tạo mới (Tùy logic, thường Shop mới có ví)
+                await CreateWalletAsync(request.UserId);
+                wallet = await _unitOfWork.Wallets.GetByUserIdAsync(request.UserId);
+            }
+
+            // 2. Kiểm tra số dư nếu là phép trừ
+            if (request.Amount < 0 && wallet.Balance < Math.Abs(request.Amount))
+            {
+                //TODO: chưa biết có nên cho balance âm không
+                // throw new InvalidOperationException("Insufficient balance to deduct.");
+            }
+
+            // 3. Cập nhật số dư
+            wallet.Balance += request.Amount;
+            _unitOfWork.Wallets.Update(wallet);
+
+            // 4. Tạo Transaction Log
+            var transaction = _mapper.Map<Payment>(request);
+            transaction.Id = Guid.NewGuid();
+            transaction.WalletId = wallet.Id; 
+            transaction.UserId = request.UserId; // Chủ ví
+
+            transaction.Type = PaymentType.ManualAdjustment;
+            transaction.Status = PaymentStatus.Paid; // Điều chỉnh xong ngay lập tức
+            transaction.Method = PaymentMethod.Wallet; 
+            transaction.Currency = "VND";
+
+            // Lưu vết Admin nào đã thực hiện (Optional - ghi vào description hoặc 1 field CreatedBy nếu có)
+            transaction.Description = $"{request.Reason} (Adjusted by Admin)";
+            transaction.CreatedBy = adminId;
+
+            await _unitOfWork.Payments.AddAsync(transaction);
+            await _unitOfWork.CommitAsync();
+        }
+
+        public async Task<bool> IsPinCreatedAsync(Guid userId)
+        {
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+            // Nếu chưa có ví hoặc PinHash null/rỗng -> chưa tạo
+            return wallet != null && !string.IsNullOrEmpty(wallet.PinHash);
+        }
+
+        public async Task SetupPinAsync(Guid userId, SetupWalletPinRequest request)
+        {
+            // 1. Lấy User & Wallet
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            if (user == null) throw new KeyNotFoundException("User not found.");
+
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+            if (wallet == null)
+            {
+                // Nếu chưa có ví thì tạo ví trước (auto-create)
+                await CreateWalletAsync(userId);
+                wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+            }
+
+            // 2. Validate: Nếu đã có PIN rồi thì không cho Setup lại 
+            if (!string.IsNullOrEmpty(wallet!.PinHash))
+            {
+                throw new InvalidOperationException("Wallet PIN is already set. Please use Change PIN function.");
+            }
+
+            // 3. Verify Login Password (Lớp bảo mật 1)
+            var passwordCheck = _passwordHasher.VerifyHashedPassword(user, user.HashedPassword, request.CurrentPassword);
+            if (passwordCheck == PasswordVerificationResult.Failed)
+            {
+                throw new UnauthorizedAccessException("Incorrect login password.");
+            }
+
+            // 4. Hash PIN và lưu (Dùng user object)
+            wallet.PinHash = _passwordHasher.HashPassword(user, request.NewPin);
+
+            _unitOfWork.Wallets.Update(wallet);
+            await _unitOfWork.CommitAsync();
+        }
+
+        public async Task ChangePinAsync(Guid userId, ChangeWalletPinRequest request)
+        {
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+
+            if (wallet == null || string.IsNullOrEmpty(wallet.PinHash))
+                throw new InvalidOperationException("Wallet PIN has not been created yet.");
+
+            // 1. Verify Old PIN (Lớp bảo mật 2)
+            var verifyResult = _passwordHasher.VerifyHashedPassword(user!, wallet.PinHash, request.OldPin);
+            if (verifyResult == PasswordVerificationResult.Failed)
+            {
+                throw new UnauthorizedAccessException("Incorrect old PIN.");
+            }
+
+            // 2. Update New PIN
+            wallet.PinHash = _passwordHasher.HashPassword(user!, request.NewPin);
+
+            _unitOfWork.Wallets.Update(wallet);
+            await _unitOfWork.CommitAsync();
+        }
+        public async Task SendPinResetCodeAsync(Guid userId)
+        {
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+
+            if (wallet == null) throw new KeyNotFoundException("Wallet not found.");
+            if (string.IsNullOrEmpty(wallet.PinHash)) throw new InvalidOperationException("You have not set up a PIN yet.");
+
+            // 1. Tạo OTP ngẫu nhiên 6 số
+            var random = new Random();
+            string otp = random.Next(100000, 999999).ToString();
+
+            // 2. Lưu vào DB (Hết hạn sau 5 phút)
+            wallet.PinResetCode = otp;
+            wallet.PinResetExpiry = DateTime.UtcNow.AddMinutes(5);
+
+            _unitOfWork.Wallets.Update(wallet);
+            await _unitOfWork.CommitAsync();
+
+            // 3. Gửi Email
+            // Lưu ý: Cần đảm bảo hàm SendEmailAsync trong EmailService của bạn hoạt động đúng
+            string subject = "[AMK Collective] Wallet PIN Reset Verification Code";
+            string body = $@"
+            <h3>Wallet PIN Reset Request</h3>
+            <p>Hello {user.Username},</p>
+            <p>You requested to reset your Wallet PIN. Use the code below to proceed:</p>
+            <h2 style='color:blue'>{otp}</h2>
+            <p>This code expires in 5 minutes.</p>
+            <p>If you did not request this, please secure your account immediately.</p>
+        ";
+
+            await _emailService.SendEmailAsync(user.Email, subject, body);
+        }
+
+        public async Task ResetPinWithOtpAsync(Guid userId, ResetWalletPinRequest request)
+        {
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+
+            if (wallet == null) throw new KeyNotFoundException("Wallet not found.");
+
+            // 1. Kiểm tra OTP
+            if (string.IsNullOrEmpty(wallet.PinResetCode) || wallet.PinResetCode != request.Otp)
+            {
+                throw new ArgumentException("Invalid OTP code.");
+            }
+
+            // 2. Kiểm tra hạn OTP
+            if (wallet.PinResetExpiry < DateTime.UtcNow)
+            {
+                throw new ArgumentException("OTP code has expired. Please request a new one.");
+            }
+
+            // 3. Đổi PIN mới
+            wallet.PinHash = _passwordHasher.HashPassword(user, request.NewPin);
+
+            // 4. Xóa OTP cũ để không dùng lại được
+            wallet.PinResetCode = null;
+            wallet.PinResetExpiry = null;
+
+            _unitOfWork.Wallets.Update(wallet);
+            await _unitOfWork.CommitAsync();
+
+            // (Optional) Gửi mail thông báo đã đổi thành công
+            await _emailService.SendEmailAsync(user.Email, "Security Alert", "Your Wallet PIN has been successfully reset.");
+        }
+
+        public async Task<string> CreateDepositTransactionAsync(Guid userId, DepositRequest request)
+        {
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            if (user == null) throw new KeyNotFoundException("User not found");
+
+            // TODO: Thay URL này bằng URL thật của Frontend
+            var successUrl = "https://your-frontend.com/wallet/deposit-success";
+            var cancelUrl = "https://your-frontend.com/wallet/deposit-cancel";
+
+            // Gọi PaymentService
+            var stripeResult = await _paymentService.CreateDepositSessionAsync(
+                request.Amount,
+                user.Email,
+                userId.ToString(),
+                successUrl,
+                cancelUrl
+            );
+
+            // Tạo Payment Record
+            var payment = new Payment
+            {
+                Id = Guid.NewGuid(), 
+                UserId = userId,
+                Amount = request.Amount,
+                Type = PaymentType.Deposit,
+                Status = PaymentStatus.Pending,
+                Method = PaymentMethod.CreditCard,
+                StripeSessionId = stripeResult.SessionId,
+                Currency = "VND",
+                Description = "Top up wallet",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _unitOfWork.Payments.AddAsync(payment);
+            await _unitOfWork.CommitAsync();
+
+            // Trả về URL thanh toán
+            return stripeResult.PaymentUrl;
+        }
+
+
+        public async Task<WalletStatisticsResponse> GetWalletStatisticsAsync(Guid userId)
+        {
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+            if (wallet == null) return new WalletStatisticsResponse();
+            var stats = await _unitOfWork.Payments.GetPaymentStatsByWalletIdAsync(wallet.Id);
+
+            return new WalletStatisticsResponse
+            {
+                AvailableBalance = wallet.Balance,
+                HeldBalance = wallet.HeldBalance,
+                TotalRevenue = stats.TotalRevenue,
+                TotalWithdrawn = stats.TotalWithdrawn,
+                PendingWithdrawal = stats.PendingWithdrawal,
+                ThisMonthRevenue = stats.ThisMonthRevenue
+            };
+        }
+
+        public async Task<List<HeldTransactionResponse>> GetHeldTransactionsAsync(Guid userId)
+        {
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+            if (wallet == null) return new List<HeldTransactionResponse>();
+            var payments = await _unitOfWork.Payments.GetHeldPaymentsByWalletIdAsync(wallet.Id);
+            return _mapper.Map<List<HeldTransactionResponse>>(payments);
+        }
+
+
+        // Helper
+        // dùng cho các API Rút tiền/Update Bank 
+        public async Task<bool> VerifyPinAsync(Guid userId, string pin)
+        {         
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+
+            if (wallet == null || string.IsNullOrEmpty(wallet.PinHash)) return false;
+            if (user == null) return false;
+
+            // Kiểm tra Hash thủ công
+            var result = _passwordHasher.VerifyHashedPassword(user, wallet.PinHash, pin);
+            return result != PasswordVerificationResult.Failed;
         }
     }
 }

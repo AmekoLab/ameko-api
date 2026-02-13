@@ -1,9 +1,11 @@
 ﻿using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Payment;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Infrastructure.Configurations;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Stripe;
 using Stripe.Checkout;
@@ -13,21 +15,23 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using PaymentMethod = FPTU.Capstone.AMKCollective.Domain.Enums.PaymentMethod;
-using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
 {
     public class StripePaymentService : IPaymentService
     {
         private readonly StripeSettings _stripeSettings;
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IWalletService _walletService;
+        //private readonly IWalletService _walletService;
+        private readonly IServiceProvider _serviceProvider;
 
-        public StripePaymentService(IOptions<StripeSettings> stripeSettings, IUnitOfWork unitOfWork, IWalletService walletService)
+        public StripePaymentService(IOptions<StripeSettings> stripeSettings, IUnitOfWork unitOfWork, //IWalletService walletService
+          IServiceProvider serviceProvider)
         {
             _stripeSettings = stripeSettings.Value;
             StripeConfiguration.ApiKey = _stripeSettings.SecretKey;
             _unitOfWork = unitOfWork;
-            _walletService = walletService;
+            //_walletService = walletService;
+            _serviceProvider = serviceProvider;
         }
 
         // 1. TẠO CHECKOUT SESSION (Gửi sang Stripe)
@@ -43,11 +47,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                 SuccessUrl = request.SuccessUrl + "?session_id={CHECKOUT_SESSION_ID}",
                 CancelUrl = request.CancelUrl,
                 ClientReferenceId = orderGroup.Id.ToString(),
-
                 Metadata = new Dictionary<string, string>
-        {
-            { "OrderGroupId", orderGroup.Id.ToString() }
-        },
+                {
+                    { "Type", "OrderPayment" },
+                    { "OrderGroupId", orderGroup.Id.ToString() }
+                },
                 LineItems = new List<SessionLineItemOptions>()
             };
 
@@ -108,22 +112,75 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                 if (stripeEvent.Type == EventTypes.CheckoutSessionCompleted)
                 {
                     var session = stripeEvent.Data.Object as Session;
-                    string orderGroupIdStr = session.ClientReferenceId;
 
-                    if (string.IsNullOrEmpty(orderGroupIdStr))
+                    // Lấy loại giao dịch từ Metadata
+                    string transactionType = "";
+                    if (session.Metadata != null && session.Metadata.TryGetValue("Type", out var typeVal))
                     {
-                        session.Metadata?.TryGetValue("OrderGroupId", out orderGroupIdStr);
+                        transactionType = typeVal;
                     }
 
-                    if (!string.IsNullOrEmpty(orderGroupIdStr) && Guid.TryParse(orderGroupIdStr, out Guid orderGroupId))
+                    // CASE 1: NẠP TIỀN (DEPOSIT)
+                    if (transactionType == "Deposit")
                     {
-                        await FulfillOrderAsync(orderGroupId, session.PaymentIntentId, session.Id);
+                        // Tìm Payment Pending trong DB
+                        var payment = await _unitOfWork.Payments.GetPaymentBySessionIdAsync(session.Id);
+
+                        if (payment != null && payment.Status != PaymentStatus.Paid)
+                        {
+                            // Update Payment
+                            payment.Status = PaymentStatus.Paid;
+                            payment.StripePaymentIntentId = session.PaymentIntentId;
+                            payment.Description += " | Success";
+
+                            // Update Wallet Balance
+                            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(payment.UserId);
+                            if (wallet == null)
+                            {
+                                wallet = new Wallet
+                                {
+                                    UserId = payment.UserId,
+                                    Balance = 0,
+                                    HeldBalance = 0,
+                                    Currency = "VND",
+                                    IsActive = true
+                                };
+                                await _unitOfWork.Wallets.AddAsync(wallet);
+                            }
+
+                            // Cộng tiền
+                            wallet.Balance += payment.Amount;
+                            _unitOfWork.Wallets.Update(wallet);
+
+                            // C. Lưu tất cả thay đổi
+                            _unitOfWork.Payments.Update(payment);
+                            await _unitOfWork.CommitAsync();
+                        }
+                    }
+                    // CASE 2: THANH TOÁN ĐƠN HÀNG 
+                    else
+                    {
+                        string orderGroupIdStr = session.ClientReferenceId;
+                        if (string.IsNullOrEmpty(orderGroupIdStr))
+                        {
+                            session.Metadata?.TryGetValue("OrderGroupId", out orderGroupIdStr);
+                        }
+
+                        if (!string.IsNullOrEmpty(orderGroupIdStr) && Guid.TryParse(orderGroupIdStr, out Guid orderGroupId))
+                        {
+                            await FulfillOrderAsync(orderGroupId, session.PaymentIntentId, session.Id);
+                        }
                     }
                 }
             }
             catch (StripeException e)
             {
                 throw new Exception($"Stripe Webhook Error: {e.Message}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WEBHOOK CRITICAL ERROR] {ex.Message}");
+                throw;
             }
         }
 
@@ -132,72 +189,122 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
         {
             try
             {
-                // 1. Lấy OrderGroup (Repository của bạn ĐÃ Include Orders rồi)
-                var orderGroup = await _unitOfWork.OrderGroups.GetByIdAsync(orderGroupId);
-
-                if (orderGroup != null)
+                //1. Tạo Scope NGAY TỪ ĐẦU (chỉ 1 lần duy nhất)
+                using (var scope = _serviceProvider.CreateScope())
                 {
-                    orderGroup.PaymentStatus = PaymentStatus.Paid;
+                    // Resolve WalletService 1 lần để dùng cho toàn bộ quá trình
+                    var walletService = scope.ServiceProvider.GetRequiredService<IWalletService>();
 
-                    // 2. Update trạng thái Orders con
-                    if (orderGroup.Orders != null && orderGroup.Orders.Any())
+                    var orderGroup = await _unitOfWork.OrderGroups.GetByIdAsync(orderGroupId);
+
+                    if (orderGroup != null)
                     {
-                        foreach (var order in orderGroup.Orders)
-                        {
-                            order.PaymentStatus = PaymentStatus.Paid;
-                            order.OrderStatus = OrderStatus.Processing;
-                            await _unitOfWork.Orders.UpdateOrderAsync(order);
+                        orderGroup.PaymentStatus = PaymentStatus.Paid;
 
-                            if (order.ShopId.HasValue)
+                        // 2. Update trạng thái Orders con
+                        if (orderGroup.Orders != null && orderGroup.Orders.Any())
+                        {
+                            foreach (var order in orderGroup.Orders)
                             {
-                                var shopProfile = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
-                                if (shopProfile != null)
+                                order.PaymentStatus = PaymentStatus.Paid;
+                                order.OrderStatus = OrderStatus.Processing;
+                                await _unitOfWork.Orders.UpdateOrderAsync(order);
+
+                                if (order.ShopId.HasValue)
                                 {
-                                    await _walletService.AddPendingSalesToWalletAsync(
-                                        shopProfile.UserId,
-                                        order.Id,
-                                        order.TotalAmount
-                                    );
+                                    var shopProfile = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+                                    if (shopProfile != null)
+                                    {
+                                        await walletService.AddPendingSalesToWalletAsync(
+                                            shopProfile.UserId,
+                                            order.Id,
+                                            order.TotalAmount
+                                        );
+                                    }
                                 }
                             }
                         }
+
+                        // 3. Tạo Payment Log
+                        if (orderGroup.CustomerId == Guid.Empty)
+                        {
+                            throw new Exception("OrderGroup has invalid CustomerId (Guid.Empty)");
+                        }
+
+                        var payment = new FPTU.Capstone.AMKCollective.Domain.Entities.Payment
+                        {
+                            Id = Guid.NewGuid(),
+                            OrderGroupId = orderGroupId,
+                            UserId = orderGroup.CustomerId,
+                            Amount = orderGroup.TotalGroupAmount,
+                            Currency = "vnd",
+                            StripePaymentIntentId = transactionId,
+                            StripeSessionId = sessionId,
+                            Method = PaymentMethod.CreditCard,
+                            Status = PaymentStatus.Paid,
+                            Type = PaymentType.OrderPayment,
+                            CreatedAt = DateTime.UtcNow
+                        };
+
+                        await _unitOfWork.Payments.AddAsync(payment);
+
+                        // 4. Lưu tất cả thay đổi
+                        await _unitOfWork.CommitAsync();
                     }
-
-                    // 3. Tạo Payment Log
-                    // Kiểm tra UserId để chắc chắn không bị lỗi Guid.Empty
-                    if (orderGroup.CustomerId == Guid.Empty)
-                    {
-                        throw new Exception("OrderGroup has invalid CustomerId (Guid.Empty)");
-                    }
-
-                    var payment = new FPTU.Capstone.AMKCollective.Domain.Entities.Payment
-                    {
-                        Id = Guid.NewGuid(),
-                        OrderGroupId = orderGroupId,
-                        UserId = orderGroup.CustomerId, 
-                        Amount = orderGroup.TotalGroupAmount,
-                        Currency = "vnd",
-                        StripePaymentIntentId = transactionId,
-                        StripeSessionId = sessionId,
-                        Method = PaymentMethod.CreditCard,
-                        Status = PaymentStatus.Paid,
-                        Type = PaymentType.OrderPayment,
-                        CreatedAt = DateTime.UtcNow
-                    };
-
-                    await _unitOfWork.Payments.AddAsync(payment);
-
-                    // 4. Lưu tất cả thay đổi
-                    await _unitOfWork.CommitAsync();
-                }
+                } // Kết thúc Scope
             }
             catch (Exception ex)
             {
-                // Log lỗi chi tiết ra Console để debug nếu vẫn tạch
                 var innerMsg = ex.InnerException != null ? ex.InnerException.Message : "No inner exception";
                 Console.WriteLine($"[STRIPE WEBHOOK ERROR] {ex.Message} | Inner: {innerMsg}");
-                throw; // Ném lỗi lại để Stripe biết mà retry
+                throw;
             }
+        }
+
+        public async Task<CheckoutSessionResponse> CreateDepositSessionAsync(decimal amount, string userEmail, string userIdString, string successUrl, string cancelUrl)
+        {
+            var options = new SessionCreateOptions
+            {
+                PaymentMethodTypes = new List<string> { "card" },
+                Mode = "payment",
+                SuccessUrl = successUrl,
+                CancelUrl = cancelUrl,
+                CustomerEmail = userEmail,
+
+                Metadata = new Dictionary<string, string>
+                {
+                    { "Type", "Deposit" },
+                    { "UserId", userIdString }
+                },
+
+                LineItems = new List<SessionLineItemOptions>
+                {
+                    new SessionLineItemOptions
+                    {
+                        PriceData = new SessionLineItemPriceDataOptions
+                        {
+                            Currency = "vnd",
+                            UnitAmount = (long)amount,
+                            ProductData = new SessionLineItemPriceDataProductDataOptions
+                            {
+                                Name = "Top up to AMK (Deposit)",
+                                Description = $"Top up amount: {amount:N0} VND"
+                            }
+                        },
+                        Quantity = 1
+                    }
+                }
+            };
+
+            var service = new SessionService();
+            Session session = await service.CreateAsync(options);
+
+            return new CheckoutSessionResponse
+            {
+                SessionId = session.Id,
+                PaymentUrl = session.Url, 
+                PaymentIntentId = session.PaymentIntentId
+            };
         }
 
         public async Task RefundPaymentAsync(Guid orderGroupId)

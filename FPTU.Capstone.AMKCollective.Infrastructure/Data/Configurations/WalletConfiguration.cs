@@ -23,6 +23,19 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .HasMaxLength(10)
                 .IsRequired();
 
+            builder.Property(x => x.PinHash)
+                .HasMaxLength(255)
+                .IsRequired(false); 
+
+           
+            builder.Property(x => x.PinResetCode)
+                .HasMaxLength(6)
+                .IsFixedLength() // it is always 6 characters 
+                .IsRequired(false);
+
+            builder.Property(x => x.PinResetExpiry)
+                .IsRequired(false);
+
             // One-to-One relationship with User
             builder.HasOne(w => w.User)
                 .WithOne(u => u.Wallet)
@@ -37,6 +50,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
 
             builder.HasIndex(w => w.UserId)
                 .IsUnique();
+
+
         }
     }
 }

@@ -13,5 +13,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Wallet
         public decimal HeldBalance { get; set; }   // Số dư đang bị giữ
         public string Currency { get; set; } = "VND";
         public bool IsActive { get; set; }
+
+        public bool HasPin { get; set; }
     }
 }

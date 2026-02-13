@@ -110,7 +110,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<VoucherResponse>(voucher);
         }
 
-        // 4. Áp dụng Voucher vào Đơn hàng (QUAN TRỌNG NHẤT)
+        // 4. Áp dụng Voucher vào Đơn hàng 
         public async Task<decimal> ApplyVoucherAsync(Guid userId, Guid orderId, string code)
         {
             var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
@@ -136,12 +136,51 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (voucher.TargetUserId != null && voucher.TargetUserId != userId)
                 throw new Exception("This voucher is not applicable to you.");
 
-            // 4. Check Shop (Voucher shop nào dùng cho shop đó)
-            // Lưu ý: CreatorId là ShopId. Order.ShopId phải khớp.
-            // Nếu Order chưa có ShopId (InCart hỗn hợp), logic này cần điều chỉnh ở FE để tách Order trước.
-            // Giả định: Order InCart hiện tại ĐÃ tách theo Shop (1 Order - 1 Shop).
-            if (order.ShopId != null && voucher.CreatorId != order.ShopId)
-                throw new Exception("This voucher is not applicable for this shop's order.");
+            // 4. Check Scope (Validate quyền Shop Owner vs Admin Global)
+            if (order.ShopId.HasValue)
+            {
+                // Load Shop Profile để lấy UserId của chủ shop
+                if (order.Shop == null)
+                {
+                    order.Shop = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+                }
+
+                if (order.Shop != null)
+                {
+                    // Lấy thông tin người tạo Voucher (check xem là Admin hay Shop)
+                    var voucherCreator = await _unitOfWork.Users.GetByIdAsync(voucher.CreatorId);
+
+                    // Logic check:
+                    // - Là Shop Owner: CreatorId trùng với UserId của Shop
+                    // - Là Admin: Role của Creator là Admin
+                    bool isShopOwner = voucher.CreatorId == order.Shop.UserId;
+
+                    // Nếu voucherCreator load lên bị null hoặc Role null thì mặc định false
+                    bool isAdmin = voucherCreator != null && voucherCreator.Role != null && voucherCreator.Role.Name == RoleType.Admin;
+
+                    switch (voucher.Type)
+                    {
+                        case VoucherType.Negotiation:
+                            // Voucher thương lượng: Bắt buộc Shop phải tự tạo cho khách
+                            if (!isShopOwner)
+                                throw new Exception("This negotiation voucher is not valid for this shop.");
+                            break;
+
+                        case VoucherType.Promotion:
+                            // Voucher khuyến mãi:
+                            // - Nếu Shop tạo: Chỉ áp dụng cho Shop đó.
+                            // - Nếu Admin tạo: Áp dụng được (Global).
+                            if (!isShopOwner && !isAdmin)
+                                throw new Exception("This promotion voucher is not applicable for this shop's order.");
+                            break;
+
+                        case VoucherType.Compensation:
+                            // Voucher đền bù: Thường do hệ thống/Admin tạo
+                            // Luôn cho phép áp dụng (Global)
+                            break;
+                    }
+                }
+            }
 
             // 5. Check Min Order Value
             if (order.SubTotal < voucher.MinOrderValue)
@@ -166,6 +205,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (discount > order.SubTotal) discount = order.SubTotal;
 
             // --- UPDATE ORDER ---
+            // Lưu ý: Logic này sẽ GHI ĐÈ voucher cũ nếu có (chưa stacking)
             order.VoucherId = voucher.Id;
             order.DiscountAmount = discount;
             order.TotalAmount = (order.SubTotal + order.ShippingFee) - discount;
@@ -197,5 +237,85 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var vouchers = await _unitOfWork.Vouchers.GetValidVouchersForUserAsync(userId);
             return _mapper.Map<List<VoucherResponse>>(vouchers);
         }
+
+        public async Task<VoucherResponse> GetVoucherByIdAsync(Guid id)
+        {
+            var voucher = await _unitOfWork.Vouchers.GetByIdAsync(id);
+            if (voucher == null) throw new KeyNotFoundException("Voucher not found.");
+
+            return _mapper.Map<VoucherResponse>(voucher);
+        }
+
+        public async Task<VoucherResponse> UpdateVoucherAsync(Guid userId, Guid voucherId, UpdateVoucherRequest request)
+        {
+            var voucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId);
+            if (voucher == null) throw new KeyNotFoundException("Voucher not found.");
+
+            // Check quyền: Chỉ chủ sở hữu mới được sửa
+            if (voucher.CreatorId != userId) throw new UnauthorizedAccessException("You are not the owner of this voucher.");
+
+            // Update fields (Chỉ cho phép sửa một số trường nhất định)
+            if (!string.IsNullOrEmpty(request.Name)) voucher.Name = request.Name;
+            if (!string.IsNullOrEmpty(request.Description)) voucher.Description = request.Description;
+            if (request.EndDate.HasValue) voucher.EndDate = request.EndDate.Value;
+            if (request.UsageLimit.HasValue) voucher.UsageLimit = request.UsageLimit.Value;
+            if (request.Status.HasValue) voucher.Status = request.Status.Value;
+
+            _unitOfWork.Vouchers.Update(voucher);
+            await _unitOfWork.CommitAsync();
+
+            return _mapper.Map<VoucherResponse>(voucher);
+        }
+
+        public async Task DeleteVoucherAsync(Guid userId, Guid voucherId)
+        {
+            var voucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId);
+            if (voucher == null) throw new KeyNotFoundException("Voucher not found.");
+            if (voucher.CreatorId != userId) throw new UnauthorizedAccessException("You are not the owner of this voucher.");
+
+            // CHECK AN TOÀN: Nếu voucher đã có người dùng -> Không được xóa, bắt buộc phải Deactivate
+            bool isUsed = await _unitOfWork.Vouchers.IsVoucherUsedAsync(voucherId);
+            if (isUsed)
+            {
+                throw new InvalidOperationException("Cannot delete this voucher because it has been used by customers. Please deactivate it instead.");
+            }
+
+            _unitOfWork.Vouchers.Delete(voucher); // Soft Delete
+            await _unitOfWork.CommitAsync();
+        }
+        public async Task ToggleVoucherStatusAsync(Guid userId, Guid voucherId)
+        {
+            var voucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId);
+            if (voucher == null) throw new KeyNotFoundException("Voucher not found.");
+            if (voucher.CreatorId != userId) throw new UnauthorizedAccessException("Unauthorized.");
+
+            // Đảo trạng thái Active <-> Inactive
+            voucher.Status = voucher.Status == VoucherStatus.Active ? VoucherStatus.Disabled : VoucherStatus.Active;
+
+            _unitOfWork.Vouchers.Update(voucher);
+            await _unitOfWork.CommitAsync();
+        }
+
+        public async Task<List<VoucherResponse>> GetShopPublicVouchersAsync(Guid shopId)
+        {
+            // shopId ở đây là ID của ShopProfile
+            // Cần lấy UserId của chủ shop đó trước
+            var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
+            if (shop == null) throw new KeyNotFoundException("Shop not found");
+
+            // Gọi Repo lấy voucher công khai của shopOwner (shop.UserId)
+            var vouchers = await _unitOfWork.Vouchers.GetPublicVouchersByShopAsync(shop.UserId);
+            return _mapper.Map<List<VoucherResponse>>(vouchers);
+        }
+
+        public async Task<PaginatedResult<VoucherResponse>> GetVouchersByShopAsync(Guid userId, VoucherFilterRequest filter)
+        {
+            // userId ở đây là ID của User (Chủ Shop)
+            var (items, totalCount) = await _unitOfWork.Vouchers.GetVouchersByFilterAsync(userId, filter);
+
+            var mappedItems = _mapper.Map<List<VoucherResponse>>(items);
+            return new PaginatedResult<VoucherResponse>(mappedItems, totalCount, filter.PageNumber, filter.PageSize);
+        }
+
     }
 }
