@@ -17,17 +17,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
-        private readonly UserManager<User> _userManager;
+        //private readonly UserManager<User> _userManager;
         private readonly IPasswordHasher<User> _passwordHasher;
         private readonly IEmailService _emailService;
         private readonly IPaymentService _paymentService;
 
-        public WalletService (IUnitOfWork unitOfWork, IMapper mapper, UserManager<User> userManager,
+        public WalletService (IUnitOfWork unitOfWork, IMapper mapper, //UserManager<User> userManager,
             IPasswordHasher<User> passwordHasher, IEmailService emailService, IPaymentService paymentService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
-            _userManager = userManager;
+           // _userManager = userManager;
             _passwordHasher = passwordHasher;
             _emailService = emailService;
             _paymentService = paymentService;
@@ -415,7 +415,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task SetupPinAsync(Guid userId, SetupWalletPinRequest request)
         {
             // 1. Lấy User & Wallet
-            var user = await _userManager.FindByIdAsync(userId.ToString());
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
             if (user == null) throw new KeyNotFoundException("User not found.");
 
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
@@ -433,8 +433,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             // 3. Verify Login Password (Lớp bảo mật 1)
-            var passwordCheck = await _userManager.CheckPasswordAsync(user, request.CurrentPassword);
-            if (!passwordCheck)
+            var passwordCheck = _passwordHasher.VerifyHashedPassword(user, user.HashedPassword, request.CurrentPassword);
+            if (passwordCheck == PasswordVerificationResult.Failed)
             {
                 throw new UnauthorizedAccessException("Incorrect login password.");
             }
@@ -448,7 +448,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task ChangePinAsync(Guid userId, ChangeWalletPinRequest request)
         {
-            var user = await _userManager.FindByIdAsync(userId.ToString());
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
 
             if (wallet == null || string.IsNullOrEmpty(wallet.PinHash))
@@ -469,7 +469,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         }
         public async Task SendPinResetCodeAsync(Guid userId)
         {
-            var user = await _userManager.FindByIdAsync(userId.ToString());
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
 
             if (wallet == null) throw new KeyNotFoundException("Wallet not found.");
@@ -503,7 +503,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task ResetPinWithOtpAsync(Guid userId, ResetWalletPinRequest request)
         {
-            var user = await _userManager.FindByIdAsync(userId.ToString());
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
 
             if (wallet == null) throw new KeyNotFoundException("Wallet not found.");
@@ -536,7 +536,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<string> CreateDepositTransactionAsync(Guid userId, DepositRequest request)
         {
-            var user = await _userManager.FindByIdAsync(userId.ToString());
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
             if (user == null) throw new KeyNotFoundException("User not found");
 
             // TODO: Thay URL này bằng URL thật của Frontend
@@ -604,13 +604,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         // Helper
         // dùng cho các API Rút tiền/Update Bank 
         public async Task<bool> VerifyPinAsync(Guid userId, string pin)
-        {
-            var user = await _userManager.FindByIdAsync(userId.ToString());
+        {         
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
 
             if (wallet == null || string.IsNullOrEmpty(wallet.PinHash)) return false;
+            if (user == null) return false;
 
-            var result = _passwordHasher.VerifyHashedPassword(user!, wallet.PinHash, pin);
+            // Kiểm tra Hash thủ công
+            var result = _passwordHasher.VerifyHashedPassword(user, wallet.PinHash, pin);
             return result != PasswordVerificationResult.Failed;
         }
     }

@@ -1,9 +1,11 @@
 ﻿using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Payment;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Infrastructure.Configurations;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Stripe;
 using Stripe.Checkout;
@@ -13,21 +15,23 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using PaymentMethod = FPTU.Capstone.AMKCollective.Domain.Enums.PaymentMethod;
-using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
 {
     public class StripePaymentService : IPaymentService
     {
         private readonly StripeSettings _stripeSettings;
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IWalletService _walletService;
+        //private readonly IWalletService _walletService;
+        private readonly IServiceProvider _serviceProvider;
 
-        public StripePaymentService(IOptions<StripeSettings> stripeSettings, IUnitOfWork unitOfWork, IWalletService walletService)
+        public StripePaymentService(IOptions<StripeSettings> stripeSettings, IUnitOfWork unitOfWork, //IWalletService walletService
+          IServiceProvider serviceProvider)
         {
             _stripeSettings = stripeSettings.Value;
             StripeConfiguration.ApiKey = _stripeSettings.SecretKey;
             _unitOfWork = unitOfWork;
-            _walletService = walletService;
+            //_walletService = walletService;
+            _serviceProvider = serviceProvider;
         }
 
         // 1. TẠO CHECKOUT SESSION (Gửi sang Stripe)
@@ -185,71 +189,75 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
         {
             try
             {
-                // 1. Lấy OrderGroup (Repository của bạn ĐÃ Include Orders rồi)
-                var orderGroup = await _unitOfWork.OrderGroups.GetByIdAsync(orderGroupId);
-
-                if (orderGroup != null)
+                //1. Tạo Scope NGAY TỪ ĐẦU (chỉ 1 lần duy nhất)
+                using (var scope = _serviceProvider.CreateScope())
                 {
-                    orderGroup.PaymentStatus = PaymentStatus.Paid;
+                    // Resolve WalletService 1 lần để dùng cho toàn bộ quá trình
+                    var walletService = scope.ServiceProvider.GetRequiredService<IWalletService>();
 
-                    // 2. Update trạng thái Orders con
-                    if (orderGroup.Orders != null && orderGroup.Orders.Any())
+                    var orderGroup = await _unitOfWork.OrderGroups.GetByIdAsync(orderGroupId);
+
+                    if (orderGroup != null)
                     {
-                        foreach (var order in orderGroup.Orders)
-                        {
-                            order.PaymentStatus = PaymentStatus.Paid;
-                            order.OrderStatus = OrderStatus.Processing;
-                            await _unitOfWork.Orders.UpdateOrderAsync(order);
+                        orderGroup.PaymentStatus = PaymentStatus.Paid;
 
-                            if (order.ShopId.HasValue)
+                        // 2. Update trạng thái Orders con
+                        if (orderGroup.Orders != null && orderGroup.Orders.Any())
+                        {
+                            foreach (var order in orderGroup.Orders)
                             {
-                                var shopProfile = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
-                                if (shopProfile != null)
+                                order.PaymentStatus = PaymentStatus.Paid;
+                                order.OrderStatus = OrderStatus.Processing;
+                                await _unitOfWork.Orders.UpdateOrderAsync(order);
+
+                                if (order.ShopId.HasValue)
                                 {
-                                    await _walletService.AddPendingSalesToWalletAsync(
-                                        shopProfile.UserId,
-                                        order.Id,
-                                        order.TotalAmount
-                                    );
+                                    var shopProfile = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+                                    if (shopProfile != null)
+                                    {
+                                        await walletService.AddPendingSalesToWalletAsync(
+                                            shopProfile.UserId,
+                                            order.Id,
+                                            order.TotalAmount
+                                        );
+                                    }
                                 }
                             }
                         }
+
+                        // 3. Tạo Payment Log
+                        if (orderGroup.CustomerId == Guid.Empty)
+                        {
+                            throw new Exception("OrderGroup has invalid CustomerId (Guid.Empty)");
+                        }
+
+                        var payment = new FPTU.Capstone.AMKCollective.Domain.Entities.Payment
+                        {
+                            Id = Guid.NewGuid(),
+                            OrderGroupId = orderGroupId,
+                            UserId = orderGroup.CustomerId,
+                            Amount = orderGroup.TotalGroupAmount,
+                            Currency = "vnd",
+                            StripePaymentIntentId = transactionId,
+                            StripeSessionId = sessionId,
+                            Method = PaymentMethod.CreditCard,
+                            Status = PaymentStatus.Paid,
+                            Type = PaymentType.OrderPayment,
+                            CreatedAt = DateTime.UtcNow
+                        };
+
+                        await _unitOfWork.Payments.AddAsync(payment);
+
+                        // 4. Lưu tất cả thay đổi
+                        await _unitOfWork.CommitAsync();
                     }
-
-                    // 3. Tạo Payment Log
-                    // Kiểm tra UserId để chắc chắn không bị lỗi Guid.Empty
-                    if (orderGroup.CustomerId == Guid.Empty)
-                    {
-                        throw new Exception("OrderGroup has invalid CustomerId (Guid.Empty)");
-                    }
-
-                    var payment = new FPTU.Capstone.AMKCollective.Domain.Entities.Payment
-                    {
-                        Id = Guid.NewGuid(),
-                        OrderGroupId = orderGroupId,
-                        UserId = orderGroup.CustomerId, 
-                        Amount = orderGroup.TotalGroupAmount,
-                        Currency = "vnd",
-                        StripePaymentIntentId = transactionId,
-                        StripeSessionId = sessionId,
-                        Method = PaymentMethod.CreditCard,
-                        Status = PaymentStatus.Paid,
-                        Type = PaymentType.OrderPayment,
-                        CreatedAt = DateTime.UtcNow
-                    };
-
-                    await _unitOfWork.Payments.AddAsync(payment);
-
-                    // 4. Lưu tất cả thay đổi
-                    await _unitOfWork.CommitAsync();
-                }
+                } // Kết thúc Scope
             }
             catch (Exception ex)
             {
-                // Log lỗi chi tiết ra Console để debug nếu vẫn tạch
                 var innerMsg = ex.InnerException != null ? ex.InnerException.Message : "No inner exception";
                 Console.WriteLine($"[STRIPE WEBHOOK ERROR] {ex.Message} | Inner: {innerMsg}");
-                throw; // Ném lỗi lại để Stripe biết mà retry
+                throw;
             }
         }
 

@@ -1,14 +1,16 @@
 using Autofac;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
+using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Infrastructure.Configurations;
+using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using FPTU.Capstone.AMKCollective.Infrastructure.Services;
 using FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
-using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
-using FPTU.Capstone.AMKCollective.Infrastructure.Configurations;
 using Microsoft.Extensions.Options;
-using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 
 namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
 {
@@ -53,6 +55,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
             // Register repositories and services used by the application
             builder.RegisterType<ThirdPartyClient>().As<IThirdPartyClient>().SingleInstance();
             builder.RegisterType<EmailService>().As<IEmailService>().InstancePerLifetimeScope();
+
+            builder.RegisterType<PasswordHasher<User>>()
+           .As<IPasswordHasher<User>>()
+           .InstancePerLifetimeScope();
 
             builder.RegisterAssemblyTypes(typeof(InfrastructureModule).Assembly)
                .Where(t => t.Name.EndsWith("Repository"))
