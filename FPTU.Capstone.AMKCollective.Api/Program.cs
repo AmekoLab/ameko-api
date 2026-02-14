@@ -52,6 +52,8 @@ internal class Program
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
+                // Required for .NET 8: use legacy JwtSecurityTokenHandler
+                options.UseSecurityTokenValidators = true;
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuerSigningKey = true,

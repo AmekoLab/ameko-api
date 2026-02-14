@@ -30,7 +30,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 new System.Security.Claims.Claim(ClaimTypes.Role, user.Role != null ? user.Role.Name.ToString() : "User")
             };
 
-            var creds = new SigningCredentials(_key, SecurityAlgorithms.HmacSha256Signature);
+            var creds = new SigningCredentials(_key, SecurityAlgorithms.HmacSha256);
 
             var tokenDescriptor = new SecurityTokenDescriptor
             {

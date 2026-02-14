@@ -5,7 +5,6 @@ using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
-using Microsoft.AspNetCore.Identity;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -22,7 +21,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IUserService _userService; // Inject thêm UserService
         private readonly IWalletService _walletService;
         private readonly IEmailService _emailService;
-        private readonly UserManager<User> _userManager;
 
         public ShopService(
             IUnitOfWork unitOfWork,
@@ -30,8 +28,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             IMapper mapper,
             IUserService userService,
             IWalletService walletService,  
-            IEmailService emailService,
-            UserManager<User> userManager)
+            IEmailService emailService)
         {
             _unitOfWork = unitOfWork;
             _storage = storage;
@@ -39,7 +36,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _userService = userService;
             _walletService = walletService;
             _emailService = emailService;
-            _userManager = userManager;
         }
 
         public async Task<ShopResponse> GetShopPublicProfileAsync(Guid shopId)
@@ -402,14 +398,27 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task UpdateBankInfoAsync(Guid userId, UpdateBankInfoRequest request)
         {
             // 1. Lấy thông tin User và Shop
-            var user = await _userManager.FindByIdAsync(userId.ToString());
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
             if (user == null) throw new KeyNotFoundException("User not found");
 
             var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
             if (shop == null) throw new KeyNotFoundException("Shop profile not found");
 
+            // Chỉ Active shop mới được phép cập nhật thông tin ngân hàng
+            if (shop.Status == ShopStatus.Banned)
+                throw new InvalidOperationException("Your shop has been banned. You cannot update bank information.");
+
+            if (shop.Status == ShopStatus.Inactive)
+                throw new InvalidOperationException("Your shop is deactivated. You cannot update bank information.");
+
+            if (shop.Status == ShopStatus.Rejected)
+                throw new InvalidOperationException("Your shop registration was rejected. You cannot update bank information.");
+
+            if (shop.Status == ShopStatus.PendingApproval)
+                throw new InvalidOperationException("Your shop is pending approval. You cannot update bank information at this time.");
+
             // 2. [LỚP BẢO MẬT 1] Kiểm tra Mật khẩu đăng nhập
-            var isPasswordCorrect = await _userManager.CheckPasswordAsync(user, request.CurrentPassword);
+            var isPasswordCorrect = await _userService.VerifyPasswordAsync(userId, request.CurrentPassword);
             if (!isPasswordCorrect)
             {
                 throw new UnauthorizedAccessException("Incorrect password");
