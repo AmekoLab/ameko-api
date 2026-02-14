@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Identity;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -305,31 +306,44 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
 
 
-        public async Task ApproveWithdrawalAsync(Guid adminId, Guid paymentId)
+        public async Task ApproveWithdrawalAsync(Guid adminId, Guid paymentId, WithdrawalActionRequest request)
         {
-            // 1. Lấy Payment và kiểm tra
+            // Lấy Payment và kiểm tra
             var payment = await _unitOfWork.Payments.GetByIdAsync(paymentId);
             if (payment == null) throw new KeyNotFoundException("Transaction not found");
 
-            // Chỉ được duyệt đơn Rút tiền (Withdrawal) đang chờ (Pending)
             if (payment.Type != PaymentType.Withdrawal)
                 throw new InvalidOperationException("This transaction is not a withdrawal request.");
 
             if (payment.Status != PaymentStatus.Pending)
                 throw new InvalidOperationException($"Cannot approve transaction with status '{payment.Status}'. Only 'Pending' requests can be approved.");
 
-            // 2. Cập nhật trạng thái
-            // Admin xác nhận đã chuyển khoản ngân hàng thành công bên ngoài hệ thống
+            // Validate: Bắt buộc phải có ảnh bằng chứng chuyển khoản
+             if (string.IsNullOrEmpty(request.EvidenceImageUrl))
+                throw new ArgumentException("Evidence Image (Banking Receipt) is required for approval.");
+
+            // Cập nhật trạng thái
             payment.Status = PaymentStatus.Paid;
-            payment.Description += $" | Approved by Admin ID: {adminId}"; // Ghi chú
+
+            // Lưu thông tin Admin duyệt + Link ảnh bằng chứng + Ghi chú (nếu có) vào Description
+            // Format này giúp sau này FE dễ parse hoặc hiển thị
+            payment.Description = $"[APPROVED] By Admin: {adminId} | Proof: {request.EvidenceImageUrl} | Note: {request.Reason}";
 
             _unitOfWork.Payments.Update(payment);
             await _unitOfWork.CommitAsync();
+
+            // TODO: Gửi email thông báo cho Shop là tiền đã về tài khoản ngân hàng hoặc notification idk
         }
 
-        public async Task RejectWithdrawalAsync(Guid adminId, Guid paymentId, string reason)
+        public async Task RejectWithdrawalAsync(Guid adminId, Guid paymentId, WithdrawalActionRequest request)
         {
-            // 1. Lấy Payment
+            // Validate Input
+            if (string.IsNullOrEmpty(request.Reason))
+            {
+                throw new ArgumentException("Reason is required when rejecting a withdrawal request.");
+            }
+
+            // Lấy Payment
             var payment = await _unitOfWork.Payments.GetByIdAsync(paymentId);
             if (payment == null) throw new KeyNotFoundException("Transaction not found");
 
@@ -339,29 +353,33 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (payment.Status != PaymentStatus.Pending)
                 throw new InvalidOperationException("Cannot reject this transaction. Only 'Pending' requests can be rejected.");
 
-            // 2. HOÀN TIỀN VỀ VÍ 
-            // Vì lúc Request đã trừ Balance rồi, giờ từ chối phải cộng lại cho Shop
-            // Dùng hàm GetByUserIdAsync vì 1 User chỉ có 1 Wallet
+            // HOÀN TIỀN VỀ VÍ
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(payment.UserId);
 
             if (wallet != null)
             {
-                // Hoàn lại cả tiền gốc + phí rút tiền 
+                // Hoàn lại tiền gốc + phí rút (vì giao dịch hủy thì không thu phí)
                 wallet.Balance += (payment.Amount + payment.FeeAmount);
+                // Lưu ý: FeeAmount nên để nullable trong Entity hoặc check null như trên
+
                 _unitOfWork.Wallets.Update(wallet);
             }
             else
             {
-                // Trường hợp Wallet bị xóa hoặc lỗi data
                 throw new Exception("Wallet not found to refund.");
             }
 
-            // 3. Cập nhật trạng thái giao dịch
-            payment.Status = PaymentStatus.Failed; // Hoặc dùng Rejected nếu bạn thêm vào Enum
-            payment.Description += $" | Rejected by Admin ID: {adminId}. Reason: {reason}";
+            // Cập nhật trạng thái giao dịch
+            payment.Status = PaymentStatus.Failed;
+
+            // Lưu lý do từ chối vào FailureMessage hoặc Description
+            payment.FailureMessage = request.Reason;
+            payment.Description = $"[REJECTED] By Admin: {adminId}. Reason: {request.Reason}";
 
             _unitOfWork.Payments.Update(payment);
             await _unitOfWork.CommitAsync();
+
+            // TODO: Gửi email thông báo cho Shop lý do bị từ chối hoặc notification idk
         }
 
         public async Task AdjustBalanceAsync(Guid adminId, AdjustBalanceRequest request)
@@ -433,8 +451,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             // 3. Verify Login Password (Lớp bảo mật 1)
-            var passwordCheck = _passwordHasher.VerifyHashedPassword(user, user.HashedPassword, request.CurrentPassword);
-            if (passwordCheck == PasswordVerificationResult.Failed)
+            var passwordCheck = VerifyPasswordHash(request.CurrentPassword, user.HashedPassword);
+            if (!passwordCheck)
             {
                 throw new UnauthorizedAccessException("Incorrect login password.");
             }
@@ -448,21 +466,35 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task ChangePinAsync(Guid userId, ChangeWalletPinRequest request)
         {
+            // 1. Check thủ công (Phòng trường hợp DTO validation bị bypass)
+            if (request.NewPin != request.ConfirmNewPin)
+            {
+                throw new ArgumentException("New PIN and Confirm PIN do not match.");
+            }
+
+            // 2. Validate logic cũ: Không được trùng PIN cũ (Optional - Tùy nghiệp vụ)
+            if (request.OldPin == request.NewPin)
+            {
+                throw new ArgumentException("New PIN cannot be the same as the Old PIN.");
+            }
+
             var user = await _unitOfWork.Users.GetByIdAsync(userId);
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
 
             if (wallet == null || string.IsNullOrEmpty(wallet.PinHash))
                 throw new InvalidOperationException("Wallet PIN has not been created yet.");
 
-            // 1. Verify Old PIN (Lớp bảo mật 2)
-            var verifyResult = _passwordHasher.VerifyHashedPassword(user!, wallet.PinHash, request.OldPin);
+            // 3. Verify Old PIN (Lớp bảo mật 2)
+            if (user == null) throw new KeyNotFoundException("User not found.");
+
+            var verifyResult = _passwordHasher.VerifyHashedPassword(user, wallet.PinHash, request.OldPin);
             if (verifyResult == PasswordVerificationResult.Failed)
             {
                 throw new UnauthorizedAccessException("Incorrect old PIN.");
             }
 
-            // 2. Update New PIN
-            wallet.PinHash = _passwordHasher.HashPassword(user!, request.NewPin);
+            // 4. Update New PIN
+            wallet.PinHash = _passwordHasher.HashPassword(user, request.NewPin);
 
             _unitOfWork.Wallets.Update(wallet);
             await _unitOfWork.CommitAsync();
@@ -614,6 +646,27 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // Kiểm tra Hash thủ công
             var result = _passwordHasher.VerifyHashedPassword(user, wallet.PinHash, pin);
             return result != PasswordVerificationResult.Failed;
+        }
+
+        private string CreatePasswordHash(string password)
+        {
+            using var hmac = new HMACSHA512();
+            var salt = Convert.ToBase64String(hmac.Key);
+            var hash = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(password)));
+            return $"{salt}:{hash}";
+        }
+
+        private bool VerifyPasswordHash(string password, string storedFullHash)
+        {
+            var parts = storedFullHash.Split(':');
+            if (parts.Length != 2) return false;
+
+            var salt = Convert.FromBase64String(parts[0]);
+            var storedHash = parts[1];
+
+            using var hmac = new HMACSHA512(salt);
+            var computedHash = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(password)));
+            return computedHash == storedHash;
         }
     }
 }

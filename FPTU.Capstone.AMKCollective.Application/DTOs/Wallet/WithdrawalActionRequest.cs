@@ -10,7 +10,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Wallet
     public class WithdrawalActionRequest
     {
         [Required]
-        public bool IsApproved { get; set; } // true = Approve, false = Reject
+        //public bool IsApproved { get; set; } // true = Approve, false = Reject
 
         public string? Reason { get; set; } // Lý do từ chối (bắt buộc nếu Reject)
 

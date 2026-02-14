@@ -192,12 +192,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Description: Confirms that the fund transfer is successful externally and updates the transaction status to 'Paid'.
         /// </summary>
         [HttpPost("admin/withdrawals/{paymentId}/approve")]
-        public async Task<IActionResult> ApproveWithdrawal(Guid paymentId)
+        public async Task<IActionResult> ApproveWithdrawal(Guid paymentId, [FromBody] WithdrawalActionRequest request)
         {
             try
             {
                 var adminId = GetCurrentUserId(); // Lấy ID Admin thực hiện
-                await _walletService.ApproveWithdrawalAsync(adminId, paymentId);
+                await _walletService.ApproveWithdrawalAsync(adminId, paymentId, request);
 
                 return SuccessResponse("Withdrawal approved successfully. Status updated to Paid.");
             }
@@ -222,21 +222,25 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         [HttpPost("admin/withdrawals/{paymentId}/reject")]
         public async Task<IActionResult> RejectWithdrawal(Guid paymentId, [FromBody] WithdrawalActionRequest request)
         {
-            if (!request.IsApproved && string.IsNullOrEmpty(request.Reason))
-            {
-                return ErrorResponse<object>("Reason is required when rejecting.");
-            }
+            //if (string.IsNullOrEmpty(request.Reason))
+            //{
+            //    return ErrorResponse<object>("Reason is required when rejecting.");
+            //}
 
             try
             {
                 var adminId = GetCurrentUserId();
-                await _walletService.RejectWithdrawalAsync(adminId, paymentId, request.Reason);
+                await _walletService.RejectWithdrawalAsync(adminId, paymentId, request);
 
                 return SuccessResponse("Withdrawal rejected successfully. Funds refunded to wallet.");
             }
             catch (KeyNotFoundException ex)
             {
                 return NotFoundResponse<object>(ex.Message);
+            }
+            catch (ArgumentException ex) // Bắt lỗi validate (thiếu lý do)
+            {
+                return ErrorResponse<object>(ex.Message);
             }
             catch (InvalidOperationException ex)
             {
@@ -505,15 +509,15 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
 
         // Helper để lấy ID từ Token (JWT)
-        private Guid GetCurrentUserId()
-        {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
-            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out Guid userId))
-            {
-                return userId;
-            }
-            throw new UnauthorizedAccessException("User ID not found in token");
-        }
+        //private Guid GetCurrentUserId()
+        //{
+        //    var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
+        //    if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out Guid userId))
+        //    {
+        //        return userId;
+        //    }
+        //    throw new UnauthorizedAccessException("User ID not found in token");
+        //}
     }
 }
   
