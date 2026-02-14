@@ -374,6 +374,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return computedHash == storedHash;
         }
 
+        public async Task<bool> VerifyPasswordAsync(Guid userId, string password)
+        {
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            if (user == null) return false;
+            return VerifyPasswordHash(password, user.HashedPassword);
+        }
+
         public async Task<(bool Success, string ErrorMessage)> DowngradeToCustomerAsync(Guid userId)
         {
             var user = await _unitOfWork.Users.GetByIdAsync(userId);

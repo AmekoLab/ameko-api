@@ -66,7 +66,11 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         /// <exception cref="UnauthorizedAccessException">User ID not found in token</exception>
         protected Guid GetCurrentUserId()
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub") ?? User.FindFirst("id");
+            // Check all possible claim names for user ID (mapped and unmapped)
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)
+                           ?? User.FindFirst("nameid")
+                           ?? User.FindFirst("sub")
+                           ?? User.FindFirst("id");
             if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out Guid userId))
             {
                 return userId;
