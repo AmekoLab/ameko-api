@@ -17,5 +17,8 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Wallet
         [StringLength(6, MinimumLength = 6, ErrorMessage = "PIN must be exactly 6 digits.")]
         [RegularExpression("^[0-9]*$", ErrorMessage = "PIN must be numeric.")]
         public string NewPin { get; set; }
+        [Required(ErrorMessage = "Please confirm your new PIN.")]
+        [Compare("NewPin", ErrorMessage = "The new PIN and confirmation PIN do not match.")] 
+        public string ConfirmNewPin { get; set; } = null!;
     }
 }

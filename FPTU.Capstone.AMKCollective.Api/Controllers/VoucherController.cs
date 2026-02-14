@@ -272,15 +272,15 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
 
         // Helper private để lấy User Id từ Token
-        private Guid GetCurrentUserId()
-        {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
-            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out Guid userId))
-            {
-                return userId;
-            }
-            throw new UnauthorizedAccessException("User ID not found in token");
-        }
+        //private Guid GetCurrentUserId()
+        //{
+        //    var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
+        //    if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out Guid userId))
+        //    {
+        //        return userId;
+        //    }
+        //    throw new UnauthorizedAccessException("User ID not found in token");
+        //}
     }
 }
     
