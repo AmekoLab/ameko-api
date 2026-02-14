@@ -1,0 +1,2760 @@
+{
+  "info": {
+    "_postman_id": "amk-collection-001",
+    "name": "AMKCollective API - Auto Token",
+    "description": "# AMKCollective API Collection\n\n## Tự động quản lý Token\n\nCollection này **tự động lưu token** sau khi login. Bạn chỉ cần:\n1. Điền email/password vào Environment\n2. Gọi Login 1 lần\n3. Tất cả request sau đó sẽ tự động gắn Bearer Token\n\n## Cách dùng nhanh\n1. Import file Environment + Collection\n2. Chọn Environment \"AMKCollective - Local Dev\"\n3. Sửa `adminEmail`, `adminPassword` (hoặc customer/shop) trong Environment\n4. Chạy folder **Auth > Login as Admin/Customer/Shop**\n5. Tất cả API còn lại sẽ tự dùng token đã lưu\n\n## Auto Refresh Token\nNếu token hết hạn (401), collection sẽ **tự động refresh** và retry request.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// === AUTO REFRESH TOKEN (Collection-level Pre-request) ===",
+          "// Nếu accessToken trống thì skip (chưa login)",
+          "// Script này chạy trước MỌI request trong collection",
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// === AUTO RETRY ON 401 (Collection-level Test) ===",
+          "if (pm.response.code === 401 && !pm.variables.get('_retried')) {",
+          "    const userId = pm.environment.get('userId');",
+          "    const refreshToken = pm.environment.get('refreshToken');",
+          "    ",
+          "    if (userId && refreshToken) {",
+          "        const baseUrl = pm.environment.get('baseUrl');",
+          "        ",
+          "        pm.sendRequest({",
+          "            url: baseUrl + '/api/v1/Users/refresh-token/' + userId,",
+          "            method: 'POST',",
+          "            header: { 'Content-Type': 'application/json' },",
+          "            body: {",
+          "                mode: 'raw',",
+          "                raw: JSON.stringify({ refreshToken: refreshToken })",
+          "            }",
+          "        }, function (err, res) {",
+          "            if (!err && res.code === 200) {",
+          "                const body = res.json();",
+          "                const data = body.data || body;",
+          "                pm.environment.set('accessToken', data.token);",
+          "                pm.environment.set('refreshToken', data.refreshToken);",
+          "                console.log('Token auto-refreshed successfully!');",
+          "                // Mark as retried to avoid infinite loop",
+          "                pm.variables.set('_retried', true);",
+          "            } else {",
+          "                console.log('Auto-refresh failed. Please login again.');",
+          "            }",
+          "        });",
+          "    }",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [],
+  "item": [
+    {
+      "name": "🔐 Auth & Users",
+      "description": "Authentication, registration, password management",
+      "item": [
+        {
+          "name": "Login as Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    const data = body.data;",
+                  "    ",
+                  "    pm.environment.set('accessToken', data.token);",
+                  "    pm.environment.set('refreshToken', data.refreshToken);",
+                  "    pm.environment.set('userId', data.id);",
+                  "    pm.environment.set('userEmail', data.email);",
+                  "    pm.environment.set('userRole', data.role);",
+                  "    ",
+                  "    pm.test('Login successful - Token saved!', function () {",
+                  "        pm.expect(data.token).to.not.be.empty;",
+                  "    });",
+                  "    ",
+                  "    console.log('Logged in as: ' + data.email + ' | Role: ' + data.role);",
+                  "} else {",
+                  "    pm.test('Login failed', function () { pm.expect.fail(pm.response.text()); });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login as Customer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    const data = body.data;",
+                  "    ",
+                  "    pm.environment.set('accessToken', data.token);",
+                  "    pm.environment.set('refreshToken', data.refreshToken);",
+                  "    pm.environment.set('userId', data.id);",
+                  "    pm.environment.set('userEmail', data.email);",
+                  "    pm.environment.set('userRole', data.role);",
+                  "    ",
+                  "    pm.test('Login successful - Token saved!', function () {",
+                  "        pm.expect(data.token).to.not.be.empty;",
+                  "    });",
+                  "    ",
+                  "    console.log('Logged in as: ' + data.email + ' | Role: ' + data.role);",
+                  "} else {",
+                  "    pm.test('Login failed', function () { pm.expect.fail(pm.response.text()); });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customerEmail}}\",\n  \"password\": \"{{customerPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login as Shop",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    const data = body.data;",
+                  "    ",
+                  "    pm.environment.set('accessToken', data.token);",
+                  "    pm.environment.set('refreshToken', data.refreshToken);",
+                  "    pm.environment.set('userId', data.id);",
+                  "    pm.environment.set('userEmail', data.email);",
+                  "    pm.environment.set('userRole', data.role);",
+                  "    ",
+                  "    pm.test('Login successful - Token saved!', function () {",
+                  "        pm.expect(data.token).to.not.be.empty;",
+                  "    });",
+                  "    ",
+                  "    console.log('Logged in as: ' + data.email + ' | Role: ' + data.role);",
+                  "} else {",
+                  "    pm.test('Login failed', function () { pm.expect.fail(pm.response.text()); });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{shopEmail}}\",\n  \"password\": \"{{shopPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login (Custom)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    const data = body.data;",
+                  "    ",
+                  "    pm.environment.set('accessToken', data.token);",
+                  "    pm.environment.set('refreshToken', data.refreshToken);",
+                  "    pm.environment.set('userId', data.id);",
+                  "    pm.environment.set('userEmail', data.email);",
+                  "    pm.environment.set('userRole', data.role);",
+                  "    ",
+                  "    pm.test('Login successful', function () {",
+                  "        pm.expect(data.token).to.not.be.empty;",
+                  "    });",
+                  "    console.log('Logged in as: ' + data.email + ' | Role: ' + data.role);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"your-email@example.com\",\n  \"password\": \"your-password\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users", "login"]
+            }
+          }
+        },
+        {
+          "name": "Register",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"testuser01\",\n  \"password\": \"Test@123456\",\n  \"email\": \"testuser01@gmail.com\",\n  \"firstName\": \"Test\",\n  \"lastName\": \"User\",\n  \"role\": 0\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users", "register"]
+            }
+          }
+        },
+        {
+          "name": "Get All Users",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users?currentPage=1&pageSize=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users"],
+              "query": [
+                { "key": "currentPage", "value": "1" },
+                { "key": "pageSize", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/profile/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users", "profile", "{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Updated\",\n  \"lastName\": \"Name\",\n  \"phoneNumber\": \"0901234567\",\n  \"gender\": \"Male\",\n  \"dateOfBirth\": \"2000-01-01\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/profile/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users", "profile", "{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oldPassword\": \"OldPass@123\",\n  \"newPassword\": \"NewPass@123\",\n  \"confirmNewPassword\": \"NewPass@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/change-password/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users", "change-password", "{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    const data = body.data;",
+                  "    pm.environment.set('accessToken', data.token);",
+                  "    pm.environment.set('refreshToken', data.refreshToken);",
+                  "    pm.test('Token refreshed!', () => pm.expect(data.token).to.not.be.empty);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/refresh-token/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users", "refresh-token", "{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    pm.environment.set('accessToken', '');",
+                  "    pm.environment.set('refreshToken', '');",
+                  "    pm.test('Logged out - tokens cleared', () => pm.expect(true).to.be.true);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/logout/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users", "logout", "{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"your-email@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/forgot-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users", "forgot-password"]
+            }
+          }
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"your-email@example.com\",\n  \"code\": \"123456\",\n  \"newPassword\": \"NewPass@123\",\n  \"confirmPassword\": \"NewPass@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/reset-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users", "reset-password"]
+            }
+          }
+        },
+        {
+          "name": "Send Activation Code",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "\"your-email@example.com\""
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/send-activation-code",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users", "send-activation-code"]
+            }
+          }
+        },
+        {
+          "name": "Verify Activation Code",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"your-email@example.com\",\n  \"code\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/verify-activation-code",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users", "verify-activation-code"]
+            }
+          }
+        },
+        {
+          "name": "Upgrade to Shop",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/upgrade-to-shop/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users", "upgrade-to-shop", "{{userId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👑 Admin - User Management",
+      "description": "Admin-only endpoints (Cần login Admin trước)",
+      "item": [
+        {
+          "name": "Admin: Create User",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"newshop01\",\n  \"password\": \"Shop@123456\",\n  \"email\": \"newshop01@gmail.com\",\n  \"firstName\": \"Shop\",\n  \"lastName\": \"Owner\",\n  \"role\": \"Shop\",\n  \"status\": \"Active\",\n  \"gender\": \"Male\",\n  \"dateOfBirth\": \"1995-06-15\",\n  \"phoneNumber\": \"0912345678\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/admin/create-user",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users", "admin", "create-user"]
+            }
+          }
+        },
+        {
+          "name": "Admin: Update User",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Updated\",\n  \"lastName\": \"ByAdmin\",\n  \"role\": \"Customer\",\n  \"status\": \"Active\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/admin/update-user/{{targetUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "Users",
+                "admin",
+                "update-user",
+                "{{targetUserId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin: Delete User",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/admin/delete-user/{{targetUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "Users",
+                "admin",
+                "delete-user",
+                "{{targetUserId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin: Ban User",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/admin/ban/{{targetUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Users", "admin", "ban", "{{targetUserId}}"]
+            }
+          }
+        },
+        {
+          "name": "Admin: Unban User",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/admin/un-ban/{{targetUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "Users",
+                "admin",
+                "un-ban",
+                "{{targetUserId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin: Soft Delete User",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/admin/soft-delete/{{targetUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "Users",
+                "admin",
+                "soft-delete",
+                "{{targetUserId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin: Restore User",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Users/admin/restore/{{targetUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "Users",
+                "admin",
+                "restore",
+                "{{targetUserId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏪 Shop",
+      "description": "Shop management endpoints",
+      "item": [
+        {
+          "name": "List Marketplace Shops",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/shops?page=1&size=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "shops"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "size", "value": "10" },
+                { "key": "searchTerm", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Shop Public Profile",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/shops/{{shopId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "shops", "{{shopId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get My Shop",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/shops/my-shop",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "shops", "my-shop"]
+            }
+          }
+        },
+        {
+          "name": "Register Shop",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "ShopName",
+                  "value": "My Keyboard Shop",
+                  "type": "text"
+                },
+                { "key": "Bio", "value": "Custom keyboards", "type": "text" },
+                { "key": "Address", "value": "123 Test St", "type": "text" },
+                { "key": "Phone", "value": "0901234567", "type": "text" },
+                { "key": "Email", "value": "shop@test.com", "type": "text" },
+                { "key": "CitizenId", "value": "012345678901", "type": "text" },
+                { "key": "TaxCode", "value": "0123456789", "type": "text" },
+                { "key": "BankName", "value": "Vietcombank", "type": "text" },
+                {
+                  "key": "BankAccountNumber",
+                  "value": "1234567890",
+                  "type": "text"
+                },
+                {
+                  "key": "BankAccountName",
+                  "value": "NGUYEN VAN A",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/shops/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "shops", "register"]
+            }
+          }
+        },
+        {
+          "name": "Update Shop Profile",
+          "request": {
+            "method": "PATCH",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "Bio", "value": "Updated bio", "type": "text" },
+                { "key": "Address", "value": "456 New St", "type": "text" },
+                { "key": "Phone", "value": "0909876543", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/shops/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "shops", "profile"]
+            }
+          }
+        },
+        {
+          "name": "Resubmit Shop (After Rejected)",
+          "request": {
+            "method": "PUT",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "ShopName", "value": "Updated Name", "type": "text" },
+                { "key": "CitizenId", "value": "012345678901", "type": "text" },
+                { "key": "TaxCode", "value": "0123456789", "type": "text" },
+                { "key": "BankName", "value": "Vietcombank", "type": "text" },
+                {
+                  "key": "BankAccountNumber",
+                  "value": "9876543210",
+                  "type": "text"
+                },
+                {
+                  "key": "BankAccountName",
+                  "value": "NGUYEN VAN B",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/shops/profile/resubmit",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "shops", "profile", "resubmit"]
+            }
+          }
+        },
+        {
+          "name": "Deactivate My Shop",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/shops/deactivate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "shops", "deactivate"]
+            }
+          }
+        },
+        {
+          "name": "Reactivate My Shop",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/shops/reactivate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "shops", "reactivate"]
+            }
+          }
+        },
+        {
+          "name": "Update Bank Info",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bankName\": \"Vietcombank\",\n  \"bankAccountNumber\": \"1234567890\",\n  \"bankAccountName\": \"NGUYEN VAN A\",\n  \"password\": \"your-password\",\n  \"pin\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/shops/bank-info",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "shops", "bank-info"]
+            }
+          }
+        },
+        {
+          "name": "Admin: List All Shops",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/shops/admin/list?page=1&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "shops", "admin", "list"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "size", "value": "20" },
+                { "key": "searchTerm", "value": "", "disabled": true },
+                { "key": "status", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin: Approve/Reject Shop",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Active\",\n  \"reason\": \"Approved\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/shops/admin/{{shopId}}/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "shops", "admin", "{{shopId}}", "approve"]
+            }
+          }
+        },
+        {
+          "name": "Admin: Pending Approval",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/shops/admin/pending-approval?page=1&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "shops", "admin", "pending-approval"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "size", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin: Ban Shop",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/shops/admin/{{shopId}}/ban",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "shops", "admin", "{{shopId}}", "ban"]
+            }
+          }
+        },
+        {
+          "name": "Admin: Unban Shop",
+          "request": {
+            "method": "PATCH",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/shops/admin/{{shopId}}/unban",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "shops", "admin", "{{shopId}}", "unban"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📦 Orders & Cart",
+      "description": "Shopping cart and order management",
+      "item": [
+        {
+          "name": "Add to Cart",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Item added to cart', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{partId}}\",\n  \"quantity\": 1,\n  \"sessionId\": null\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/cart",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "orders", "cart"]
+            }
+          }
+        },
+        {
+          "name": "Get My Cart",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    const data = body.data;",
+                  "    if (data && data.items && data.items.length > 0) {",
+                  "        pm.environment.set('cartItemId', data.items[0].id);",
+                  "        console.log('First cart item ID saved: ' + data.items[0].id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/cart",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "orders", "cart"]
+            }
+          }
+        },
+        {
+          "name": "Update Cart Item Quantity",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 2\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/cart/{{cartItemId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "orders", "cart", "{{cartItemId}}"]
+            }
+          }
+        },
+        {
+          "name": "Remove Item from Cart",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/cart/{{cartItemId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "orders", "cart", "{{cartItemId}}"]
+            }
+          }
+        },
+        {
+          "name": "Checkout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    console.log('Checkout response:', JSON.stringify(body.data));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartItemIds\": [\"{{cartItemId}}\"],\n  \"shippingAddress\": \"123 Test Street, District 1, HCMC\",\n  \"note\": \"Please handle with care\",\n  \"voucherCode\": null\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/checkout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "orders", "checkout"]
+            }
+          }
+        },
+        {
+          "name": "Get My Orders",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    const data = body.data;",
+                  "    if (data && data.length > 0) {",
+                  "        pm.environment.set('orderId', data[0].id);",
+                  "        console.log('First order ID saved: ' + data[0].id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/my-orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "orders", "my-orders"]
+            }
+          }
+        },
+        {
+          "name": "Get Payment History",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    const data = body.data;",
+                  "    if (data && data.length > 0) {",
+                  "        pm.environment.set('orderGroupId', data[0].id);",
+                  "        console.log('First order group ID saved: ' + data[0].id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/my-payment-history",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "orders", "my-payment-history"]
+            }
+          }
+        },
+        {
+          "name": "Get Order Group Detail",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/groups/{{orderGroupId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "orders", "groups", "{{orderGroupId}}"]
+            }
+          }
+        },
+        {
+          "name": "Request Cancel Order",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"reason\": \"Changed my mind\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/cancel-request",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "orders", "cancel-request"]
+            }
+          }
+        },
+        {
+          "name": "Shop: Process Cancel Request",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"issueId\": \"ISSUE_ID_HERE\",\n  \"isApproved\": true,\n  \"shopResponse\": \"Accepted cancel request\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/process-issue",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "orders", "process-issue"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🧩 Parts / Products",
+      "description": "Product catalog management",
+      "item": [
+        {
+          "name": "Search Parts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    const data = body.data;",
+                  "    if (data && data.data && data.data.length > 0) {",
+                  "        pm.environment.set('partId', data.data[0].id);",
+                  "        console.log('First part ID saved: ' + data.data[0].id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/parts?PageNumber=1&PageSize=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "parts"],
+              "query": [
+                { "key": "PageNumber", "value": "1" },
+                { "key": "PageSize", "value": "10" },
+                { "key": "SearchTerm", "value": "", "disabled": true },
+                { "key": "PartType", "value": "", "disabled": true },
+                { "key": "ShopId", "value": "", "disabled": true },
+                { "key": "CategoryId", "value": "", "disabled": true },
+                { "key": "IsActive", "value": "true", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Part by Slug",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/parts/detail/your-part-slug",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "parts", "detail", "your-part-slug"]
+            }
+          }
+        },
+        {
+          "name": "Create Part",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "Name", "value": "Test Switch", "type": "text" },
+                {
+                  "key": "Description",
+                  "value": "A test switch product",
+                  "type": "text"
+                },
+                { "key": "Price", "value": "150000", "type": "text" },
+                { "key": "Stock", "value": "100", "type": "text" },
+                { "key": "PartType", "value": "SWITCH", "type": "text" },
+                {
+                  "key": "CategoryId",
+                  "value": "{{categoryId}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/parts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "parts"]
+            }
+          }
+        },
+        {
+          "name": "Update Part",
+          "request": {
+            "method": "PUT",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "Name", "value": "Updated Switch", "type": "text" },
+                { "key": "Price", "value": "180000", "type": "text" },
+                { "key": "Stock", "value": "50", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/parts/{{partId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "parts", "{{partId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Part",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/parts/{{partId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "parts", "{{partId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get Recommendations",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/parts/recommendations?baseKitId={{baseKitId}}&partType=SWITCH",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "parts", "recommendations"],
+              "query": [
+                { "key": "baseKitId", "value": "{{baseKitId}}" },
+                { "key": "partType", "value": "SWITCH" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Check Stock",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productIds\": [\"{{partId}}\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/parts/check-stock",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "parts", "check-stock"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📂 Categories",
+      "description": "Category management",
+      "item": [
+        {
+          "name": "Get Categories",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    const data = body.data;",
+                  "    if (data && data.length > 0) {",
+                  "        pm.environment.set('categoryId', data[0].id);",
+                  "        console.log('First category ID saved: ' + data[0].id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/catalog/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "catalog", "categories"],
+              "query": [
+                { "key": "ShopId", "value": "", "disabled": true },
+                { "key": "IncludeInactive", "value": "false", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Category by ID",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/catalog/categories/{{categoryId}}?includeSubCategories=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "catalog", "categories", "{{categoryId}}"],
+              "query": [{ "key": "includeSubCategories", "value": "true" }]
+            }
+          }
+        },
+        {
+          "name": "Get Parts in Category",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/catalog/categories/{{categoryId}}/parts?pageNumber=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "catalog",
+                "categories",
+                "{{categoryId}}",
+                "parts"
+              ],
+              "query": [
+                { "key": "pageNumber", "value": "1" },
+                { "key": "pageSize", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Root Categories",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/catalog/categories/root",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "catalog", "categories", "root"]
+            }
+          }
+        },
+        {
+          "name": "Get Parts by Category Slug",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/catalog/categories/slug/your-slug/parts?pageNumber=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "catalog",
+                "categories",
+                "slug",
+                "your-slug",
+                "parts"
+              ],
+              "query": [
+                { "key": "pageNumber", "value": "1" },
+                { "key": "pageSize", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Category",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "Name", "value": "New Category", "type": "text" },
+                {
+                  "key": "Description",
+                  "value": "Category description",
+                  "type": "text"
+                },
+                {
+                  "key": "ParentId",
+                  "value": "",
+                  "type": "text",
+                  "disabled": true
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/catalog/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "catalog", "categories"]
+            }
+          }
+        },
+        {
+          "name": "Update Category",
+          "request": {
+            "method": "PATCH",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "Name", "value": "Updated Category", "type": "text" },
+                {
+                  "key": "Description",
+                  "value": "Updated desc",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/catalog/categories/{{categoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "catalog", "categories", "{{categoryId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Category",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/catalog/categories/{{categoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "catalog", "categories", "{{categoryId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "💳 Payment",
+      "description": "Stripe payment",
+      "item": [
+        {
+          "name": "Create Checkout Session",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderGroupId\": \"{{orderGroupId}}\",\n  \"successUrl\": \"http://localhost:3000/payment/success\",\n  \"cancelUrl\": \"http://localhost:3000/payment/cancel\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Payment/create-checkout-session",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Payment", "create-checkout-session"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "💰 Wallet",
+      "description": "Wallet, transactions, deposit, withdrawal",
+      "item": [
+        {
+          "name": "Get My Wallet",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Wallet",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Wallet"]
+            }
+          }
+        },
+        {
+          "name": "Initialize Wallet",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Wallet/init",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Wallet", "init"]
+            }
+          }
+        },
+        {
+          "name": "Get Transactions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Wallet/transactions?PageNumber=1&PageSize=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Wallet", "transactions"],
+              "query": [
+                { "key": "PageNumber", "value": "1" },
+                { "key": "PageSize", "value": "10" },
+                { "key": "Type", "value": "", "disabled": true },
+                { "key": "Status", "value": "", "disabled": true },
+                { "key": "SortBy", "value": "CreatedAt", "disabled": true },
+                { "key": "IsAscending", "value": "false", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Deposit",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100000,\n  \"successUrl\": \"http://localhost:3000/wallet/success\",\n  \"cancelUrl\": \"http://localhost:3000/wallet/cancel\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Wallet/deposit",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Wallet", "deposit"]
+            }
+          }
+        },
+        {
+          "name": "Request Withdrawal",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 50000,\n  \"pin\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Wallet/withdraw",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Wallet", "withdraw"]
+            }
+          }
+        },
+        {
+          "name": "Get Wallet Statistics",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Wallet/statistics",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Wallet", "statistics"]
+            }
+          }
+        },
+        {
+          "name": "Get Held Transactions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Wallet/held-transactions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Wallet", "held-transactions"]
+            }
+          }
+        },
+        {
+          "name": "PIN: Check Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Wallet/pin/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Wallet", "pin", "status"]
+            }
+          }
+        },
+        {
+          "name": "PIN: Setup",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"your-login-password\",\n  \"newPin\": \"123456\",\n  \"confirmPin\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Wallet/pin/setup",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Wallet", "pin", "setup"]
+            }
+          }
+        },
+        {
+          "name": "PIN: Change",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oldPin\": \"123456\",\n  \"newPin\": \"654321\",\n  \"confirmPin\": \"654321\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Wallet/pin/change",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Wallet", "pin", "change"]
+            }
+          }
+        },
+        {
+          "name": "PIN: Forgot (Send OTP)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Wallet/pin/forgot",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Wallet", "pin", "forgot"]
+            }
+          }
+        },
+        {
+          "name": "PIN: Reset with OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"otp\": \"123456\",\n  \"newPin\": \"111111\",\n  \"confirmPin\": \"111111\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Wallet/pin/reset",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Wallet", "pin", "reset"]
+            }
+          }
+        },
+        {
+          "name": "Admin: All Transactions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Wallet/admin/transactions?PageNumber=1&PageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Wallet", "admin", "transactions"],
+              "query": [
+                { "key": "PageNumber", "value": "1" },
+                { "key": "PageSize", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin: Pending Withdrawals",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Wallet/admin/withdrawals/pending",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Wallet", "admin", "withdrawals", "pending"]
+            }
+          }
+        },
+        {
+          "name": "Admin: Approve Withdrawal",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Wallet/admin/withdrawals/{{paymentId}}/approve",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "Wallet",
+                "admin",
+                "withdrawals",
+                "{{paymentId}}",
+                "approve"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin: Reject Withdrawal",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isApproved\": false,\n  \"reason\": \"Insufficient verification\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Wallet/admin/withdrawals/{{paymentId}}/reject",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "Wallet",
+                "admin",
+                "withdrawals",
+                "{{paymentId}}",
+                "reject"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin: Adjust Balance",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{targetUserId}}\",\n  \"amount\": 100000,\n  \"reason\": \"Compensation for issue #123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Wallet/admin/adjust-balance",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Wallet", "admin", "adjust-balance"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🎟️ Voucher",
+      "description": "Voucher management",
+      "item": [
+        {
+          "name": "Create Promotional Voucher",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"SAVE10\",\n  \"name\": \"Save 10%\",\n  \"description\": \"10% off all items\",\n  \"discountType\": \"Percentage\",\n  \"discountAmount\": 10,\n  \"minOrderValue\": 100000,\n  \"maxDiscountAmount\": 50000,\n  \"startDate\": \"2026-02-14\",\n  \"endDate\": \"2026-03-14\",\n  \"usageLimit\": 100\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Voucher/promotion",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Voucher", "promotion"]
+            }
+          }
+        },
+        {
+          "name": "Create Negotiation Voucher",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetUserId\": \"{{targetUserId}}\",\n  \"discountAmount\": 50000,\n  \"minOrderValue\": 200000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Voucher/negotiation",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Voucher", "negotiation"]
+            }
+          }
+        },
+        {
+          "name": "Apply Voucher",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"code\": \"SAVE10\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Voucher/apply",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Voucher", "apply"]
+            }
+          }
+        },
+        {
+          "name": "Remove Voucher",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Voucher/remove/{{orderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Voucher", "remove", "{{orderId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get My Vouchers",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Voucher/my-vouchers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Voucher", "my-vouchers"]
+            }
+          }
+        },
+        {
+          "name": "Get Shop Vouchers (Owner)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Voucher/shop?PageNumber=1&PageSize=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Voucher", "shop"],
+              "query": [
+                { "key": "PageNumber", "value": "1" },
+                { "key": "PageSize", "value": "10" },
+                { "key": "Status", "value": "", "disabled": true },
+                { "key": "Code", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Voucher by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Voucher/{{voucherId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Voucher", "{{voucherId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Voucher",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Voucher\",\n  \"description\": \"Updated description\",\n  \"endDate\": \"2026-04-14\",\n  \"usageLimit\": 200\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Voucher/{{voucherId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Voucher", "{{voucherId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Voucher",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Voucher/{{voucherId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Voucher", "{{voucherId}}"]
+            }
+          }
+        },
+        {
+          "name": "Toggle Voucher Status",
+          "request": {
+            "method": "PATCH",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Voucher/{{voucherId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Voucher", "{{voucherId}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "Get Shop Public Vouchers",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Voucher/shop/{{shopId}}/public",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Voucher", "shop", "{{shopId}}", "public"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👥 Follows",
+      "description": "Follow/Unfollow system",
+      "item": [
+        {
+          "name": "Toggle Follow/Unfollow",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"followedId\": \"{{targetUserId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Follows/toggle",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Follows", "toggle"]
+            }
+          }
+        },
+        {
+          "name": "Get My Following List",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Follows",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Follows"]
+            }
+          }
+        },
+        {
+          "name": "Check If Following",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{targetUserId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Follows/check",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Follows", "check"]
+            }
+          }
+        },
+        {
+          "name": "Get Followers of User",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Follows/followers/{{targetUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Follows", "followers", "{{targetUserId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔧 Builder (Custom Keyboard)",
+      "description": "Keyboard builder session management",
+      "item": [
+        {
+          "name": "Start Builder Session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    const data = body.data;",
+                  "    if (data && data.sessionId) {",
+                  "        pm.environment.set('sessionId', data.sessionId);",
+                  "        console.log('Session ID saved: ' + data.sessionId);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"baseKitId\": \"{{baseKitId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Builder/start",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Builder", "start"]
+            }
+          }
+        },
+        {
+          "name": "Select Part (Next Step)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"{{sessionId}}\",\n  \"stepName\": \"case\",\n  \"selectedPartId\": \"{{partId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Builder/select",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Builder", "select"]
+            }
+          }
+        },
+        {
+          "name": "Get Builder Config",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Builder/config/{{baseKitId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Builder", "config", "{{baseKitId}}"]
+            }
+          }
+        },
+        {
+          "name": "Search Compatible Parts",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Builder/search?SessionId={{sessionId}}&StepName=switch&SearchTerm=&PageNumber=1&PageSize=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Builder", "search"],
+              "query": [
+                { "key": "SessionId", "value": "{{sessionId}}" },
+                { "key": "StepName", "value": "switch" },
+                { "key": "SearchTerm", "value": "" },
+                { "key": "PageNumber", "value": "1" },
+                { "key": "PageSize", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Validate Configuration",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"baseKitId\": \"{{baseKitId}}\",\n  \"componentIds\": [\"PART_ID_1\", \"PART_ID_2\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Builder/validate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Builder", "validate"]
+            }
+          }
+        },
+        {
+          "name": "Check Compatibility",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Builder/check-match?baseKitId={{baseKitId}}&componentId={{partId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Builder", "check-match"],
+              "query": [
+                { "key": "baseKitId", "value": "{{baseKitId}}" },
+                { "key": "componentId", "value": "{{partId}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resume Session",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Builder/session/{{sessionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Builder", "session", "{{sessionId}}"],
+              "query": [{ "key": "stepName", "value": "", "disabled": true }]
+            }
+          }
+        },
+        {
+          "name": "Remove Part from Session",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Builder/session/{{sessionId}}/part/case",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "Builder",
+                "session",
+                "{{sessionId}}",
+                "part",
+                "case"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get My Sessions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Builder/sessions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Builder", "sessions"]
+            }
+          }
+        },
+        {
+          "name": "Create Session from Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    if (body.data && body.data.sessionId) {",
+                  "        pm.environment.set('sessionId', body.data.sessionId);",
+                  "        console.log('New session from order: ' + body.data.sessionId);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Builder/from-order/ORDER_ITEM_ID_HERE",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "Builder",
+                "from-order",
+                "ORDER_ITEM_ID_HERE"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Kit Option",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "BaseKitId",
+                  "value": "{{baseKitId}}",
+                  "type": "text"
+                },
+                { "key": "ComponentId", "value": "{{partId}}", "type": "text" },
+                { "key": "StepName", "value": "case", "type": "text" },
+                { "key": "NextStepFilterRule", "value": "", "type": "text" },
+                {
+                  "key": "LayerImage",
+                  "value": "",
+                  "type": "file",
+                  "src": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Builder/options",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Builder", "options"]
+            }
+          }
+        },
+        {
+          "name": "Delete Kit Option",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Builder/options/OPTION_ID_HERE",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Builder", "options", "OPTION_ID_HERE"]
+            }
+          }
+        },
+        {
+          "name": "Reset Builder Config",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/Builder/config/{{baseKitId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "Builder", "config", "{{baseKitId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "⌨️ Assembled Products",
+      "description": "Pre-assembled keyboard products",
+      "item": [
+        {
+          "name": "Get All Assembled Products",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    const data = body.data;",
+                  "    if (data && data.items && data.items.length > 0) {",
+                  "        pm.environment.set('assembledProductId', data.items[0].id);",
+                  "        console.log('First assembled product ID saved: ' + data.items[0].id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/AssembledProduct?currentPage=1&pageSize=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "AssembledProduct"],
+              "query": [
+                { "key": "currentPage", "value": "1" },
+                { "key": "pageSize", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get by Shop",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/AssembledProduct/shop/{{shopId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "AssembledProduct", "shop", "{{shopId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get Detail",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/AssembledProduct/{{assembledProductId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "AssembledProduct",
+                "{{assembledProductId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Assembled Product",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Custom TKL Keyboard\",\n  \"description\": \"A custom TKL keyboard build\",\n  \"price\": 3500000,\n  \"quantity\": 10,\n  \"kitId\": \"{{baseKitId}}\",\n  \"componentIds\": [\"PART_ID_1\", \"PART_ID_2\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/AssembledProduct",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "AssembledProduct"]
+            }
+          }
+        },
+        {
+          "name": "Update Assembled Product",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated TKL Keyboard\",\n  \"price\": 3800000,\n  \"quantity\": 5\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/AssembledProduct/{{assembledProductId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "AssembledProduct",
+                "{{assembledProductId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Assembled Product",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/AssembledProduct/{{assembledProductId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "AssembledProduct",
+                "{{assembledProductId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Restore Assembled Product",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/AssembledProduct/restore/{{assembledProductId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "v1",
+                "AssembledProduct",
+                "restore",
+                "{{assembledProductId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔄 Flows (Test Scenarios)",
+      "description": "Pre-built test flows. Chạy từng folder theo thứ tự để test cả luồng.",
+      "item": [
+        {
+          "name": "Flow 1: Register → Activate → Login",
+          "description": "Luồng đăng ký tài khoản mới",
+          "item": [
+            {
+              "name": "Step 1: Register",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Registration successful', () => pm.response.to.have.status(200));",
+                      "console.log('Account registered! Check email for activation code.');"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"username\": \"flowtest01\",\n  \"password\": \"Flow@123456\",\n  \"email\": \"flowtest01@gmail.com\",\n  \"firstName\": \"Flow\",\n  \"lastName\": \"Test\",\n  \"role\": 0\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/Users/register",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "Users", "register"]
+                }
+              }
+            },
+            {
+              "name": "Step 2: Send Activation Code",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "\"flowtest01@gmail.com\""
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/Users/send-activation-code",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "Users", "send-activation-code"]
+                }
+              }
+            },
+            {
+              "name": "Step 3: Verify Activation Code",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"flowtest01@gmail.com\",\n  \"code\": \"PASTE_CODE_HERE\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/Users/verify-activation-code",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "Users", "verify-activation-code"]
+                }
+              }
+            },
+            {
+              "name": "Step 4: Login",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "    const data = pm.response.json().data;",
+                      "    pm.environment.set('accessToken', data.token);",
+                      "    pm.environment.set('refreshToken', data.refreshToken);",
+                      "    pm.environment.set('userId', data.id);",
+                      "    pm.environment.set('userEmail', data.email);",
+                      "    pm.environment.set('userRole', data.role);",
+                      "    pm.test('Login OK - Token saved', () => pm.expect(data.token).to.not.be.empty);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"flowtest01@gmail.com\",\n  \"password\": \"Flow@123456\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/Users/login",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "Users", "login"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Flow 2: Browse → Cart → Checkout",
+          "description": "Luồng mua hàng: Xem sản phẩm → Thêm vào giỏ → Thanh toán",
+          "item": [
+            {
+              "name": "Step 1: Login (Customer)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "    const data = pm.response.json().data;",
+                      "    pm.environment.set('accessToken', data.token);",
+                      "    pm.environment.set('refreshToken', data.refreshToken);",
+                      "    pm.environment.set('userId', data.id);",
+                      "    pm.test('Logged in', () => pm.expect(data.token).to.not.be.empty);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"{{customerEmail}}\",\n  \"password\": \"{{customerPassword}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/Users/login",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "Users", "login"]
+                }
+              }
+            },
+            {
+              "name": "Step 2: Browse Parts",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "    const body = pm.response.json();",
+                      "    const data = body.data;",
+                      "    if (data && data.data && data.data.length > 0) {",
+                      "        pm.environment.set('partId', data.data[0].id);",
+                      "        console.log('Selected part: ' + data.data[0].name + ' (ID: ' + data.data[0].id + ')');",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/parts?PageNumber=1&PageSize=5",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "parts"],
+                  "query": [
+                    { "key": "PageNumber", "value": "1" },
+                    { "key": "PageSize", "value": "5" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Step 3: Add to Cart",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"productId\": \"{{partId}}\",\n  \"quantity\": 1\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/orders/cart",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "orders", "cart"]
+                }
+              }
+            },
+            {
+              "name": "Step 4: View Cart",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "    const body = pm.response.json();",
+                      "    const data = body.data;",
+                      "    if (data && data.items && data.items.length > 0) {",
+                      "        pm.environment.set('cartItemId', data.items[0].id);",
+                      "        console.log('Cart item ID: ' + data.items[0].id);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/orders/cart",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "orders", "cart"]
+                }
+              }
+            },
+            {
+              "name": "Step 5: Checkout",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"cartItemIds\": [\"{{cartItemId}}\"],\n  \"shippingAddress\": \"123 Test Street, HCMC\",\n  \"note\": \"\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/orders/checkout",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "orders", "checkout"]
+                }
+              }
+            },
+            {
+              "name": "Step 6: View Orders",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "    const data = pm.response.json().data;",
+                      "    if (data && data.length > 0) {",
+                      "        pm.environment.set('orderId', data[0].id);",
+                      "        console.log('Order ID: ' + data[0].id);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/orders/my-orders",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "orders", "my-orders"]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Flow 3: Shop Registration",
+          "description": "Luồng đăng ký Shop: Login Customer → Upgrade → Register Shop → Admin Approve",
+          "item": [
+            {
+              "name": "Step 1: Login as Customer",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "    const data = pm.response.json().data;",
+                      "    pm.environment.set('accessToken', data.token);",
+                      "    pm.environment.set('refreshToken', data.refreshToken);",
+                      "    pm.environment.set('userId', data.id);",
+                      "    pm.test('Logged in', () => pm.expect(data.token).to.not.be.empty);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"{{customerEmail}}\",\n  \"password\": \"{{customerPassword}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/Users/login",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "Users", "login"]
+                }
+              }
+            },
+            {
+              "name": "Step 2: Upgrade to Shop Role",
+              "request": {
+                "method": "POST",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/Users/upgrade-to-shop/{{userId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": [
+                    "api",
+                    "v1",
+                    "Users",
+                    "upgrade-to-shop",
+                    "{{userId}}"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Step 3: Register Shop",
+              "request": {
+                "method": "POST",
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "ShopName",
+                      "value": "Flow Test Shop",
+                      "type": "text"
+                    },
+                    { "key": "Bio", "value": "Test shop bio", "type": "text" },
+                    {
+                      "key": "Address",
+                      "value": "789 Shop St",
+                      "type": "text"
+                    },
+                    { "key": "Phone", "value": "0901234567", "type": "text" },
+                    {
+                      "key": "Email",
+                      "value": "shop@test.com",
+                      "type": "text"
+                    },
+                    {
+                      "key": "CitizenId",
+                      "value": "012345678901",
+                      "type": "text"
+                    },
+                    { "key": "TaxCode", "value": "0123456789", "type": "text" },
+                    {
+                      "key": "BankName",
+                      "value": "Vietcombank",
+                      "type": "text"
+                    },
+                    {
+                      "key": "BankAccountNumber",
+                      "value": "1234567890",
+                      "type": "text"
+                    },
+                    {
+                      "key": "BankAccountName",
+                      "value": "NGUYEN VAN A",
+                      "type": "text"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/shops/register",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "shops", "register"]
+                }
+              }
+            },
+            {
+              "name": "Step 4: Login as Admin",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "    const data = pm.response.json().data;",
+                      "    pm.environment.set('accessToken', data.token);",
+                      "    pm.environment.set('refreshToken', data.refreshToken);",
+                      "    pm.environment.set('userId', data.id);",
+                      "    pm.test('Admin logged in', () => pm.expect(data.role).to.equal('Admin'));",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/Users/login",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "Users", "login"]
+                }
+              }
+            },
+            {
+              "name": "Step 5: Get Pending Shops",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "    const body = pm.response.json();",
+                      "    const data = body.data;",
+                      "    if (data && data.items && data.items.length > 0) {",
+                      "        pm.environment.set('shopId', data.items[0].id);",
+                      "        console.log('Pending shop ID: ' + data.items[0].id);",
+                      "    }",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/shops/admin/pending-approval?page=1&size=20",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "shops", "admin", "pending-approval"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "size", "value": "20" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Step 6: Approve Shop",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"Active\",\n  \"reason\": \"Approved by test flow\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/shops/admin/{{shopId}}/approve",
+                  "host": ["{{baseUrl}}"],
+                  "path": [
+                    "api",
+                    "v1",
+                    "shops",
+                    "admin",
+                    "{{shopId}}",
+                    "approve"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
