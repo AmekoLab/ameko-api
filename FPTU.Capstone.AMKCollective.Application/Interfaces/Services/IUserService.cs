@@ -33,5 +33,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<(bool Success, string ErrorMessage)> SoftDeleteUserAsync(Guid userId);
         Task<(bool Success, string ErrorMessage)> RestoreUserAsync(Guid userId);
         Task<(bool Success, string ErrorMessage)> UnBanUserAsync(Guid userId);
+        Task<bool> VerifyPasswordAsync(Guid userId, string password);
     }
 }
