@@ -41,6 +41,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Vouchers.AddAsync(voucher);
             await _unitOfWork.CommitAsync();
 
+            var creator = await _unitOfWork.Users.GetByIdAsync(userId);
+            voucher.Creator = creator;
+
             return _mapper.Map<VoucherResponse>(voucher);
         }
 
@@ -74,6 +77,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Vouchers.AddAsync(voucher);
             await _unitOfWork.CommitAsync();
 
+            var creator = await _unitOfWork.Users.GetByIdAsync(shopId); 
+            voucher.Creator = creator;
             return _mapper.Map<VoucherResponse>(voucher);
         }
 
