@@ -70,14 +70,65 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<Order?> GetOrderByStatusAsync(Guid userId, OrderStatus status)
         {
             return await _context.Orders
-                .AsSplitQuery() 
-                .Include(o => o.OrderItems)
-                .ThenInclude(oi => oi.OrderItemComponents)
+                .AsSplitQuery()
+                .Include(o => o.OrderItems.Where(oi => !oi.IsDeleted))
+                    .ThenInclude(oi => oi.OrderItemComponents)
                 .Include(o => o.Shop)
-                .Include(o => o.OrderItems)
-                .ThenInclude(oi => oi.Product) 
+                .Include(o => o.OrderItems.Where(oi => !oi.IsDeleted))
+                    .ThenInclude(oi => oi.Product)
                 .OrderByDescending(o => o.CreatedAt)
-                .FirstOrDefaultAsync(o => o.CustomerId == userId && o.OrderStatus == status && !o.IsDeleted);
+                .FirstOrDefaultAsync(o => o.CustomerId == userId
+                                && o.OrderStatus == status
+                                && !o.IsDeleted);
+        }
+
+        /// <summary>
+        /// Load giỏ hàng AsNoTracking (READ-ONLY) — chỉ để đọc dữ liệu, quyết định logic.
+        /// Không bao giờ ghi trực tiếp qua các entity được trả về.
+        /// </summary>
+        public async Task<Order?> GetCartOnlyAsync(Guid userId)
+        {
+            return await _context.Orders
+                .AsNoTracking()
+                .Include(o => o.OrderItems.Where(oi => !oi.IsDeleted))
+                    .ThenInclude(oi => oi.OrderItemComponents)
+                .AsSplitQuery()
+                .OrderByDescending(o => o.CreatedAt)
+                .FirstOrDefaultAsync(o => o.CustomerId == userId
+                                && o.OrderStatus == OrderStatus.InCart
+                                && !o.IsDeleted);
+        }
+
+        /// <summary>
+        /// UPDATE OrderItem quantity/price via stub entity — chỉ gửi SET Quantity, UnitPrice, TotalPrice.
+        /// Không load entity, không gây phantom Modified.
+        /// </summary>
+        public void UpdateItemQuantity(Guid orderItemId, int newQuantity, decimal newUnitPrice, decimal newTotalPrice)
+        {
+            var stub = new OrderItem { Id = orderItemId };
+            _context.OrderItems.Attach(stub);
+            stub.Quantity = newQuantity;
+            stub.UnitPrice = newUnitPrice;
+            stub.TotalPrice = newTotalPrice;
+            stub.UpdatedAt = DateTime.UtcNow;
+            _context.Entry(stub).Property(x => x.Quantity).IsModified = true;
+            _context.Entry(stub).Property(x => x.UnitPrice).IsModified = true;
+            _context.Entry(stub).Property(x => x.TotalPrice).IsModified = true;
+            _context.Entry(stub).Property(x => x.UpdatedAt).IsModified = true;
+        }
+
+        /// <summary>
+        /// UPDATE Order TotalAmount via stub entity — chỉ gửi SET TotalAmount.
+        /// Không load entity, không gây phantom Modified.
+        /// </summary>
+        public void UpdateCartTotal(Guid orderId, decimal newTotalAmount)
+        {
+            var stub = new Order { Id = orderId };
+            _context.Orders.Attach(stub);
+            stub.TotalAmount = newTotalAmount;
+            stub.UpdatedAt = DateTime.UtcNow;
+            _context.Entry(stub).Property(x => x.TotalAmount).IsModified = true;
+            _context.Entry(stub).Property(x => x.UpdatedAt).IsModified = true;
         }
 
         public async Task<int> SaveChangesAsync(CancellationToken token = default)
@@ -120,6 +171,40 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public void Delete(Order order)
         {
             _context.Orders.Remove(order);
+        }
+        public void DeleteOrderItem(OrderItem item)
+        {
+            _context.OrderItems.Remove(item);
+        }
+        public void DetachItems(IEnumerable<OrderItem> items)
+        {
+            foreach (var item in items)
+            {
+                _context.Entry(item).State = EntityState.Detached;
+            }
+        }
+
+        public async Task<OrderItem?> FindCustomItemInCartAsync(Guid orderId, string sessionId)
+        {
+            // Viết câu lệnh SQL trực tiếp. MySQL dùng LIKE cho chuỗi.
+            // {0} là orderId, {1} là pattern tìm kiếm
+            var searchPattern = $"%{sessionId}%";
+
+            var query = _context.OrderItems
+                .FromSqlRaw(@"
+            SELECT * FROM OrderItems 
+            WHERE OrderId = {0} 
+            AND IsDeleted = 0 
+            AND IsCustom = 1 
+            AND DesignConfig IS NOT NULL 
+            AND DesignConfig LIKE {1}",
+                    orderId, searchPattern);
+
+            return await query.AsNoTracking().FirstOrDefaultAsync();
+        }
+        public void UpdateOrderItem(OrderItem item)
+        {
+            _context.OrderItems.Update(item);
         }
 
         public async Task<IEnumerable<Order>> GetOrdersByGroupIdAsync(Guid orderGroupId, CancellationToken token = default)

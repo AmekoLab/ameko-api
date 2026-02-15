@@ -54,5 +54,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             // EF Core không hỗ trợ rollback ngoài transaction scope, có thể implement nếu dùng transaction
         }
+
+        public void ClearChangeTracker()
+        {
+            _context.ChangeTracker.Clear();
+        }
     }
 }

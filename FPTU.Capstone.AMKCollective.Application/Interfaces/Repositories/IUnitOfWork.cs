@@ -21,5 +21,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         IVoucherRepository Vouchers { get; }
         Task CommitAsync();
         void Rollback();
+        /// <summary>
+        /// Detach all tracked entities from the change tracker.
+        /// Use when you need a clean tracking state (e.g., after read-only validation queries).
+        /// </summary>
+        void ClearChangeTracker();
     }
 }
