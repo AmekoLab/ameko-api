@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Builder;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
@@ -40,33 +41,85 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             if (request.Quantity <= 0) request.Quantity = 1;
 
-            Model product = null;
+            // ══════════════════════════════════════════════════════════════
+            // PHASE 1: READ-ONLY — Thu thập dữ liệu cần thiết, snapshot vào biến cục bộ.
+            //          Không giữ bất kỳ tracked entity nào cho bước WRITE.
+            // ══════════════════════════════════════════════════════════════
 
-            // 1. Lấy Product
+            Guid productId;
+            string productName;
+            string productImage;
+            decimal productPrice;
+            int productStock;
+            bool productIsActive;
+            bool shopUnavailable = false;
+
+            // Dữ liệu builder session (chỉ dùng khi custom)
+            string? sessionCurrentStep = null;
+            Guid? sessionBaseKitId = null;
+            string? sessionSelectedItemsJson = null;
+            Guid? sessionId = null;
+
             if (request.BuilderSessionId.HasValue)
             {
                 var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.BuilderSessionId.Value);
                 if (session == null) throw new KeyNotFoundException("Builder session not found.");
-                product = await _unitOfWork.Models.GetByIdAsync(session.BaseKitId);
+
+                // Snapshot session data
+                sessionId = session.Id;
+                sessionCurrentStep = session.CurrentStep;
+                sessionBaseKitId = session.BaseKitId;
+                sessionSelectedItemsJson = session.SelectedItemsJson;
+
+                var baseKit = await _unitOfWork.Models.GetByIdAsync(session.BaseKitId);
+                if (baseKit == null) throw new KeyNotFoundException("Product not found.");
+
+                // Snapshot product data
+                productId = baseKit.Id;
+                productName = baseKit.Name;
+                productImage = baseKit.ThumbnailURL ?? "";
+                productPrice = baseKit.Price;
+                productStock = baseKit.StockQuantity;
+                productIsActive = baseKit.IsActive;
+                if (baseKit.Shop != null)
+                    shopUnavailable = baseKit.Shop.Status != ShopStatus.Active || !baseKit.Shop.IsActive;
             }
             else
             {
                 if (request.ProductId == null) throw new ArgumentNullException(nameof(request.ProductId));
-                product = await _unitOfWork.Models.GetByIdAsync(request.ProductId.Value);
+                var product = await _unitOfWork.Models.GetByIdAsync(request.ProductId.Value);
+                if (product == null) throw new KeyNotFoundException("Product not found.");
+
+                // Snapshot product data
+                productId = product.Id;
+                productName = product.Name;
+                productImage = product.ThumbnailURL ?? "";
+                productPrice = product.Price;
+                productStock = product.StockQuantity;
+                productIsActive = product.IsActive;
+                if (product.Shop != null)
+                    shopUnavailable = product.Shop.Status != ShopStatus.Active || !product.Shop.IsActive;
             }
 
-            // 2. Validate
-            if (product == null) throw new KeyNotFoundException("Product not found.");
-            if (!product.IsActive) throw new InvalidOperationException("Product is inactive.");
-            if (product.Shop != null && (product.Shop.Status != ShopStatus.Active || !product.Shop.IsActive))
-                throw new InvalidOperationException("Shop unavailable.");
-            if (product.StockQuantity < request.Quantity)
-                throw new InvalidOperationException($"Insufficient stock. Available: {product.StockQuantity}");
+            // Validate từ snapshot (không cần entity nào nữa)
+            if (!productIsActive) throw new InvalidOperationException("Product is inactive.");
+            if (shopUnavailable) throw new InvalidOperationException("Shop unavailable.");
+            if (productStock < request.Quantity)
+                throw new InvalidOperationException($"Insufficient stock. Available: {productStock}");
 
-            // 3. Get/Create Cart
-            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
+            // ══════════════════════════════════════════════════════════════
+            // PHASE 2: WRITE — Clear tracker → Load cart AsNoTracking (READ-ONLY).
+            //          Mọi thao tác ghi đều qua stub entity hoặc Add() rõ ràng.
+            //          KHÔNG BAO GIỜ ghi qua entity load từ DB → 0% phantom Modified.
+            // ══════════════════════════════════════════════════════════════
+            _unitOfWork.ClearChangeTracker();
+
+            // Cart loaded AsNoTracking — chỉ để đọc, quyết định logic
+            var cartOrder = await _unitOfWork.Orders.GetCartOnlyAsync(userId);
+
             if (cartOrder == null)
             {
+                // ─── CASE A: CHƯA CÓ GIỎ HÀNG → Tạo mới toàn bộ (chỉ INSERT) ───
                 cartOrder = new Order
                 {
                     Id = Guid.NewGuid(),
@@ -77,17 +130,86 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     CreatedAt = DateTime.UtcNow,
                     OrderItems = new List<OrderItem>()
                 };
-                await _unitOfWork.Orders.AddAsync(cartOrder);
+
+                if (request.BuilderSessionId.HasValue)
+                {
+                    if (sessionCurrentStep != "complete")
+                        throw new InvalidOperationException($"Builder session chưa hoàn tất. Bước hiện tại: '{sessionCurrentStep}'.");
+                    var selectedParts = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(sessionSelectedItemsJson!);
+                    cartOrder.OrderItems.Add(BuildCustomOrderItem(cartOrder.Id, request.Quantity, productId, productName, productImage, productPrice, sessionId!.Value, selectedParts));
+                }
+                else
+                {
+                    cartOrder.OrderItems.Add(BuildNormalOrderItem(cartOrder.Id, request.Quantity, productId, productName, productImage, productPrice));
+                }
+
+                cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
+                await _unitOfWork.Orders.AddAsync(cartOrder); // Entire graph → Added
+                await _unitOfWork.CommitAsync();               // Chỉ INSERT, không UPDATE
             }
-
-            // 4. Add Item logic
-            if (request.BuilderSessionId.HasValue)
-                await AddCustomItemToCartAsync(cartOrder, request, product);
             else
-                await AddNormalItemToCartAsync(cartOrder, request, product);
+            {
+                // ─── CASE B: ĐÃ CÓ GIỎ HÀNG → Dùng stub để UPDATE, Add() để INSERT ───
+                // cartOrder là AsNoTracking → Change Tracker hoàn toàn sạch.
+                OrderItem? itemToInsert = null;
 
-            cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
-            await _unitOfWork.CommitAsync();
+                if (request.BuilderSessionId.HasValue)
+                {
+                    if (sessionCurrentStep != "complete")
+                        throw new InvalidOperationException($"Builder session chưa hoàn tất. Bước hiện tại: '{sessionCurrentStep}'.");
+                    var selectedParts = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(sessionSelectedItemsJson!);
+                    var sessionIdStr = sessionId!.Value.ToString();
+
+                    var existingItem = cartOrder.OrderItems.FirstOrDefault(x =>
+                        x.IsCustom && !x.IsDeleted && x.DesignConfig != null && x.DesignConfig.Contains(sessionIdStr));
+
+                    if (existingItem != null)
+                    {
+                        // UPDATE via stub → chỉ gửi SET Quantity, UnitPrice, TotalPrice WHERE Id=X
+                        int newQty = existingItem.Quantity + request.Quantity;
+                        decimal newTotal = existingItem.UnitPrice * newQty;
+                        existingItem.Quantity = newQty;       // in-memory cho tính total bên dưới
+                        existingItem.TotalPrice = newTotal;
+                        _unitOfWork.Orders.UpdateItemQuantity(existingItem.Id, newQty, existingItem.UnitPrice, newTotal);
+                    }
+                    else
+                    {
+                        itemToInsert = BuildCustomOrderItem(cartOrder.Id, request.Quantity, productId, productName, productImage, productPrice, sessionId!.Value, selectedParts);
+                        cartOrder.OrderItems.Add(itemToInsert); // in-memory cho tính total
+                    }
+                }
+                else
+                {
+                    var existingItem = cartOrder.OrderItems.FirstOrDefault(oi => oi.ProductId == productId && !oi.IsCustom && !oi.IsDeleted);
+
+                    if (existingItem != null)
+                    {
+                        int newQty = existingItem.Quantity + request.Quantity;
+                        if (newQty > productStock)
+                            throw new InvalidOperationException($"Insufficient stock.");
+                        decimal newTotal = newQty * productPrice;
+                        existingItem.Quantity = newQty;
+                        existingItem.UnitPrice = productPrice;
+                        existingItem.TotalPrice = newTotal;
+                        _unitOfWork.Orders.UpdateItemQuantity(existingItem.Id, newQty, productPrice, newTotal);
+                    }
+                    else
+                    {
+                        itemToInsert = BuildNormalOrderItem(cartOrder.Id, request.Quantity, productId, productName, productImage, productPrice);
+                        cartOrder.OrderItems.Add(itemToInsert);
+                    }
+                }
+
+                // Persist new item (INSERT vào change tracker)
+                if (itemToInsert != null)
+                    await _unitOfWork.Orders.AddOrderItemAsync(itemToInsert);
+
+                // Update Order total via stub (UPDATE Orders SET TotalAmount=X WHERE Id=Y)
+                decimal cartTotal = cartOrder.OrderItems.Where(i => !i.IsDeleted).Sum(i => i.TotalPrice);
+                _unitOfWork.Orders.UpdateCartTotal(cartOrder.Id, cartTotal);
+
+                await _unitOfWork.CommitAsync(); // Chỉ có stub UPDATE + optional INSERT, 0 phantom
+            }
         }
 
         public async Task<OrderResponse> GetMyCartAsync(Guid userId, CancellationToken token = default)
@@ -182,21 +304,25 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task RemoveItemFromCartAsync(Guid userId, Guid orderItemId, CancellationToken token = default)
         {
+            // 1. Lấy giỏ hàng
             var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
             if (cartOrder == null) throw new KeyNotFoundException("Cart is empty.");
 
+            // 2. Tìm item cần xóa
             var item = cartOrder.OrderItems.FirstOrDefault(i => i.Id == orderItemId);
             if (item == null) throw new KeyNotFoundException("Item not found in cart.");
 
-            // Xóa item
-            // Lưu ý: Nếu EF Core Tracking enabled, chỉ cần Remove khỏi List và SaveChanges
+            // 3. THỰC HIỆN HARD DELETE
+            _unitOfWork.Orders.DeleteOrderItem(item);
+
+            // Đồng thời xóa khỏi list trong bộ nhớ để tính lại tiền cho đúng ngay lập tức
             cartOrder.OrderItems.Remove(item);
 
-            // Nếu cần gọi repo delete explicit:
-            // await _unitOfWork.Orders.DeleteOrderItemAsync(item); (Nếu có hàm này)
-
-            // Recalculate Total
+            // 4. Tính lại tổng tiền
             cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
+
+            // 5. Lưu thay đổi
+            // Lúc này EF sẽ thực hiện lệnh DELETE thật sự
             await _unitOfWork.CommitAsync();
         }
 
@@ -757,119 +883,93 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         // PRIVATE HELPERS
         // =================================================================
 
-        private async Task AddNormalItemToCartAsync(Order cartOrder, AddToCartRequest request, Model product)
+        /// <summary>
+        /// Factory — tạo OrderItem thường (pure, không side effect).
+        /// </summary>
+        private static OrderItem BuildNormalOrderItem(Guid orderId, int quantity,
+            Guid productId, string productName, string productImage, decimal productPrice)
         {
-            var existingItem = cartOrder.OrderItems.FirstOrDefault(oi => oi.ProductId == product.Id && !oi.IsCustom);
-
-            if (existingItem != null)
+            return new OrderItem
             {
-                if (existingItem.Quantity + request.Quantity > product.StockQuantity)
-                    throw new InvalidOperationException($"Insufficient stock.");
-
-                existingItem.Quantity += request.Quantity;
-                existingItem.UnitPrice = product.Price; // Update giá mới
-                existingItem.TotalPrice = existingItem.Quantity * existingItem.UnitPrice;
-            }
-            else
-            {
-                cartOrder.OrderItems.Add(new OrderItem
-                {
-                    Id = Guid.NewGuid(),
-                    OrderId = cartOrder.Id,
-                    ProductId = product.Id,
-                    ProductName = product.Name,
-                    ProductImage = product.ThumbnailURL ?? "",
-                    UnitPrice = product.Price,
-                    Quantity = request.Quantity,
-                    TotalPrice = product.Price * request.Quantity,
-                    IsCustom = false
-                });
-            }
+                Id = Guid.NewGuid(),
+                OrderId = orderId,
+                ProductId = productId,
+                ProductName = productName,
+                ProductImage = productImage,
+                UnitPrice = productPrice,
+                Quantity = quantity,
+                TotalPrice = productPrice * quantity,
+                IsCustom = false,
+                OrderItemComponents = new List<OrderItemComponent>()
+            };
         }
 
-        private async Task AddCustomItemToCartAsync(Order cartOrder, AddToCartRequest request, Model baseKit)
+        /// <summary>
+        /// Factory — tạo OrderItem custom (builder) + Components (pure, không side effect).
+        /// </summary>
+        private static OrderItem BuildCustomOrderItem(Guid orderId, int quantity,
+            Guid productId, string productName, string productImage,
+            decimal baseKitPrice, Guid sessionId,
+            Dictionary<string, SelectedPartResponse>? selectedParts)
         {
-            var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.BuilderSessionId.Value);
-            if (session == null) throw new KeyNotFoundException("Session expired.");
-
-            // === Validate session hoàn tất (Nhánh hình ảnh tích lũy) ===
-            if (session.CurrentStep != "complete")
+            string? finalPreviewImage = null;
+            if (selectedParts != null)
             {
-                throw new InvalidOperationException(
-                    $"Builder session chưa hoàn tất. Bước hiện tại: '{session.CurrentStep}'. Vui lòng hoàn thành tất cả các bước trước khi thêm vào giỏ hàng.");
-            }
-
-            var selectedParts = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson);
-
-            // Check trùng
-            var existingItem = cartOrder.OrderItems.FirstOrDefault(oi =>
-                oi.IsCustom == true &&
-                oi.DesignConfig != null &&
-                oi.DesignConfig.Contains(session.Id.ToString()));
-
-            if (existingItem != null)
-            {
-                existingItem.Quantity += request.Quantity;
-                existingItem.TotalPrice = existingItem.Quantity * existingItem.UnitPrice;
-            }
-            else
-            {
-                // Tìm ảnh tích lũy cuối cùng (preview image) để lưu vào order
-                string? finalPreviewImage = null;
-                if (selectedParts != null)
+                var stepPriority = new[] { "keycap", "switch", "plate", "case" };
+                foreach (var step in stepPriority)
                 {
-                    var stepPriority = new[] { "keycap", "switch", "plate", "case" };
-                    foreach (var step in stepPriority)
+                    if (selectedParts.TryGetValue(step, out var part) && !string.IsNullOrEmpty(part.LayerImageUrl))
                     {
-                        if (selectedParts.TryGetValue(step, out var part) && !string.IsNullOrEmpty(part.LayerImageUrl))
-                        {
-                            finalPreviewImage = part.LayerImageUrl;
-                            break;
-                        }
+                        finalPreviewImage = part.LayerImageUrl;
+                        break;
                     }
                 }
-
-                var newItem = new OrderItem
-                {
-                    Id = Guid.NewGuid(),
-                    OrderId = cartOrder.Id,
-                    ProductId = baseKit.Id,
-                    ProductName = $"{baseKit.Name} (Custom Build)",
-                    ProductImage = finalPreviewImage ?? baseKit.ThumbnailURL ?? "",
-                    UnitPrice = baseKit.Price,
-                    Quantity = request.Quantity,
-                    IsCustom = true,
-                    DesignConfig = JsonSerializer.Serialize(new
-                    {
-                        SessionId = session.Id,
-                        BaseKitId = session.BaseKitId,
-                        PreviewImage = finalPreviewImage
-                    }),
-                    OrderItemComponents = new List<OrderItemComponent>()
-                };
-
-                if (selectedParts != null)
-                {
-                    foreach (var part in selectedParts.Values)
-                    {
-                        int qtyRecipe = part.Quantity > 0 ? part.Quantity : 1;
-                        newItem.UnitPrice += (part.Price * qtyRecipe);
-                        newItem.OrderItemComponents.Add(new OrderItemComponent
-                        {
-                            Id = Guid.NewGuid(),
-                            OrderItemId = newItem.Id,
-                            PartId = part.Id,
-                            PartName = part.Name,
-                            PartPriceSnapshot = part.Price,
-                            PartImageUrl = part.ThumbnailUrl,
-                            Quantity = qtyRecipe
-                        });
-                    }
-                }
-
-                newItem.TotalPrice = newItem.UnitPrice * newItem.Quantity;
-                cartOrder.OrderItems.Add(newItem);
             }
+
+            var newItemId = Guid.NewGuid();
+
+            var newItem = new OrderItem
+            {
+                Id = newItemId,
+                OrderId = orderId,
+                ProductId = productId,
+                ProductName = $"{productName} (Custom Build)",
+                ProductImage = finalPreviewImage ?? productImage,
+                UnitPrice = baseKitPrice,
+                Quantity = quantity,
+                IsCustom = true,
+                IsDeleted = false,
+                DesignConfig = JsonSerializer.Serialize(new
+                {
+                    SessionId = sessionId,
+                    BaseKitId = productId,
+                    PreviewImage = finalPreviewImage,
+                    CreatedTick = DateTime.UtcNow.Ticks
+                }),
+                OrderItemComponents = new List<OrderItemComponent>()
+            };
+
+            if (selectedParts != null)
+            {
+                foreach (var part in selectedParts.Values)
+                {
+                    int qtyRecipe = part.Quantity > 0 ? part.Quantity : 1;
+                    newItem.UnitPrice += (part.Price * qtyRecipe);
+                    newItem.OrderItemComponents.Add(new OrderItemComponent
+                    {
+                        Id = Guid.NewGuid(),
+                        OrderItemId = newItemId,
+                        PartId = part.Id,
+                        PartName = part.Name,
+                        PartPriceSnapshot = part.Price,
+                        PartImageUrl = part.ThumbnailUrl,
+                        Quantity = qtyRecipe
+                    });
+                }
+            }
+
+            newItem.TotalPrice = newItem.UnitPrice * newItem.Quantity;
+            return newItem;
         }
 
         private async Task ExecuteRefundStrategyAsync(Order order)
