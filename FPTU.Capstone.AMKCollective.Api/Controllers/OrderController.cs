@@ -216,6 +216,72 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             return SuccessResponse(true, "Request processed successfully.");
         }
 
+        /// <summary>
+        /// Create a new payment session for an existing Pending order (Repay)
+        /// </summary>
+        /// <param name="orderGroupId">The ID of the order group to pay</param>
+        /// <returns>Payment URL</returns>
+        [HttpPost("repay/{orderGroupId}")]
+        public async Task<IActionResult> Repay(Guid orderGroupId)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+
+                // 2. Gọi Service để lấy link thanh toán mới
+                var paymentUrl = await _orderService.RepayAsync(userId, orderGroupId);
+
+                // 3. Trả về link thanh toán (Dùng hàm SuccessResponse của BaseApiController)
+                return SuccessResponse(new { PaymentUrl = paymentUrl }, "Payment link generated successfully.");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                // Trả về 404 Not Found
+                return NotFoundResponse<string>(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                // Trả về 401 Unauthorized
+                return UnauthorizedResponse<string>(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Trả về 400 Bad Request (Ví dụ: Đơn đã thanh toán rồi, hoặc đã hủy)
+                return ErrorResponse<string>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                // Trả về 500 Internal Server Error
+                return ServerErrorResponse<string>(ex.Message);
+            }
+        }
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetOrderDetail(Guid id)
+        {
+            try
+            {
+                // 1. Lấy UserId từ Token
+                var userId = GetCurrentUserId();
+
+                // 2. Gọi Service
+                var orderDetail = await _orderService.GetOrderDetailAsync(userId, id);
+
+                // 3. Trả về kết quả
+                return SuccessResponse(orderDetail, "Order details retrieved successfully.");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<string>(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<string>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<string>(ex.Message);
+            }
+        }
         // --- Helper: Get User ID ---
         //private Guid GetCurrentUserId()
         //{

@@ -63,5 +63,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             _context.OrderGroups.Update(orderGroup);
             await Task.CompletedTask;
         }
+        public void Delete(OrderGroup orderGroup)
+        {
+            _context.OrderGroups.Remove(orderGroup);
+        }
     }
 }

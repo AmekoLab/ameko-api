@@ -235,5 +235,18 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Include(oi => oi.Product) 
                 .FirstOrDefaultAsync(oi => oi.Id == id, token);
         }
+
+        public async Task<Order?> GetOrderDetailByIdAsync(Guid orderId)
+        {
+            return await _context.Orders
+                .AsSplitQuery() 
+                .Include(o => o.Shop) 
+                .Include(o => o.OrderGroup) 
+                .Include(o => o.OrderItems.Where(oi => !oi.IsDeleted))
+                    .ThenInclude(oi => oi.Product) 
+                .Include(o => o.OrderItems.Where(oi => !oi.IsDeleted))
+                    .ThenInclude(oi => oi.OrderItemComponents) 
+                .FirstOrDefaultAsync(o => o.Id == orderId && !o.IsDeleted);
+        }
     }
 }

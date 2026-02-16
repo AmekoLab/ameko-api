@@ -364,19 +364,38 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<CheckoutResponse> CheckoutAsync(Guid userId, CheckoutRequest request, CancellationToken token = default)
         {
+            // 1. Lấy giỏ hàng hiện tại
             var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
             if (cartOrder == null || !cartOrder.OrderItems.Any())
                 throw new InvalidOperationException("Cart is empty.");
 
+            // 2. Lọc ra các sản phẩm người dùng đã chọn mua
+            if (request.SelectedOrderItemIds == null || !request.SelectedOrderItemIds.Any())
+            {
+                // throw Exception bắt buộc phải chọn.
+                throw new InvalidOperationException("Please select at least one item to checkout.");
+            }
+
+            var selectedItems = cartOrder.OrderItems
+                .Where(i => request.SelectedOrderItemIds.Contains(i.Id))
+                .ToList();
+
+            if (!selectedItems.Any())
+                throw new InvalidOperationException("Selected items not found in cart.");
+
+            // Validate: Đảm bảo không có ID ảo nào được gửi lên
+            if (selectedItems.Count != request.SelectedOrderItemIds.Distinct().Count())
+                throw new InvalidOperationException("Some selected items are invalid or not in your cart.");
+
+            // Chuẩn bị URL
             string successUrl = request.SuccessUrl;
             string cancelUrl = request.CancelUrl;
-
             if (string.IsNullOrEmpty(successUrl) || !successUrl.StartsWith("http"))
                 successUrl = "http://localhost:3000/payment/success";
-
             if (string.IsNullOrEmpty(cancelUrl) || !cancelUrl.StartsWith("http"))
                 cancelUrl = "http://localhost:3000/payment/cancel";
 
+            // 3. Tạo Group Order
             var orderGroup = new OrderGroup
             {
                 Id = Guid.NewGuid(),
@@ -387,7 +406,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Orders = new List<Order>()
             };
 
-            var itemsByShop = cartOrder.OrderItems.GroupBy(i => i.Product?.ShopId ?? Guid.Empty);
+            // Group by Shop dựa trên danh sách ĐÃ CHỌN (selectedItems)
+            var itemsByShop = selectedItems.GroupBy(i => i.Product?.ShopId ?? Guid.Empty);
 
             foreach (var shopGroup in itemsByShop)
             {
@@ -419,9 +439,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     if (product.StockQuantity < cartItem.Quantity)
                         throw new InvalidOperationException($"Out of stock: {product.Name}");
 
+                    // Trừ kho
                     product.StockQuantity -= cartItem.Quantity;
                     await _unitOfWork.Models.UpdateAsync(product);
 
+                    // Clone OrderItem từ Cart sang Order chính thức
                     var orderItem = new OrderItem
                     {
                         Id = Guid.NewGuid(),
@@ -437,6 +459,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         OrderItemComponents = new List<OrderItemComponent>()
                     };
 
+                    // Copy Components nếu có (Custom Product)
                     if (cartItem.OrderItemComponents != null && cartItem.OrderItemComponents.Any())
                     {
                         foreach (var comp in cartItem.OrderItemComponents)
@@ -444,14 +467,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             var partEntity = await _unitOfWork.Models.GetByIdAsync(comp.PartId);
                             if (partEntity == null) throw new InvalidOperationException($"Component {comp.PartName} not found.");
 
+                            // Logic tính recipe giữ nguyên
                             int requiredQtyPerKit = 1;
                             if (!string.IsNullOrEmpty(product.Specifications))
-                            {
+                            {                     
                                 try
                                 {
-                                    using (JsonDocument doc = JsonDocument.Parse(product.Specifications))
+                                    using (System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(product.Specifications))
                                     {
-                                        if (doc.RootElement.TryGetProperty("recipe", out JsonElement recipe))
+                                        if (doc.RootElement.TryGetProperty("recipe", out System.Text.Json.JsonElement recipe))
                                         {
                                             if (partEntity.Category != null)
                                             {
@@ -470,14 +494,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                                 }
                                 catch { /* Ignore JSON errors */ }
                             }
-                            // -------------------------------------
 
                             int totalPartNeeded = requiredQtyPerKit * cartItem.Quantity;
-
                             if (partEntity.StockQuantity < totalPartNeeded)
-                            {
-                                throw new InvalidOperationException($"Không đủ linh kiện '{partEntity.Name}'. Cần: {totalPartNeeded}, Còn: {partEntity.StockQuantity}");
-                            }
+                                throw new InvalidOperationException($"Insufficient component stock: '{partEntity.Name}'.");
 
                             partEntity.StockQuantity -= totalPartNeeded;
                             await _unitOfWork.Models.UpdateAsync(partEntity);
@@ -490,7 +510,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                                 PartName = comp.PartName,
                                 PartPriceSnapshot = comp.PartPriceSnapshot,
                                 PartImageUrl = comp.PartImageUrl,
-                                Quantity = requiredQtyPerKit 
+                                Quantity = requiredQtyPerKit
                             });
                         }
                     }
@@ -500,27 +520,48 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
 
                 order.SubTotal = subTotal;
+                // TODO: Sau này nên thay số cứng 30000 bằng logic tính phí ship
                 order.ShippingFee = 30000;
                 order.TotalAmount = order.SubTotal + order.ShippingFee;
 
                 orderGroup.Orders.Add(order);
                 orderGroup.TotalGroupAmount += order.TotalAmount;
             }
+
+            // 4. Lưu Order Group
             await _unitOfWork.OrderGroups.CreateAsync(orderGroup);
-            await _unitOfWork.CommitAsync();
+            await _unitOfWork.CommitAsync(); // Dữ liệu đã vào DB
+
             try
             {
+                // 5. Tạo Payment Session
                 var paymentRequest = new CreateCheckoutSessionRequest
                 {
                     OrderGroupId = orderGroup.Id,
-                    SuccessUrl = successUrl, 
-                    CancelUrl = cancelUrl
+                    SuccessUrl = successUrl,
+                    CancelUrl = cancelUrl 
                 };
 
                 var paymentRes = await _paymentService.CreateCheckoutSessionAsync(paymentRequest, token);
 
-                _unitOfWork.Orders.Delete(cartOrder);
-                await _unitOfWork.CommitAsync(); 
+                // CLEANUP: Chỉ xóa những món ĐÃ MUA khỏi giỏ hàng
+                foreach (var item in selectedItems)
+                {
+                    _unitOfWork.Orders.DeleteOrderItem(item);
+                    cartOrder.OrderItems.Remove(item);
+                }
+
+                if (!cartOrder.OrderItems.Any())
+                {
+                    _unitOfWork.Orders.Delete(cartOrder);
+                }
+                else
+                {
+                    cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
+                    await _unitOfWork.Orders.UpdateOrderAsync(cartOrder);
+                }
+
+                await _unitOfWork.CommitAsync();
 
                 return new CheckoutResponse
                 {
@@ -531,8 +572,41 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
             catch (Exception ex)
             {
-                
-                throw new InvalidOperationException($"Payment error: {ex.Message}. please try again.");
+                // 1. Xóa OrderGroup vừa tạo 
+                _unitOfWork.OrderGroups.Delete(orderGroup);
+
+                // 2. Hoàn lại kho
+                foreach (var order in orderGroup.Orders)
+                {
+                    foreach (var item in order.OrderItems)
+                    {
+                        // Hoàn kho Product chính
+                        var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
+                        if (product != null)
+                        {
+                            product.StockQuantity += item.Quantity;
+                            await _unitOfWork.Models.UpdateAsync(product);
+                        }
+
+                        // Hoàn kho Linh kiện (Components)
+                        if (item.OrderItemComponents != null)
+                        {
+                            foreach (var comp in item.OrderItemComponents)
+                            {
+                                var part = await _unitOfWork.Models.GetByIdAsync(comp.PartId);
+                                if (part != null)
+                                {
+                                    part.StockQuantity += (comp.Quantity * item.Quantity); // Nhân với số lượng cha
+                                    await _unitOfWork.Models.UpdateAsync(part);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                await _unitOfWork.CommitAsync(); // Lưu lệnh Rollback
+
+                throw new InvalidOperationException($"Payment initialization failed: {ex.Message}. Please try again.");
             }
         }
 
@@ -877,7 +951,60 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
         }
 
+        public async Task<string> RepayAsync(Guid userId, Guid orderGroupId, CancellationToken token = default)
+        {
+            // 1. Lấy thông tin đơn hàng 
+            var orderGroup = await _unitOfWork.OrderGroups.GetByIdAsync(orderGroupId);
 
+            if (orderGroup == null)
+                throw new KeyNotFoundException("Order not found.");
+
+            // 2. Validate quyền sở hữu
+            if (orderGroup.CustomerId != userId)
+                throw new UnauthorizedAccessException("You can only pay for your own orders.");
+
+            // 3. Validate trạng thái
+            if (orderGroup.PaymentStatus == PaymentStatus.Paid)
+                throw new InvalidOperationException("This order has already been paid.");
+
+            if (orderGroup.Orders.Any(o => o.OrderStatus == OrderStatus.Cancelled))
+                throw new InvalidOperationException("This order has been cancelled. Please order again.");
+
+            // 4. Tạo Stripe Session mới
+            // Lưu ý: Cấu hình URL trả về cho Repay có thể khác Checkout gốc (tuỳ bạn)
+            var paymentRequest = new CreateCheckoutSessionRequest
+            {
+                OrderGroupId = orderGroup.Id,
+                SuccessUrl = "http://localhost:3000/payment/success",
+                CancelUrl = "http://localhost:3000/orders?status=pending" 
+            };
+
+            var paymentRes = await _paymentService.CreateCheckoutSessionAsync(paymentRequest, token);
+
+            return paymentRes.PaymentUrl;
+        }
+        public async Task<OrderResponse> GetOrderDetailAsync(Guid userId, Guid orderId)
+        {
+            // 1. Gọi Repo lấy dữ liệu
+            var order = await _unitOfWork.Orders.GetOrderDetailByIdAsync(orderId);
+
+            // 2. Validate tồn tại
+            if (order == null)
+                throw new KeyNotFoundException("Order not found.");
+
+            // 3. Validate quyền (Security Check)
+            // Người xem phải là người đặt đơn hàng đó
+            if (order.CustomerId != userId)
+            {
+                throw new UnauthorizedAccessException("You are not authorized to view this order.");
+            }
+
+            // 4. Map sang DTO
+            // Đảm bảo MappingProfile đã map Order -> OrderResponse
+            var response = _mapper.Map<OrderResponse>(order);
+
+            return response;
+        }
 
         // =================================================================
         // PRIVATE HELPERS
@@ -971,6 +1098,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             newItem.TotalPrice = newItem.UnitPrice * newItem.Quantity;
             return newItem;
         }
+
 
         private async Task ExecuteRefundStrategyAsync(Order order)
         {
