@@ -70,18 +70,16 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<Order?> GetOrderByStatusAsync(Guid userId, OrderStatus status)
         {
             return await _context.Orders
-                .AsSplitQuery() 
+                .AsSplitQuery()
                 .Include(o => o.OrderItems.Where(oi => !oi.IsDeleted))
                     .ThenInclude(oi => oi.OrderItemComponents)
-                .Include(o => o.OrderItems.Where(oi => !oi.IsDeleted))
-                    .ThenInclude(oi => oi.Product)      
-                        .ThenInclude(p => p.Shop)        
                 .Include(o => o.Shop)
-
+                .Include(o => o.OrderItems.Where(oi => !oi.IsDeleted))
+                    .ThenInclude(oi => oi.Product)
                 .OrderByDescending(o => o.CreatedAt)
                 .FirstOrDefaultAsync(o => o.CustomerId == userId
-                                        && o.OrderStatus == status
-                                        && !o.IsDeleted);
+                                && o.OrderStatus == status
+                                && !o.IsDeleted);
         }
 
         /// <summary>
