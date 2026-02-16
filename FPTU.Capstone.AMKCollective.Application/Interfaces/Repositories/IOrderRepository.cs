@@ -45,5 +45,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<IEnumerable<Order>> GetOrdersByGroupIdAsync(Guid orderGroupId, CancellationToken token = default);
         Task<List<Order>> GetOrdersEligibleForFundReleaseAsync(DateTime warrantyThreshold, CancellationToken token = default);
         Task<OrderItem?> GetOrderItemByIdAsync(Guid id, CancellationToken token = default);
+
+        Task<Order?> GetOrderDetailByIdAsync(Guid orderId);
     }
 }

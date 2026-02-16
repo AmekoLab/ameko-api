@@ -19,5 +19,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
         public List<CheckoutItemRequest> Items { get; set; } = new();
         public string SuccessUrl { get; set; } = string.Empty;
         public string CancelUrl { get; set; } = string.Empty;
+        public List<Guid> SelectedOrderItemIds { get; set; } = new List<Guid>();
     }
 }

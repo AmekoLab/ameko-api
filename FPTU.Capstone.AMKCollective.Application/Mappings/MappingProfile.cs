@@ -167,17 +167,25 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // 2. ORDER (ORDER -> DTO)
             // =========================================================
             CreateMap<Order, OrderResponse>()
-    // [FIX LỖI NULL]: Vì Giỏ hàng (InCart) chưa có ShopId cụ thể, nên src.Shop sẽ bị null.
-    // Nếu không check null, dòng này sẽ gây crash API GetCart.
+        // 1. Xử lý Shop: BẮT BUỘC check null để không crash API GetCart
+                .ForMember(dest => dest.ShopId, opt => opt.MapFrom(src => src.ShopId))
                 .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Shop != null ? src.Shop.ShopName : "N/A"))
+    // Nếu Shop null thì Avatar cũng null
+                .ForMember(dest => dest.ShopAvatar, opt => opt.MapFrom(src => src.Shop != null ? src.Shop.LogoUrl : null))
 
-                .ForMember(dest => dest.OrderStatus, opt => opt.MapFrom(src => src.OrderStatus))
+    // 2. Map Enum sang String: Để Frontend nhận được chữ "Pending", "Paid" thay vì số 0, 1
+                .ForMember(dest => dest.OrderStatus, opt => opt.MapFrom(src => src.OrderStatus.ToString()))
+                .ForMember(dest => dest.PaymentStatus, opt => opt.MapFrom(src => src.PaymentStatus.ToString()))
+
+    // 3. Các field tiền nong (Giữ nguyên như cũ)
                 .ForMember(dest => dest.SubTotal, opt => opt.MapFrom(src => src.SubTotal))
                 .ForMember(dest => dest.ShippingFee, opt => opt.MapFrom(src => src.ShippingFee))
                 .ForMember(dest => dest.DiscountAmount, opt => opt.MapFrom(src => src.DiscountAmount))
                 .ForMember(dest => dest.TotalAmount, opt => opt.MapFrom(src => src.TotalAmount))
-                //tự map OrderItems nếu tên trùng nhau
-                .ForMember(dest => dest.OrderItems, opt => opt.MapFrom(src => src.OrderItems));
+
+    // 4. Map OrderItems (Giữ nguyên)
+                .ForMember(dest => dest.OrderItems, opt => opt.MapFrom(src => src.OrderItems))
+                .ReverseMap();
 
             // =========================================================
             // 3. ORDER ITEM (ORDER ITEM -> DTO)
@@ -187,7 +195,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                .ForMember(dest => dest.ProductId, opt => opt.MapFrom(src => src.ProductId))
                .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.Name : src.ProductName))
                .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => src.Product != null ? src.Product.ThumbnailURL : src.ProductImage))
-
+               .ForMember(dest => dest.ShopId, opt => opt.MapFrom(src => src.Product.ShopId))
+               .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Product.Shop.ShopName))
                .ForMember(dest => dest.UnitPrice, opt => opt.MapFrom(src => src.UnitPrice))
                .ForMember(dest => dest.TotalPrice, opt => opt.MapFrom(src => src.TotalPrice))
                .ForMember(dest => dest.Quantity, opt => opt.MapFrom(src => src.Quantity))

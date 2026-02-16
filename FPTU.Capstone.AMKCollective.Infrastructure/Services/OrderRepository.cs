@@ -70,16 +70,18 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<Order?> GetOrderByStatusAsync(Guid userId, OrderStatus status)
         {
             return await _context.Orders
-                .AsSplitQuery()
+                .AsSplitQuery() 
                 .Include(o => o.OrderItems.Where(oi => !oi.IsDeleted))
                     .ThenInclude(oi => oi.OrderItemComponents)
-                .Include(o => o.Shop)
                 .Include(o => o.OrderItems.Where(oi => !oi.IsDeleted))
-                    .ThenInclude(oi => oi.Product)
+                    .ThenInclude(oi => oi.Product)      
+                        .ThenInclude(p => p.Shop)        
+                .Include(o => o.Shop)
+
                 .OrderByDescending(o => o.CreatedAt)
                 .FirstOrDefaultAsync(o => o.CustomerId == userId
-                                && o.OrderStatus == status
-                                && !o.IsDeleted);
+                                        && o.OrderStatus == status
+                                        && !o.IsDeleted);
         }
 
         /// <summary>
@@ -234,6 +236,19 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Include(oi => oi.OrderItemComponents) 
                 .Include(oi => oi.Product) 
                 .FirstOrDefaultAsync(oi => oi.Id == id, token);
+        }
+
+        public async Task<Order?> GetOrderDetailByIdAsync(Guid orderId)
+        {
+            return await _context.Orders
+                .AsSplitQuery() 
+                .Include(o => o.Shop) 
+                .Include(o => o.OrderGroup) 
+                .Include(o => o.OrderItems.Where(oi => !oi.IsDeleted))
+                    .ThenInclude(oi => oi.Product) 
+                .Include(o => o.OrderItems.Where(oi => !oi.IsDeleted))
+                    .ThenInclude(oi => oi.OrderItemComponents) 
+                .FirstOrDefaultAsync(o => o.Id == orderId && !o.IsDeleted);
         }
     }
 }
