@@ -47,10 +47,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         // Tạo voucher đền bù (Auto-generated)
         Task<VoucherResponse> CreateCompensationVoucherAsync(Guid userId, Guid targetUserId, decimal refundAmount);
 
-        // Áp dụng voucher vào đơn hàng
-        Task<decimal> ApplyVoucherAsync(Guid userId, Guid orderId, string code);
+        // Áp dụng voucher vào đơn hàng (hỗ trợ stacking — tối đa 2 voucher)
+        Task<ApplyVoucherResult> ApplyVoucherAsync(Guid userId, Guid orderId, string code);
 
-        // Gỡ voucher khỏi đơn hàng
-        Task RemoveVoucherAsync(Guid userId, Guid orderId);
+        // Gỡ một voucher cụ thể khỏi đơn hàng theo code
+        Task<ApplyVoucherResult> RemoveSpecificVoucherAsync(Guid userId, Guid orderId, string voucherCode);
+
+        // Gỡ toàn bộ voucher khỏi đơn hàng (dùng khi hủy đơn)
+        Task RemoveAllVouchersAsync(Guid userId, Guid orderId);
     }
 }

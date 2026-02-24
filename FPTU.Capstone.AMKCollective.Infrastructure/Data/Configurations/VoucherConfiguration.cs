@@ -29,6 +29,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(v => v.DiscountType);
             builder.Property(v => v.Status);
 
+            // Stacking
+            builder.Property(v => v.IsStackable).HasDefaultValue(false);
+            builder.Property(v => v.StackingPolicy).HasDefaultValue(0);
+
             // Relationships
             builder.HasOne(v => v.Creator)
                 .WithMany(u => u.CreatedVouchers)

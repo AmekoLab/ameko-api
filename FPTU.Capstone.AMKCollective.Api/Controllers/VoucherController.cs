@@ -79,7 +79,13 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Áp dụng Voucher vào đơn hàng
+        /// Áp dụng Voucher vào đơn hàng (hỗ trợ stacking — tối đa 2 voucher).
+        /// Business rules:
+        ///   - Promotion + Compensation ✅
+        ///   - Negotiation + Compensation ✅
+        ///   - Promotion + Promotion ❌
+        ///   - Promotion + Negotiation ❌
+        ///   - Compensation + Compensation ❌
         /// </summary>
         [HttpPost("apply")]
         public async Task<IActionResult> ApplyVoucher([FromBody] ApplyVoucherRequest request)
@@ -87,30 +93,45 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                var discountAmount = await _voucherService.ApplyVoucherAsync(userId, request.OrderId, request.Code);
-
-                // Trả về số tiền được giảm để FE hiển thị
-                return SuccessResponse(new { DiscountAmount = discountAmount }, "Voucher applied successfully");
+                var result = await _voucherService.ApplyVoucherAsync(userId, request.OrderId, request.Code);
+                return SuccessResponse(result, "Voucher applied successfully");
             }
             catch (Exception ex)
             {
-                // Trả về lỗi 400 kèm message chi tiết (VD: Hết hạn, chưa đủ tiền...)
                 return ErrorResponse<object>(ex.Message);
             }
         }
 
         /// <summary>
-        /// Gỡ bỏ Voucher khỏi đơn hàng
+        /// Gỡ một voucher cụ thể khỏi đơn hàng theo mã voucher.
+        /// Trả về thông tin stack còn lại sau khi gỡ.
         /// </summary>
-        [HttpPost("remove/{orderId}")]
-        public async Task<IActionResult> RemoveVoucher(Guid orderId)
+        [HttpDelete("remove/{orderId}/{voucherCode}")]
+        public async Task<IActionResult> RemoveSpecificVoucher(Guid orderId, string voucherCode)
         {
             try
             {
                 var userId = GetCurrentUserId();
-                await _voucherService.RemoveVoucherAsync(userId, orderId);
+                var result = await _voucherService.RemoveSpecificVoucherAsync(userId, orderId, voucherCode);
+                return SuccessResponse(result, "Voucher removed successfully");
+            }
+            catch (Exception ex)
+            {
+                return ErrorResponse<object>(ex.Message);
+            }
+        }
 
-                return SuccessResponse("Voucher removed successfully");
+        /// <summary>
+        /// Gỡ toàn bộ voucher khỏi đơn hàng (dùng khi hủy đơn hoặc reset giỏ hàng).
+        /// </summary>
+        [HttpDelete("remove-all/{orderId}")]
+        public async Task<IActionResult> RemoveAllVouchers(Guid orderId)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                await _voucherService.RemoveAllVouchersAsync(userId, orderId);
+                return SuccessResponse("All vouchers removed from order");
             }
             catch (Exception ex)
             {
