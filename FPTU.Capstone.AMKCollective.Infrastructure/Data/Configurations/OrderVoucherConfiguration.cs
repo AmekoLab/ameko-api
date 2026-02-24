@@ -21,7 +21,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(ov => ov.VoucherType);
             builder.Property(ov => ov.ApplyOrder);
 
-            // Unique: mỗi voucher chỉ được apply 1 lần cho 1 đơn hàng
+            // Unique: 
             builder.HasIndex(ov => new { ov.OrderId, ov.VoucherId }).IsUnique();
 
             // Relationships

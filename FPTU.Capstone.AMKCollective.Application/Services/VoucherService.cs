@@ -23,10 +23,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _mapper = mapper;
         }
 
-        // 1. Tạo Voucher Khuyến mãi (Marketing)
+        // 1. Create Promotional Voucher (Marketing)
         public async Task<VoucherResponse> CreatePromotionalVoucherAsync(Guid userId, CreateVoucherRequest request)
         {
-            // Validate: Code phải duy nhất
+            // Validate: Code must be unique
             var existing = await _unitOfWork.Vouchers.GetByCodeAsync(request.Code);
             if (existing != null)
                 throw new Exception($"Voucher code '{request.Code}' already exists.");
@@ -34,7 +34,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var voucher = _mapper.Map<Voucher>(request);
             voucher.CreatorId = userId;
 
-            // Logic mặc định cho Promotion
+            // Default logic for Promotion
             voucher.Status = VoucherStatus.Active;
             voucher.UsedCount = 0;
 
@@ -47,10 +47,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<VoucherResponse>(voucher);
         }
 
-        // 2. Tạo Voucher Thương lượng (Negotiation) - Dành cho Shop chốt deal
+        // 2. Create Negotiation Voucher - For shop to finalize deals
         public async Task<VoucherResponse> CreateNegotiationVoucherAsync(Guid shopId, Guid targetUserId, decimal discountAmount, decimal minOrderValue)
         {
-            // Sinh mã ngẫu nhiên: NEGO_ + 8 ký tự random
+            // Generate random code: NEGO_ + 8 random characters
             string code = "NEGO_" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
 
             var voucher = new Voucher
@@ -62,18 +62,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 DiscountType = DiscountType.FixedAmount,
                 Value = discountAmount,
                 MaxDiscountAmount = null,
-                MinOrderValue = minOrderValue, // Ràng buộc: Phải mua đủ số tiền đã chốt
+                MinOrderValue = minOrderValue, // Constraint: Must purchase the agreed amount
 
                 StartDate = DateTime.Now,
-                EndDate = DateTime.Now.AddDays(7), // Hạn 7 ngày để chốt đơn
+                EndDate = DateTime.Now.AddDays(7), // Expires in 7 days to close the deal
                 UsageLimit = 1,
                 UsedCount = 0,
                 Status = VoucherStatus.Active,
 
                 CreatorId = shopId,
-                TargetUserId = targetUserId, // Chỉ khách này dùng được
+                TargetUserId = targetUserId, // Only this customer can use
 
-                // Negotiation: không được stack với bất kỳ ai khác ngoài Compensation
+                // Negotiation: can only stack with Compensation voucher
                 IsStackable = true,
                 StackingPolicy = StackingPolicy.WithCompensationOnly
             };
@@ -86,10 +86,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<VoucherResponse>(voucher);
         }
 
-        // 3. Tạo Voucher Đền bù (Compensation/Refund) - Dành cho System/Shop hủy đơn
+        // 3. Create Compensation Voucher - For system/shop cancellations
         public async Task<VoucherResponse> CreateCompensationVoucherAsync(Guid shopId, Guid targetUserId, decimal refundAmount)
         {
-            // Sinh mã: REFUND_ + ...
+            // Generate code: REFUND_ + ...
             string code = "REFUND_" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
 
             var voucher = new Voucher
@@ -101,18 +101,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 DiscountType = DiscountType.FixedAmount,
                 Value = refundAmount,
                 MaxDiscountAmount = null,
-                MinOrderValue = 0, // Không cần đơn tối thiểu, dùng cho đơn nào cũng được
+                MinOrderValue = 0, // No minimum order value, can be used on any order
 
                 StartDate = DateTime.Now,
-                EndDate = DateTime.Now.AddMonths(1), // Hạn 1 tháng (theo yêu cầu)
+                EndDate = DateTime.Now.AddMonths(1), // Expires in 1 month
                 UsageLimit = 1,
                 UsedCount = 0,
                 Status = VoucherStatus.Active,
 
-                CreatorId = shopId, // Shop chịu trách nhiệm tạo (hoặc Admin)
+                CreatorId = shopId, // Shop or Admin responsible for creation
                 TargetUserId = targetUserId,
 
-                // Compensation: được stack với tất cả loại voucher khác
+                // Compensation: can stack with all other voucher types
                 IsStackable = true,
                 StackingPolicy = StackingPolicy.All
             };
@@ -123,126 +123,205 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<VoucherResponse>(voucher);
         }
 
-        // 4. Áp dụng Voucher vào Đơn hàng (Stacking — tối đa 2 voucher)
+        // 4. Apply Voucher to Order (Stacking - max 2 vouchers)
         public async Task<ApplyVoucherResult> ApplyVoucherAsync(Guid userId, Guid orderId, string code)
         {
             var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
             if (order == null) throw new Exception("Order not found.");
             if (order.CustomerId != userId) throw new Exception("Unauthorized to modify this order.");
 
-            var voucher = await _unitOfWork.Vouchers.GetByCodeAsync(code);
-            if (voucher == null) throw new Exception("Voucher not found.");
+            var incomingVoucher = await _unitOfWork.Vouchers.GetByCodeAsync(code);
+            if (incomingVoucher == null) throw new Exception("Voucher not found.");
 
-            // --- VALIDATION CƠ BẢN ---
-            if (voucher.Status != VoucherStatus.Active) throw new Exception("Voucher is not active.");
-            if (DateTime.Now < voucher.StartDate || DateTime.Now > voucher.EndDate) throw new Exception("Voucher is expired or not yet started.");
-            if (voucher.UsedCount >= voucher.UsageLimit) throw new Exception("Voucher usage limit reached.");
-            if (voucher.TargetUserId != null && voucher.TargetUserId != userId)
+            // --- BASIC VALIDATION ---
+            if (incomingVoucher.Status != VoucherStatus.Active) throw new Exception("Voucher is not active.");
+            if (DateTime.Now < incomingVoucher.StartDate || DateTime.Now > incomingVoucher.EndDate) throw new Exception("Voucher is expired or not yet started.");
+            if (incomingVoucher.UsedCount >= incomingVoucher.UsageLimit) throw new Exception("Voucher usage limit reached.");
+            if (incomingVoucher.TargetUserId != null && incomingVoucher.TargetUserId != userId)
                 throw new Exception("This voucher is not applicable to you.");
+            if (order.SubTotal < incomingVoucher.MinOrderValue)
+                throw new Exception($"Order value must be at least {incomingVoucher.MinOrderValue:N0} VND to use this voucher.");
 
             // --- VALIDATE SCOPE (Shop Owner vs Admin) ---
-            await ValidateVoucherScopeAsync(voucher, order);
+            await ValidateVoucherScopeAsync(incomingVoucher, order);
 
             // --- STACKING VALIDATION ---
             var appliedList = (await _unitOfWork.OrderVouchers.GetByOrderIdAsync(orderId)).ToList();
 
-            // Check trùng voucher
-            if (appliedList.Any(av => av.VoucherId == voucher.Id))
+            // Check for duplicate voucher
+            if (appliedList.Any(av => av.VoucherId == incomingVoucher.Id))
                 throw new Exception("This voucher has already been applied to this order.");
 
-            // Business rule: tối đa 2 voucher
+            // Business rule: maximum 2 vouchers per order
             if (appliedList.Count >= 2)
                 throw new Exception("Maximum 2 vouchers can be applied to one order.");
 
+            // [FIX 3]: Check IsStackable flag and validation rules
             if (appliedList.Count == 1)
             {
-                var existingType = appliedList[0].VoucherType;
-                ValidateStackingCombination(existingType, voucher.Type);
+                var existingVoucher = await _unitOfWork.Vouchers.GetByIdAsync(appliedList[0].VoucherId);
+                if (existingVoucher == null || !existingVoucher.IsStackable || !incomingVoucher.IsStackable)
+                    throw new Exception("One of the applied vouchers does not allow stacking.");
+
+                ValidateStackingCombination(existingVoucher.Type, incomingVoucher.Type);
             }
 
-            // --- CHECK MIN ORDER VALUE ---
-            if (order.SubTotal < voucher.MinOrderValue)
-                throw new Exception($"Order value must be at least {voucher.MinOrderValue:N0} VND to use this voucher.");
-
-            // --- TÍNH DISCOUNT ---
-            // Discount của từng voucher tính trên SubTotal gốc (không trên remaining)
-            // Tổng giảm được cap để TotalAmount không âm
-            decimal alreadyDiscounted = appliedList.Sum(av => av.DiscountApplied);
-            decimal discount = CalculateVoucherDiscount(voucher, order.SubTotal);
-
-            // Cap: tổng discount không vượt quá SubTotal
-            decimal totalDiscount = Math.Min(alreadyDiscounted + discount, order.SubTotal);
-            discount = totalDiscount - alreadyDiscounted; // Điều chỉnh nếu cap xảy ra
-
-            // --- TẠO OrderVoucher ---
-            var orderVoucher = new OrderVoucher
+            // --- PREPARE CALCULATION PIPELINE ---
+            // Gather all vouchers and calculate from scratch to ensure correct discount caps
+            var allVouchersToApply = new List<Voucher>();
+            foreach (var av in appliedList)
             {
-                OrderId = orderId,
-                VoucherId = voucher.Id,
-                VoucherCode = voucher.Code,
-                VoucherType = voucher.Type,
-                DiscountApplied = discount,
-                ApplyOrder = appliedList.Count + 1
-            };
+                var v = await _unitOfWork.Vouchers.GetByIdAsync(av.VoucherId);
+                if (v != null) allVouchersToApply.Add(v);
+            }
+            allVouchersToApply.Add(incomingVoucher);
 
-            await _unitOfWork.OrderVouchers.AddAsync(orderVoucher);
+            // Force ordering: Promotion/Negotiation first (0), Compensation last (1)
+            allVouchersToApply = allVouchersToApply.OrderBy(v => v.Type == VoucherType.Compensation ? 1 : 0).ToList();
+
+            // Clear old records to rewrite the exact applied amount
+            await _unitOfWork.OrderVouchers.DeleteAllByOrderIdAsync(orderId);
+
+            // --- CALCULATE DISCOUNT ---
+            decimal totalDiscountAmount = 0;
+            var newAppliedList = new List<OrderVoucher>();
+
+            for (int i = 0; i < allVouchersToApply.Count; i++)
+            {
+                var currentVoucher = allVouchersToApply[i];
+
+                // Calculate discount based on original SubTotal
+                decimal stepDiscount = CalculateVoucherDiscount(currentVoucher, order.SubTotal);
+
+                // Cap: Prevent discounting more than the remaining order value
+                if (stepDiscount > (order.SubTotal - totalDiscountAmount))
+                {
+                    stepDiscount = order.SubTotal - totalDiscountAmount;
+                }
+
+                // Create new OrderVoucher tracking record
+                var orderVoucher = new OrderVoucher
+                {
+                    OrderId = orderId,
+                    VoucherId = currentVoucher.Id,
+                    VoucherCode = currentVoucher.Code,
+                    VoucherType = currentVoucher.Type,
+                    DiscountApplied = stepDiscount,
+                    ApplyOrder = i + 1
+                };
+
+                await _unitOfWork.OrderVouchers.AddAsync(orderVoucher);
+                newAppliedList.Add(orderVoucher);
+
+                totalDiscountAmount += stepDiscount;
+
+                // Increment UsedCount ONLY for the newly applied voucher
+                if (currentVoucher.Id == incomingVoucher.Id)
+                {
+                    currentVoucher.UsedCount++;
+                    _unitOfWork.Vouchers.Update(currentVoucher);
+                }
+            }
 
             // --- UPDATE ORDER ---
-            order.DiscountAmount = totalDiscount;
-            order.TotalAmount = Math.Max(0, (order.SubTotal + order.ShippingFee) - totalDiscount);
-            order.VoucherId = null; // Null hóa FK cũ — stacking dùng OrderVouchers table
+            order.DiscountAmount = totalDiscountAmount;
+            order.TotalAmount = Math.Max(0, (order.SubTotal + order.ShippingFee) - totalDiscountAmount);
+            order.VoucherId = null; // Clear old FK - stacking uses OrderVouchers table
 
             _unitOfWork.Orders.UpdateOrderAsync(order);
             await _unitOfWork.CommitAsync();
 
             // --- BUILD RESULT ---
-            var updatedList = appliedList.Concat(new[] { orderVoucher }).OrderBy(x => x.ApplyOrder).ToList();
-            return BuildApplyResult(order, updatedList);
+            return BuildApplyResult(order, newAppliedList);
         }
 
-        // 5. Gỡ một voucher cụ thể khỏi đơn hàng
+        // 5. Remove a specific voucher from order
         public async Task<ApplyVoucherResult> RemoveSpecificVoucherAsync(Guid userId, Guid orderId, string voucherCode)
         {
             var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
             if (order == null) throw new Exception("Order not found.");
             if (order.CustomerId != userId) throw new Exception("Unauthorized.");
 
-            var voucher = await _unitOfWork.Vouchers.GetByCodeAsync(voucherCode);
-            if (voucher == null) throw new Exception("Voucher not found.");
+            var voucherToRemove = await _unitOfWork.Vouchers.GetByCodeAsync(voucherCode);
+            if (voucherToRemove == null) throw new Exception("Voucher not found.");
 
-            var orderVoucher = await _unitOfWork.OrderVouchers.GetByOrderAndVoucherAsync(orderId, voucher.Id);
-            if (orderVoucher == null) throw new Exception("This voucher is not applied to the order.");
+            var orderVoucherToRemove = await _unitOfWork.OrderVouchers.GetByOrderAndVoucherAsync(orderId, voucherToRemove.Id);
+            if (orderVoucherToRemove == null) throw new Exception("This voucher is not applied to the order.");
 
-            _unitOfWork.OrderVouchers.Delete(orderVoucher);
+            // Remove the bridge record
+            _unitOfWork.OrderVouchers.Delete(orderVoucherToRemove);
 
-            // Lấy danh sách còn lại sau khi xóa
-            var remaining = (await _unitOfWork.OrderVouchers.GetByOrderIdAsync(orderId))
-                .Where(ov => ov.Id != orderVoucher.Id)
+            // Restore UsedCount for the removed voucher
+            if (voucherToRemove.UsedCount > 0)
+            {
+                voucherToRemove.UsedCount--;
+                _unitOfWork.Vouchers.Update(voucherToRemove);
+            }
+
+            // Recalculate remaining vouchers to ensure caps are still accurate
+            var remainingOrderVouchers = (await _unitOfWork.OrderVouchers.GetByOrderIdAsync(orderId))
+                .Where(ov => ov.Id != orderVoucherToRemove.Id)
                 .OrderBy(ov => ov.ApplyOrder)
                 .ToList();
 
-            // Renumber ApplyOrder
-            for (int i = 0; i < remaining.Count; i++) remaining[i].ApplyOrder = i + 1;
+            decimal totalDiscountAmount = 0;
 
-            decimal totalDiscount = remaining.Sum(ov => ov.DiscountApplied);
-            order.DiscountAmount = totalDiscount;
-            order.TotalAmount = Math.Max(0, (order.SubTotal + order.ShippingFee) - totalDiscount);
+            for (int i = 0; i < remainingOrderVouchers.Count; i++)
+            {
+                var ov = remainingOrderVouchers[i];
+                var underlyingVoucher = await _unitOfWork.Vouchers.GetByIdAsync(ov.VoucherId);
+
+                if (underlyingVoucher != null)
+                {
+                    decimal stepDiscount = CalculateVoucherDiscount(underlyingVoucher, order.SubTotal);
+
+                    if (stepDiscount > (order.SubTotal - totalDiscountAmount))
+                    {
+                        stepDiscount = order.SubTotal - totalDiscountAmount;
+                    }
+
+                    // Update remaining record with new accurate discount and order
+                    ov.DiscountApplied = stepDiscount;
+                    ov.ApplyOrder = i + 1;
+                    _unitOfWork.OrderVouchers.Update(ov);
+
+                    totalDiscountAmount += stepDiscount;
+                }
+            }
+
+            // Update Order totals
+            order.DiscountAmount = totalDiscountAmount;
+            order.TotalAmount = Math.Max(0, (order.SubTotal + order.ShippingFee) - totalDiscountAmount);
 
             _unitOfWork.Orders.UpdateOrderAsync(order);
             await _unitOfWork.CommitAsync();
 
-            return BuildApplyResult(order, remaining);
+            return BuildApplyResult(order, remainingOrderVouchers);
         }
 
-        // 6. Gỡ toàn bộ voucher khỏi đơn hàng
+        // 6. Remove all vouchers from order
         public async Task RemoveAllVouchersAsync(Guid userId, Guid orderId)
         {
             var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
             if (order == null) throw new Exception("Order not found.");
             if (order.CustomerId != userId) throw new Exception("Unauthorized.");
 
+            var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(orderId);
+
+            // Restore UsedCount for ALL applied vouchers before deleting
+            foreach (var av in appliedVouchers)
+            {
+                var v = await _unitOfWork.Vouchers.GetByIdAsync(av.VoucherId);
+                if (v != null && v.UsedCount > 0)
+                {
+                    v.UsedCount--;
+                    _unitOfWork.Vouchers.Update(v);
+                }
+            }
+
             await _unitOfWork.OrderVouchers.DeleteAllByOrderIdAsync(orderId);
 
+            // Reset order totals
             order.VoucherId = null;
             order.DiscountAmount = 0;
             order.TotalAmount = order.SubTotal + order.ShippingFee;
@@ -254,14 +333,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         // ─── Private Helpers ────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Kiểm tra business rule stacking: loại voucher nào được kết hợp với loại nào.
+        /// Validate stacking business rule: which voucher types can be combined.
         /// Rules:
-        ///   Promotion  + Compensation  ✅
-        ///   Negotiation + Compensation ✅
-        ///   Promotion  + Promotion     ❌
-        ///   Negotiation + Negotiation  ❌
-        ///   Promotion  + Negotiation   ❌
-        ///   Compensation + Compensation ❌
+        ///   Promotion  + Compensation  - Allowed
+        ///   Negotiation + Compensation - Allowed
+        ///   Promotion  + Promotion     - Not Allowed
+        ///   Negotiation + Negotiation  - Not Allowed
+        ///   Promotion  + Negotiation   - Not Allowed
+        ///   Compensation + Compensation - Not Allowed
         /// </summary>
         private static void ValidateStackingCombination(VoucherType existing, VoucherType incoming)
         {
@@ -301,7 +380,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         throw new Exception("This promotion voucher is not applicable for this shop's order.");
                     break;
                 case VoucherType.Compensation:
-                    break; // Luôn hợp lệ
+                    break; // Always allowed
             }
         }
 
@@ -339,7 +418,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             };
         }
 
-        // 6. Lấy danh sách voucher hợp lệ cho User
+        // 7. Get list of valid vouchers for user
         public async Task<List<VoucherResponse>> GetMyVouchersAsync(Guid userId)
         {
             var vouchers = await _unitOfWork.Vouchers.GetValidVouchersForUserAsync(userId);
@@ -359,10 +438,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var voucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId);
             if (voucher == null) throw new KeyNotFoundException("Voucher not found.");
 
-            // Check quyền: Chỉ chủ sở hữu mới được sửa
+            // Check permission: Only owner can edit
             if (voucher.CreatorId != userId) throw new UnauthorizedAccessException("You are not the owner of this voucher.");
 
-            // Update fields (Chỉ cho phép sửa một số trường nhất định)
+            // Update fields (only allow certain fields to be edited)
             if (!string.IsNullOrEmpty(request.Name)) voucher.Name = request.Name;
             if (!string.IsNullOrEmpty(request.Description)) voucher.Description = request.Description;
             if (request.EndDate.HasValue) voucher.EndDate = request.EndDate.Value;
@@ -381,7 +460,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (voucher == null) throw new KeyNotFoundException("Voucher not found.");
             if (voucher.CreatorId != userId) throw new UnauthorizedAccessException("You are not the owner of this voucher.");
 
-            // CHECK AN TOÀN: Nếu voucher đã có người dùng -> Không được xóa, bắt buộc phải Deactivate
+            // SAFETY CHECK: If voucher already used by customers, cannot delete - must deactivate instead
             bool isUsed = await _unitOfWork.Vouchers.IsVoucherUsedAsync(voucherId);
             if (isUsed)
             {

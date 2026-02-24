@@ -4,24 +4,24 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace FPTU.Capstone.AMKCollective.Domain.Entities
 {
     /// <summary>
-    /// Junction table: Lưu danh sách voucher được áp dụng cho một đơn hàng (hỗ trợ stacking).
+    /// Junction table: Stores list of vouchers applied to an order (supports stacking).
     /// </summary>
     public class OrderVoucher : BaseEntity
     {
         public Guid OrderId { get; set; }
         public Guid VoucherId { get; set; }
 
-        /// <summary>Mã voucher — lưu snapshot để tránh mất dữ liệu khi voucher bị xóa.</summary>
+        /// <summary>Voucher code - snapshot to prevent data loss if voucher is deleted.</summary>
         public string VoucherCode { get; set; } = string.Empty;
 
-        /// <summary>Loại voucher tại thời điểm áp dụng (snapshot).</summary>
+        /// <summary>Voucher type at the time of application (snapshot).</summary>
         public VoucherType VoucherType { get; set; }
 
-        /// <summary>Số tiền thực tế được giảm bởi voucher này sau khi tính toán.</summary>
+        /// <summary>Actual discount amount applied by this voucher after calculation.</summary>
         [Column(TypeName = "decimal(18,2)")]
         public decimal DiscountApplied { get; set; }
 
-        /// <summary>Thứ tự áp dụng voucher trong stack (1 = áp dụng trước).</summary>
+        /// <summary>Order of application in the stack (1 = applied first).</summary>
         public int ApplyOrder { get; set; }
 
         // Navigation Properties

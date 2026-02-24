@@ -1,23 +1,23 @@
 namespace FPTU.Capstone.AMKCollective.Application.DTOs.Voucher
 {
     /// <summary>
-    /// Kết quả trả về khi áp dụng thành công 1 voucher vào đơn hàng.
+    /// Result returned when successfully applying a voucher to an order.
     /// </summary>
     public class ApplyVoucherResult
     {
-        /// <summary>Số tiền được giảm bởi voucher vừa áp dụng.</summary>
+        /// <summary>Discount amount from the newly applied voucher.</summary>
         public decimal NewDiscountAmount { get; set; }
 
-        /// <summary>Tổng tiền đã giảm từ tất cả voucher trong stack.</summary>
+        /// <summary>Total discount from all vouchers in the stack.</summary>
         public decimal TotalDiscountAmount { get; set; }
 
-        /// <summary>Tổng tiền phải thanh toán sau stacking.</summary>
+        /// <summary>Final total amount to pay after stacking.</summary>
         public decimal FinalTotal { get; set; }
 
-        /// <summary>Số lượng voucher đang được áp dụng cho đơn hàng này.</summary>
+        /// <summary>Number of vouchers currently applied to this order.</summary>
         public int AppliedVouchersCount { get; set; }
 
-        /// <summary>Chi tiết từng voucher trong stack.</summary>
+        /// <summary>Details of each voucher in the stack.</summary>
         public List<AppliedVoucherDetail> AppliedVouchers { get; set; } = new();
     }
 

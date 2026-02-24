@@ -35,10 +35,10 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public Guid? TargetUserId { get; set; }
 
         // --- Stacking Configuration ---
-        /// <summary>Voucher này có cho phép kết hợp với voucher khác không?</summary>
+        /// <summary>Indicates whether this voucher can be combined with other vouchers.</summary>
         public bool IsStackable { get; set; } = false;
 
-        /// <summary>Chính sách kết hợp: None, WithCompensationOnly, All.</summary>
+        /// <summary>Stacking policy: None, WithCompensationOnly, or All.</summary>
         public StackingPolicy StackingPolicy { get; set; } = StackingPolicy.None;
 
         // Navigation Properties

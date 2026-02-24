@@ -21,7 +21,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Tạo Voucher Khuyến mãi (Promotion) - Dành cho Shop/Admin
+        /// Create a Promotional Voucher - For Shop/Admin.
+        /// Promotional vouchers are general discount vouchers created by shops or admins.
         /// </summary>
         [HttpPost("promotion")]
         public async Task<IActionResult> CreatePromotionalVoucher([FromBody] CreateVoucherRequest request)
@@ -35,7 +36,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                // Lưu ý: Logic check Role (Shop/Admin) nên nằm ở Service hoặc Attribute [Authorize(Roles="Shop,Admin")]
+                // Note: Role check logic (Shop/Admin) should be placed in Service or use [Authorize(Roles="Shop,Admin")] attribute
 
                 var result = await _voucherService.CreatePromotionalVoucherAsync(userId, request);
                 return SuccessResponse(result, "Promotional voucher created successfully");
@@ -47,7 +48,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Tạo Voucher Thương lượng (Negotiation) - Dành cho Shop chốt deal với khách
+        /// Create a Negotiation Voucher - For Shop to finalize deals with customers.
+        /// Negotiation vouchers are special discount offers created by shops for specific customers.
         /// </summary>
         [HttpPost("negotiation")]
         public async Task<IActionResult> CreateNegotiationVoucher([FromBody] CreateNegotiationRequest request)
@@ -61,7 +63,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             try
             {
                 var shopId = GetCurrentUserId();
-                // Check Role Shop ở đây hoặc dùng Policy
+                // Check Shop role here or use authorization policy
 
                 var result = await _voucherService.CreateNegotiationVoucherAsync(
                     shopId,
@@ -79,13 +81,13 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Áp dụng Voucher vào đơn hàng (hỗ trợ stacking — tối đa 2 voucher).
-        /// Business rules:
-        ///   - Promotion + Compensation ✅
-        ///   - Negotiation + Compensation ✅
-        ///   - Promotion + Promotion ❌
-        ///   - Promotion + Negotiation ❌
-        ///   - Compensation + Compensation ❌
+        /// Apply Voucher to Order (Supports Stacking - Maximum 2 vouchers per order).
+        /// Business Rules:
+        ///   Promotion + Compensation - Allowed
+        ///   Negotiation + Compensation - Allowed
+        ///   Promotion + Promotion - Not Allowed
+        ///   Promotion + Negotiation - Not Allowed
+        ///   Compensation + Compensation - Not Allowed
         /// </summary>
         [HttpPost("apply")]
         public async Task<IActionResult> ApplyVoucher([FromBody] ApplyVoucherRequest request)
@@ -103,8 +105,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Gỡ một voucher cụ thể khỏi đơn hàng theo mã voucher.
-        /// Trả về thông tin stack còn lại sau khi gỡ.
+        /// Remove a Specific Voucher from Order by Voucher Code.
+        /// Returns updated stacking information and remaining discount totals.
         /// </summary>
         [HttpDelete("remove/{orderId}/{voucherCode}")]
         public async Task<IActionResult> RemoveSpecificVoucher(Guid orderId, string voucherCode)
@@ -122,7 +124,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Gỡ toàn bộ voucher khỏi đơn hàng (dùng khi hủy đơn hoặc reset giỏ hàng).
+        /// Remove All Vouchers from Order.
+        /// Used when cancelling order or resetting shopping cart. Clears all applied discounts.
         /// </summary>
         [HttpDelete("remove-all/{orderId}")]
         public async Task<IActionResult> RemoveAllVouchers(Guid orderId)
@@ -140,7 +143,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Lấy danh sách Voucher khả dụng của tôi (Voucher công khai + Voucher riêng)
+        /// Get List of Available Vouchers for Current User.
+        /// Returns both public vouchers and privately assigned vouchers for the user.
         /// </summary>
         [HttpGet("my-vouchers")]
         public async Task<IActionResult> GetMyVouchers()
@@ -292,7 +296,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
 
-        // Helper private để lấy User Id từ Token
+        // Helper method to extract User Id from Token
         //private Guid GetCurrentUserId()
         //{
         //    var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");

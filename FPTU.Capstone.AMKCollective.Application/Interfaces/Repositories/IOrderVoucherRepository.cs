@@ -4,19 +4,21 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
 {
     public interface IOrderVoucherRepository
     {
-        /// <summary>Lấy tất cả OrderVoucher của một đơn hàng, sắp xếp theo thứ tự áp dụng.</summary>
+        /// <summary>Get all OrderVouchers for an order, ordered by application order.</summary>
         Task<IEnumerable<OrderVoucher>> GetByOrderIdAsync(Guid orderId);
 
-        /// <summary>Lấy OrderVoucher cụ thể theo OrderId + VoucherId.</summary>
+        /// <summary>Get a specific OrderVoucher by OrderId and VoucherId.</summary>
         Task<OrderVoucher?> GetByOrderAndVoucherAsync(Guid orderId, Guid voucherId);
 
-        /// <summary>Thêm một OrderVoucher mới.</summary>
+        /// <summary>Update voucher</summary>
+        void Update(OrderVoucher orderVoucher);
+        /// <summary>Add a new OrderVoucher.</summary>
         Task AddAsync(OrderVoucher orderVoucher);
 
-        /// <summary>Xóa một OrderVoucher.</summary>
+        /// <summary>Delete an OrderVoucher.</summary>
         void Delete(OrderVoucher orderVoucher);
 
-        /// <summary>Xóa toàn bộ OrderVoucher của một đơn hàng.</summary>
+        /// <summary>Delete all OrderVouchers for an order.</summary>
         Task DeleteAllByOrderIdAsync(Guid orderId);
     }
 }

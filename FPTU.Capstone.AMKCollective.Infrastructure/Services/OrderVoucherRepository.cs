@@ -52,5 +52,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 record.IsDeleted = true;
             }
         }
+
+        public void Update(OrderVoucher orderVoucher)
+        {
+            _context.OrderVouchers.Update(orderVoucher);
+        }
     }
 }
