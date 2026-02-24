@@ -209,6 +209,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 decimal cartTotal = cartOrder.OrderItems.Where(i => !i.IsDeleted).Sum(i => i.TotalPrice);
                 _unitOfWork.Orders.UpdateCartTotal(cartOrder.Id, cartTotal);
 
+                // Kiểm tra xem đơn hàng (giỏ hàng) này có đang áp dụng voucher nào không
+                var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(cartOrder.Id); // cartOrder là biến lưu order giỏ hàng hiện tại của bạn
+
+                if (appliedVouchers != null && appliedVouchers.Any())
+                {
+                    // Nếu có, lập tức gỡ bỏ toàn bộ voucher để tránh sai lệch tính toán.
+                    // Hàm này bên VoucherService đã có sẵn logic trả lại UsedCount, xóa OrderVoucher và cập nhật TotalAmount.
+                    await _voucherService.RemoveAllVouchersAsync(userId, cartOrder.Id);
+                }
                 await _unitOfWork.CommitAsync(); // Chỉ có stub UPDATE + optional INSERT, 0 phantom
             }
         }
@@ -322,6 +331,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // 4. Tính lại tổng tiền
             cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
 
+            var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(cartOrder.Id); // cartOrder là biến lưu order giỏ hàng hiện tại của bạn
+
+            if (appliedVouchers != null && appliedVouchers.Any())
+            {
+                // Nếu có, lập tức gỡ bỏ toàn bộ voucher để tránh sai lệch tính toán.
+                // Hàm này bên VoucherService đã có sẵn logic trả lại UsedCount, xóa OrderVoucher và cập nhật TotalAmount.
+                await _voucherService.RemoveAllVouchersAsync(userId, cartOrder.Id);
+            }
             // 5. Lưu thay đổi
             // Lúc này EF sẽ thực hiện lệnh DELETE thật sự
             await _unitOfWork.CommitAsync();
@@ -356,6 +373,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             item.TotalPrice = item.Quantity * item.UnitPrice;
 
             cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
+            var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(cartOrder.Id); // cartOrder là biến lưu order giỏ hàng hiện tại của bạn
+
+            if (appliedVouchers != null && appliedVouchers.Any())
+            {
+                // Nếu có, lập tức gỡ bỏ toàn bộ voucher để tránh sai lệch tính toán.
+                // Hàm này bên VoucherService đã có sẵn logic trả lại UsedCount, xóa OrderVoucher và cập nhật TotalAmount.
+                await _voucherService.RemoveAllVouchersAsync(userId, cartOrder.Id);
+            }
             await _unitOfWork.CommitAsync();
         }
 
@@ -365,38 +390,45 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<CheckoutResponse> CheckoutAsync(Guid userId, CheckoutRequest request, CancellationToken token = default)
         {
-            // 1. Lấy giỏ hàng hiện tại
+            // 1. LẤY GIỎ HÀNG VÀ ITEM ĐƯỢC CHỌN
             var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
             if (cartOrder == null || !cartOrder.OrderItems.Any())
                 throw new InvalidOperationException("Cart is empty.");
 
-            // 2. Lọc ra các sản phẩm người dùng đã chọn mua
             if (request.SelectedOrderItemIds == null || !request.SelectedOrderItemIds.Any())
-            {
-                // throw Exception bắt buộc phải chọn.
                 throw new InvalidOperationException("Please select at least one item to checkout.");
-            }
 
             var selectedItems = cartOrder.OrderItems
                 .Where(i => request.SelectedOrderItemIds.Contains(i.Id))
                 .ToList();
 
-            if (!selectedItems.Any())
-                throw new InvalidOperationException("Selected items not found in cart.");
-
-            // Validate: Đảm bảo không có ID ảo nào được gửi lên
-            if (selectedItems.Count != request.SelectedOrderItemIds.Distinct().Count())
+            if (!selectedItems.Any() || selectedItems.Count != request.SelectedOrderItemIds.Distinct().Count())
                 throw new InvalidOperationException("Some selected items are invalid or not in your cart.");
 
-            // Chuẩn bị URL
-            string successUrl = request.SuccessUrl;
-            string cancelUrl = request.CancelUrl;
-            if (string.IsNullOrEmpty(successUrl) || !successUrl.StartsWith("http"))
-                successUrl = "http://localhost:3000/payment/success";
-            if (string.IsNullOrEmpty(cancelUrl) || !cancelUrl.StartsWith("http"))
-                cancelUrl = "http://localhost:3000/payment/cancel";
+            // --- MỤC 4: VALIDATE HẠN SỬ DỤNG VÀ CHUẨN BỊ DANH SÁCH VOUCHER ---
+            var appliedVouchersInCart = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(cartOrder.Id);
+            var activeVouchers = new List<Voucher>();
 
-            // 3. Tạo Group Order
+            foreach (var av in appliedVouchersInCart)
+            {
+                var voucherCheck = await _unitOfWork.Vouchers.GetByIdAsync(av.VoucherId);
+                if (voucherCheck != null)
+                {
+                    if ((voucherCheck.UsedCount - 1) >= voucherCheck.UsageLimit)
+                        throw new InvalidOperationException($"The voucher {voucherCheck.Code} has reached its usage limit while in your cart.");
+
+                    if (DateTime.UtcNow > voucherCheck.EndDate)
+                        throw new InvalidOperationException($"The voucher {voucherCheck.Code} has expired.");
+
+                    activeVouchers.Add(voucherCheck);
+                }
+            }
+
+            // Chuẩn bị URL
+            string successUrl = string.IsNullOrEmpty(request.SuccessUrl) || !request.SuccessUrl.StartsWith("http") ? "http://localhost:3000/payment/success" : request.SuccessUrl;
+            string cancelUrl = string.IsNullOrEmpty(request.CancelUrl) || !request.CancelUrl.StartsWith("http") ? "http://localhost:3000/payment/cancel" : request.CancelUrl;
+
+            // 2. KHỞI TẠO ORDER GROUP
             var orderGroup = new OrderGroup
             {
                 Id = Guid.NewGuid(),
@@ -407,9 +439,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Orders = new List<Order>()
             };
 
-            // Group by Shop dựa trên danh sách ĐÃ CHỌN (selectedItems)
             var itemsByShop = selectedItems.GroupBy(i => i.Product?.ShopId ?? Guid.Empty);
+            decimal totalCheckoutSubTotal = 0;
 
+            // BƯỚC 2.1: TẠO ĐƠN HÀNG LẺ CHO TỪNG SHOP VÀ TÍNH TỔNG TIỀN GỐC (SUBTOTAL)
             foreach (var shopGroup in itemsByShop)
             {
                 if (shopGroup.Key == Guid.Empty) continue;
@@ -430,21 +463,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     OrderItems = new List<OrderItem>()
                 };
 
-                decimal subTotal = 0;
+                decimal shopSubTotal = 0;
 
                 foreach (var cartItem in shopGroup)
                 {
                     var product = await _unitOfWork.Models.GetByIdAsync(cartItem.ProductId);
-
                     if (product == null) throw new InvalidOperationException($"Product {cartItem.ProductName} missing.");
-                    if (product.StockQuantity < cartItem.Quantity)
-                        throw new InvalidOperationException($"Out of stock: {product.Name}");
+                    if (product.StockQuantity < cartItem.Quantity) throw new InvalidOperationException($"Out of stock: {product.Name}");
 
                     // Trừ kho
                     product.StockQuantity -= cartItem.Quantity;
                     await _unitOfWork.Models.UpdateAsync(product);
 
-                    // Clone OrderItem từ Cart sang Order chính thức
+                    // Clone OrderItem
                     var orderItem = new OrderItem
                     {
                         Id = Guid.NewGuid(),
@@ -460,7 +491,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         OrderItemComponents = new List<OrderItemComponent>()
                     };
 
-                    // Copy Components nếu có (Custom Product)
+                    // Copy Components (Custom Product)
                     if (cartItem.OrderItemComponents != null && cartItem.OrderItemComponents.Any())
                     {
                         foreach (var comp in cartItem.OrderItemComponents)
@@ -468,10 +499,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             var partEntity = await _unitOfWork.Models.GetByIdAsync(comp.PartId);
                             if (partEntity == null) throw new InvalidOperationException($"Component {comp.PartName} not found.");
 
-                            // Logic tính recipe giữ nguyên
                             int requiredQtyPerKit = 1;
                             if (!string.IsNullOrEmpty(product.Specifications))
-                            {                     
+                            {
                                 try
                                 {
                                     using (System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(product.Specifications))
@@ -493,12 +523,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                                         }
                                     }
                                 }
-                                catch { /* Ignore JSON errors */ }
+                                catch { /* Ignore */ }
                             }
 
                             int totalPartNeeded = requiredQtyPerKit * cartItem.Quantity;
-                            if (partEntity.StockQuantity < totalPartNeeded)
-                                throw new InvalidOperationException($"Insufficient component stock: '{partEntity.Name}'.");
+                            if (partEntity.StockQuantity < totalPartNeeded) throw new InvalidOperationException($"Insufficient stock: {partEntity.Name}");
 
                             partEntity.StockQuantity -= totalPartNeeded;
                             await _unitOfWork.Models.UpdateAsync(partEntity);
@@ -517,79 +546,134 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     }
 
                     order.OrderItems.Add(orderItem);
-                    subTotal += orderItem.TotalPrice;
+                    shopSubTotal += orderItem.TotalPrice;
                 }
 
-                order.SubTotal = subTotal;
-                // TODO: Sau này nên thay số cứng 30000 bằng logic tính phí ship
-                order.ShippingFee = 30000;
-                order.TotalAmount = order.SubTotal + order.ShippingFee;
+                order.SubTotal = shopSubTotal;
+                order.ShippingFee = 30000; // Thay bằng logic tính ship sau này
 
+                totalCheckoutSubTotal += shopSubTotal;
                 orderGroup.Orders.Add(order);
+            }
+
+            // =====================================================================
+            // BƯỚC 3: KẾT TOÁN VOUCHER - BÀI TOÁN PHÂN BỔ (PRORATION)
+            // =====================================================================
+
+            var systemVouchers = activeVouchers.Where(v => v.Type == VoucherType.Compensation).ToList();
+            var shopVouchers = activeVouchers.Where(v => v.Type == VoucherType.Promotion || v.Type == VoucherType.Negotiation).ToList();
+
+            foreach (var order in orderGroup.Orders)
+            {
+                decimal orderDiscountAmount = 0;
+                decimal currentOrderRemain = order.SubTotal;
+
+                // 3.1. ÁP MÃ CỦA ĐÚNG SHOP ĐÓ (Nếu có)
+                var matchedShopVoucher = shopVouchers.FirstOrDefault(v => v.CreatorId == order.ShopId);
+                if (matchedShopVoucher != null)
+                {
+                    // Kiểm tra khách chỉ chọn mua 1 vài món thì có còn đủ MinOrderValue không?
+                    if (order.SubTotal < matchedShopVoucher.MinOrderValue)
+                        throw new InvalidOperationException($"Your selected items from Shop no longer meet the minimum requirement ({matchedShopVoucher.MinOrderValue:N0}) for voucher {matchedShopVoucher.Code}.");
+
+                    decimal shopDiscount = _voucherService.CalculateVoucherDiscount(matchedShopVoucher, order.SubTotal);
+                    if (shopDiscount > currentOrderRemain) shopDiscount = currentOrderRemain; // Cap tiền giảm
+
+                    await _unitOfWork.OrderVouchers.AddAsync(new OrderVoucher
+                    {
+                        OrderId = order.Id,
+                        VoucherId = matchedShopVoucher.Id,
+                        VoucherCode = matchedShopVoucher.Code,
+                        VoucherType = matchedShopVoucher.Type,
+                        DiscountApplied = shopDiscount,
+                        ApplyOrder = 1
+                    });
+
+                    orderDiscountAmount += shopDiscount;
+                    currentOrderRemain -= shopDiscount;
+                }
+
+                // 3.2. ÁP MÃ CỦA SÀN & PHÂN BỔ (PRORATION)
+                // Tính tỷ trọng đóng góp của Order này vào tổng giỏ hàng
+                decimal weight = totalCheckoutSubTotal > 0 ? (order.SubTotal / totalCheckoutSubTotal) : 0;
+
+                foreach (var sysVoucher in systemVouchers)
+                {
+                    // Tính tổng tiền Sàn giảm cho cả giỏ, sau đó nhân với Tỷ trọng của Order này
+                    decimal totalSysDiscount = _voucherService.CalculateVoucherDiscount(sysVoucher, totalCheckoutSubTotal);
+                    decimal proratedDiscount = totalSysDiscount * weight;
+
+                    if (proratedDiscount > currentOrderRemain) proratedDiscount = currentOrderRemain; // Cap tiền giảm
+
+                    await _unitOfWork.OrderVouchers.AddAsync(new OrderVoucher
+                    {
+                        OrderId = order.Id,
+                        VoucherId = sysVoucher.Id,
+                        VoucherCode = sysVoucher.Code,
+                        VoucherType = sysVoucher.Type,
+                        DiscountApplied = proratedDiscount,
+                        ApplyOrder = 2
+                    });
+
+                    orderDiscountAmount += proratedDiscount;
+                    currentOrderRemain -= proratedDiscount;
+                }
+
+                // 3.3. CHỐT TIỀN CHO ĐƠN NÀY (Đã trừ mọi khoản discount)
+                order.DiscountAmount = orderDiscountAmount;
+                order.TotalAmount = Math.Max(0, (order.SubTotal + order.ShippingFee) - order.DiscountAmount);
+
                 orderGroup.TotalGroupAmount += order.TotalAmount;
             }
 
-            // 4. Lưu Order Group
+            // =====================================================================
+
+            // 4. Lưu dữ liệu OrderGroup
             await _unitOfWork.OrderGroups.CreateAsync(orderGroup);
-            await _unitOfWork.CommitAsync(); // Dữ liệu đã vào DB
+
+            // Xóa OrderVouchers nháp của Giỏ hàng (Cart)
+            await _unitOfWork.OrderVouchers.DeleteAllByOrderIdAsync(cartOrder.Id);
+
+            // Dọn dẹp giỏ hàng
+            foreach (var item in selectedItems)
+            {
+                _unitOfWork.Orders.DeleteOrderItem(item);
+                cartOrder.OrderItems.Remove(item);
+            }
+
+            if (!cartOrder.OrderItems.Any())
+            {
+                _unitOfWork.Orders.Delete(cartOrder);
+            }
+            else
+            {
+                cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
+                await _unitOfWork.Orders.UpdateOrderAsync(cartOrder);
+            }
+
+            await _unitOfWork.CommitAsync();
 
             try
             {
-                // 5. Tạo Payment Session
-                var paymentRequest = new CreateCheckoutSessionRequest
-                {
-                    OrderGroupId = orderGroup.Id,
-                    SuccessUrl = successUrl,
-                    CancelUrl = cancelUrl 
-                };
-
+                // 5. Gọi Stripe
+                var paymentRequest = new CreateCheckoutSessionRequest { OrderGroupId = orderGroup.Id, SuccessUrl = successUrl, CancelUrl = cancelUrl };
                 var paymentRes = await _paymentService.CreateCheckoutSessionAsync(paymentRequest, token);
-
-                // CLEANUP: Chỉ xóa những món ĐÃ MUA khỏi giỏ hàng
-                foreach (var item in selectedItems)
-                {
-                    _unitOfWork.Orders.DeleteOrderItem(item);
-                    cartOrder.OrderItems.Remove(item);
-                }
-
-                if (!cartOrder.OrderItems.Any())
-                {
-                    _unitOfWork.Orders.Delete(cartOrder);
-                }
-                else
-                {
-                    cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
-                    await _unitOfWork.Orders.UpdateOrderAsync(cartOrder);
-                }
-
-                await _unitOfWork.CommitAsync();
-
-                return new CheckoutResponse
-                {
-                    OrderGroupId = orderGroup.Id,
-                    TotalAmount = orderGroup.TotalGroupAmount,
-                    PaymentUrl = paymentRes.PaymentUrl
-                };
+                return new CheckoutResponse { OrderGroupId = orderGroup.Id, TotalAmount = orderGroup.TotalGroupAmount, PaymentUrl = paymentRes.PaymentUrl };
             }
             catch (Exception ex)
             {
-                // 1. Xóa OrderGroup vừa tạo 
+                // Rollback Kho và Xóa OrderGroup nếu Payment lỗi
                 _unitOfWork.OrderGroups.Delete(orderGroup);
-
-                // 2. Hoàn lại kho
                 foreach (var order in orderGroup.Orders)
                 {
                     foreach (var item in order.OrderItems)
                     {
-                        // Hoàn kho Product chính
                         var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
                         if (product != null)
                         {
                             product.StockQuantity += item.Quantity;
                             await _unitOfWork.Models.UpdateAsync(product);
                         }
-
-                        // Hoàn kho Linh kiện (Components)
                         if (item.OrderItemComponents != null)
                         {
                             foreach (var comp in item.OrderItemComponents)
@@ -597,17 +681,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                                 var part = await _unitOfWork.Models.GetByIdAsync(comp.PartId);
                                 if (part != null)
                                 {
-                                    part.StockQuantity += (comp.Quantity * item.Quantity); // Nhân với số lượng cha
+                                    part.StockQuantity += (comp.Quantity * item.Quantity);
                                     await _unitOfWork.Models.UpdateAsync(part);
                                 }
                             }
                         }
                     }
                 }
-
-                await _unitOfWork.CommitAsync(); // Lưu lệnh Rollback
-
-                throw new InvalidOperationException($"Payment initialization failed: {ex.Message}. Please try again.");
+                await _unitOfWork.CommitAsync();
+                throw new InvalidOperationException($"Payment initialization failed: {ex.Message}");
             }
         }
 

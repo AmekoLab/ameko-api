@@ -1,4 +1,5 @@
 ﻿using FPTU.Capstone.AMKCollective.Application.DTOs.Voucher;
+using FPTU.Capstone.AMKCollective.Domain.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -55,5 +56,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 
         // Gỡ toàn bộ voucher khỏi đơn hàng (dùng khi hủy đơn)
         Task RemoveAllVouchersAsync(Guid userId, Guid orderId);
+        decimal CalculateVoucherDiscount(Voucher voucher, decimal baseAmount);
+        Task<ApplicableVoucherResponse> GetApplicableVouchersAsync(Guid userId);
     }
 }

@@ -123,7 +123,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<VoucherResponse>(voucher);
         }
 
-        // 4. Apply Voucher to Order (Stacking - max 2 vouchers)
+        // 4. Apply Voucher to Order (Stacking)
         public async Task<ApplyVoucherResult> ApplyVoucherAsync(Guid userId, Guid orderId, string code)
         {
             var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
@@ -139,24 +139,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (incomingVoucher.UsedCount >= incomingVoucher.UsageLimit) throw new Exception("Voucher usage limit reached.");
             if (incomingVoucher.TargetUserId != null && incomingVoucher.TargetUserId != userId)
                 throw new Exception("This voucher is not applicable to you.");
-            if (order.SubTotal < incomingVoucher.MinOrderValue)
-                throw new Exception($"Order value must be at least {incomingVoucher.MinOrderValue:N0} VND to use this voucher.");
-
-            // --- VALIDATE SCOPE (Shop Owner vs Admin) ---
-            await ValidateVoucherScopeAsync(incomingVoucher, order);
 
             // --- STACKING VALIDATION ---
             var appliedList = (await _unitOfWork.OrderVouchers.GetByOrderIdAsync(orderId)).ToList();
 
-            // Check for duplicate voucher
             if (appliedList.Any(av => av.VoucherId == incomingVoucher.Id))
                 throw new Exception("This voucher has already been applied to this order.");
 
-            // Business rule: maximum 2 vouchers per order
             if (appliedList.Count >= 2)
                 throw new Exception("Maximum 2 vouchers can be applied to one order.");
 
-            // [FIX 3]: Check IsStackable flag and validation rules
             if (appliedList.Count == 1)
             {
                 var existingVoucher = await _unitOfWork.Vouchers.GetByIdAsync(appliedList[0].VoucherId);
@@ -167,7 +159,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             // --- PREPARE CALCULATION PIPELINE ---
-            // Gather all vouchers and calculate from scratch to ensure correct discount caps
             var allVouchersToApply = new List<Voucher>();
             foreach (var av in appliedList)
             {
@@ -179,27 +170,70 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // Force ordering: Promotion/Negotiation first (0), Compensation last (1)
             allVouchersToApply = allVouchersToApply.OrderBy(v => v.Type == VoucherType.Compensation ? 1 : 0).ToList();
 
-            // Clear old records to rewrite the exact applied amount
             await _unitOfWork.OrderVouchers.DeleteAllByOrderIdAsync(orderId);
 
-            // --- CALCULATE DISCOUNT ---
+            // --- BẮT ĐẦU CÔ LẬP SỐ TIỀN (ISOLATION CALCULATION) ---
             decimal totalDiscountAmount = 0;
             var newAppliedList = new List<OrderVoucher>();
+
+            // Lấy danh sách các món hàng trong giỏ
+            var cartItems = order.OrderItems.Where(i => !i.IsDeleted).ToList();
 
             for (int i = 0; i < allVouchersToApply.Count; i++)
             {
                 var currentVoucher = allVouchersToApply[i];
 
-                // Calculate discount based on original SubTotal
-                decimal stepDiscount = CalculateVoucherDiscount(currentVoucher, order.SubTotal);
+                // Mặc định: Lấy tổng giỏ hàng (Áp dụng cho mã Sàn/Đền bù)
+                decimal baseCalculationAmount = order.SubTotal;
 
-                // Cap: Prevent discounting more than the remaining order value
+                // KIỂM TRA NẾU ĐÂY LÀ MÃ CỦA SHOP
+                if (currentVoucher.CreatorId != Guid.Empty &&
+                    (currentVoucher.Type == VoucherType.Promotion || currentVoucher.Type == VoucherType.Negotiation))
+                {
+                    decimal shopSubTotal = 0;
+                    // Tính tổng tiền của ĐÚNG CÁC MÓN HÀNG thuộc Shop đó
+                    foreach (var item in cartItems)
+                    {
+                        var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
+                        if (product != null && product.ShopId == currentVoucher.CreatorId)
+                        {
+                            shopSubTotal += item.TotalPrice;
+                        }
+                    }
+
+                    baseCalculationAmount = shopSubTotal;
+
+                    // Chặn: Nếu tổng tiền hàng của riêng Shop này chưa đủ điều kiện
+                    if (baseCalculationAmount < currentVoucher.MinOrderValue)
+                    {
+                        throw new Exception($"Tổng tiền các sản phẩm của Shop chưa đạt mức tối thiểu {currentVoucher.MinOrderValue:N0} VND để dùng mã {currentVoucher.Code}.");
+                    }
+                }
+                else
+                {
+                    // Mã Hệ Thống (Sàn/Đền bù): Kiểm tra trên tổng giỏ hàng
+                    if (baseCalculationAmount < currentVoucher.MinOrderValue)
+                    {
+                        throw new Exception($"Đơn hàng chưa đạt mức tối thiểu {currentVoucher.MinOrderValue:N0} VND để dùng mã {currentVoucher.Code}.");
+                    }
+                }
+
+                // Tính số tiền giảm dựa trên cái baseCalculationAmount đã được cô lập
+                decimal stepDiscount = CalculateVoucherDiscount(currentVoucher, baseCalculationAmount);
+
+                // Cap 1: Mã của Shop không được giảm lố số tiền hàng của chính Shop đó
+                if (currentVoucher.Type == VoucherType.Promotion || currentVoucher.Type == VoucherType.Negotiation)
+                {
+                    if (stepDiscount > baseCalculationAmount) stepDiscount = baseCalculationAmount;
+                }
+
+                // Cap 2: Tổng mọi discount không được vượt quá số tiền còn lại của đơn hàng chung
                 if (stepDiscount > (order.SubTotal - totalDiscountAmount))
                 {
                     stepDiscount = order.SubTotal - totalDiscountAmount;
                 }
 
-                // Create new OrderVoucher tracking record
+                // Ghi log vào OrderVoucher
                 var orderVoucher = new OrderVoucher
                 {
                     OrderId = orderId,
@@ -215,7 +249,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                 totalDiscountAmount += stepDiscount;
 
-                // Increment UsedCount ONLY for the newly applied voucher
+                // Chỉ tăng UsedCount cho mã vừa nhập
                 if (currentVoucher.Id == incomingVoucher.Id)
                 {
                     currentVoucher.UsedCount++;
@@ -226,12 +260,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // --- UPDATE ORDER ---
             order.DiscountAmount = totalDiscountAmount;
             order.TotalAmount = Math.Max(0, (order.SubTotal + order.ShippingFee) - totalDiscountAmount);
-            order.VoucherId = null; // Clear old FK - stacking uses OrderVouchers table
+            order.VoucherId = null;
 
             _unitOfWork.Orders.UpdateOrderAsync(order);
             await _unitOfWork.CommitAsync();
 
-            // --- BUILD RESULT ---
             return BuildApplyResult(order, newAppliedList);
         }
 
@@ -265,6 +298,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 .ToList();
 
             decimal totalDiscountAmount = 0;
+            var cartItems = order.OrderItems.Where(i => !i.IsDeleted).ToList();
 
             for (int i = 0; i < remainingOrderVouchers.Count; i++)
             {
@@ -273,14 +307,35 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                 if (underlyingVoucher != null)
                 {
-                    decimal stepDiscount = CalculateVoucherDiscount(underlyingVoucher, order.SubTotal);
+                    decimal baseCalculationAmount = order.SubTotal;
+
+                    if (underlyingVoucher.CreatorId != Guid.Empty &&
+                       (underlyingVoucher.Type == VoucherType.Promotion || underlyingVoucher.Type == VoucherType.Negotiation))
+                    {
+                        decimal shopSubTotal = 0;
+                        foreach (var item in cartItems)
+                        {
+                            var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
+                            if (product != null && product.ShopId == underlyingVoucher.CreatorId)
+                            {
+                                shopSubTotal += item.TotalPrice;
+                            }
+                        }
+                        baseCalculationAmount = shopSubTotal;
+                    }
+
+                    decimal stepDiscount = CalculateVoucherDiscount(underlyingVoucher, baseCalculationAmount);
+
+                    if (underlyingVoucher.Type == VoucherType.Promotion || underlyingVoucher.Type == VoucherType.Negotiation)
+                    {
+                        if (stepDiscount > baseCalculationAmount) stepDiscount = baseCalculationAmount;
+                    }
 
                     if (stepDiscount > (order.SubTotal - totalDiscountAmount))
                     {
                         stepDiscount = order.SubTotal - totalDiscountAmount;
                     }
 
-                    // Update remaining record with new accurate discount and order
                     ov.DiscountApplied = stepDiscount;
                     ov.ApplyOrder = i + 1;
                     _unitOfWork.OrderVouchers.Update(ov);
@@ -328,6 +383,83 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             _unitOfWork.Orders.UpdateOrderAsync(order);
             await _unitOfWork.CommitAsync();
+        }
+
+        public async Task<ApplicableVoucherResponse> GetApplicableVouchersAsync(Guid userId)
+        {
+            var response = new ApplicableVoucherResponse();
+
+            // 1. Get current cart
+            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
+            if (cartOrder == null || !cartOrder.OrderItems.Any())
+                return response;
+
+            // 2. Calculate SubTotal for each Shop and Total Cart
+            decimal cartSubTotal = 0;
+            var shopSubTotals = new Dictionary<Guid, decimal>();
+            var cartItems = cartOrder.OrderItems.Where(i => !i.IsDeleted).ToList();
+
+            foreach (var item in cartItems)
+            {
+                var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
+                if (product != null && product.ShopId != Guid.Empty)
+                {
+                    var shopId = product.ShopId;
+                    if (!shopSubTotals.ContainsKey(shopId)) shopSubTotals[shopId] = 0;
+
+                    shopSubTotals[shopId] += item.TotalPrice;
+                    cartSubTotal += item.TotalPrice;
+                }
+            }
+
+            // 3. Get valid vouchers using existing Repository method
+            var validVouchers = (await _unitOfWork.Vouchers.GetValidVouchersForUserAsync(userId)).ToList();
+
+            // 4. Categorize and Check MinOrderValue
+            var systemVouchers = new List<Domain.Entities.Voucher>();
+            var shopVouchersDict = new Dictionary<Guid, List<Domain.Entities.Voucher>>();
+
+            foreach (var v in validVouchers)
+            {
+                // Skip if usage limit is reached
+                if (v.UsedCount >= v.UsageLimit) continue;
+
+                // A. System/Platform Vouchers (Admin created OR Compensation)
+                if (v.CreatorId == Guid.Empty || v.Type == VoucherType.Compensation)
+                {
+                    // Check against TOTAL Cart value
+                    if (cartSubTotal >= v.MinOrderValue)
+                    {
+                        systemVouchers.Add(v);
+                    }
+                }
+                // B. Shop Specific Vouchers
+                else if (v.CreatorId != Guid.Empty && shopSubTotals.ContainsKey(v.CreatorId))
+                {
+                    // Check against SPECIFIC Shop SubTotal
+                    if (shopSubTotals[v.CreatorId] >= v.MinOrderValue)
+                    {
+                        if (!shopVouchersDict.ContainsKey(v.CreatorId))
+                            shopVouchersDict[v.CreatorId] = new List<Domain.Entities.Voucher>();
+
+                        shopVouchersDict[v.CreatorId].Add(v);
+                    }
+                }
+            }
+
+            // 5. Map to DTOs
+            response.SystemVouchers = _mapper.Map<List<VoucherResponse>>(systemVouchers);
+
+            foreach (var kvp in shopVouchersDict)
+            {
+                response.ShopVoucherGroups.Add(new ShopVoucherGroupResponse
+                {
+                    ShopId = kvp.Key,
+                    Vouchers = _mapper.Map<List<VoucherResponse>>(kvp.Value)
+                });
+            }
+
+            return response;
         }
 
         // ─── Private Helpers ────────────────────────────────────────────────────────
@@ -384,7 +516,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
         }
 
-        private static decimal CalculateVoucherDiscount(Voucher voucher, decimal subTotal)
+        public decimal CalculateVoucherDiscount(Voucher voucher, decimal subTotal)
         {
             decimal discount;
             if (voucher.DiscountType == DiscountType.FixedAmount)

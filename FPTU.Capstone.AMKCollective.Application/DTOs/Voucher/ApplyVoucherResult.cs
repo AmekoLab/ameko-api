@@ -21,11 +21,5 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Voucher
         public List<AppliedVoucherDetail> AppliedVouchers { get; set; } = new();
     }
 
-    public class AppliedVoucherDetail
-    {
-        public string Code { get; set; } = string.Empty;
-        public string VoucherType { get; set; } = string.Empty;
-        public decimal DiscountApplied { get; set; }
-        public int ApplyOrder { get; set; }
-    }
+    
 }

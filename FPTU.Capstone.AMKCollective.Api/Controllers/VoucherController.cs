@@ -1,4 +1,5 @@
 ﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Voucher;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -292,6 +293,42 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             catch (Exception ex)
             {
                 return ErrorResponse<object>(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Gets a list of applicable vouchers based on the user's current shopping cart.
+        /// Automatically categorizes vouchers into System/Platform Vouchers (applied to the whole cart) 
+        /// and Shop Vouchers (applied only to specific shop items).
+        /// Filters out vouchers that do not meet the Minimum Order Value (MinOrderValue).
+        /// </summary>
+        /// <remarks>
+        /// Frontend Usage:
+        /// - Use `systemVouchers` for the bottom-level cart discount section.
+        /// - Iterate through `shopVoucherGroups` and match `shopId` to display vouchers under each specific shop's item list.
+        /// </remarks>
+        /// <response code="200">Returns the structured list of applicable vouchers.</response>
+        /// <response code="401">If the user is not authenticated.</response>
+        [HttpGet("applicable")]
+        [Authorize]
+        [ProducesResponseType(typeof(ApiResponse<ApplicableVoucherResponse>), 200)]
+        public async Task<IActionResult> GetApplicableVouchersForCart()
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+
+                var result = await _voucherService.GetApplicableVouchersAsync(userId);
+
+                return SuccessResponse(result, "Applicable vouchers retrieved successfully.");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<ApplicableVoucherResponse>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<ApplicableVoucherResponse>(ex.Message);
             }
         }
 
