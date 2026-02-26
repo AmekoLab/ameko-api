@@ -145,6 +145,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
 
                 cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
+                cartOrder.SubTotal = cartOrder.TotalAmount;
                 await _unitOfWork.Orders.AddAsync(cartOrder); // Entire graph → Added
                 await _unitOfWork.CommitAsync();               // Chỉ INSERT, không UPDATE
             }
@@ -305,7 +306,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // 4. Tính lại tổng tiền giỏ hàng (Sau khi đã update giá các item)
             result.TotalAmount = result.OrderItems.Sum(i => i.TotalPrice);
-
+            result.DiscountAmount = cartOrder.DiscountAmount;
+            result.TotalAmount = Math.Max(0, result.SubTotal - result.DiscountAmount);
             // (Optional) Nếu logic Discount phức tạp thì gọi Service tính lại, tạm thời set 0 hoặc giữ nguyên
             // result.DiscountAmount = ...; 
 
@@ -330,6 +332,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // 4. Tính lại tổng tiền
             cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
+            cartOrder.SubTotal = cartOrder.TotalAmount;
 
             var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(cartOrder.Id); // cartOrder là biến lưu order giỏ hàng hiện tại của bạn
 
@@ -373,6 +376,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             item.TotalPrice = item.Quantity * item.UnitPrice;
 
             cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
+            cartOrder.SubTotal = cartOrder.TotalAmount;
             var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(cartOrder.Id); // cartOrder là biến lưu order giỏ hàng hiện tại của bạn
 
             if (appliedVouchers != null && appliedVouchers.Any())
@@ -564,18 +568,29 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var systemVouchers = activeVouchers.Where(v => v.Type == VoucherType.Compensation).ToList();
             var shopVouchers = activeVouchers.Where(v => v.Type == VoucherType.Promotion || v.Type == VoucherType.Negotiation).ToList();
 
+            // 3.0 KIỂM TRA LẠI ĐIỀU KIỆN MÃ HỆ THỐNG TRÊN TỔNG CÁC MÓN ĐÃ CHỌN
+            foreach (var sysVoucher in systemVouchers)
+            {
+                if (totalCheckoutSubTotal < sysVoucher.MinOrderValue)
+                    throw new InvalidOperationException($"Tổng tiền các món bạn chọn ({totalCheckoutSubTotal:N0}đ) không đủ điều kiện tối thiểu ({sysVoucher.MinOrderValue:N0}đ) để dùng mã hệ thống {sysVoucher.Code}. Vui lòng chọn thêm sản phẩm hoặc bỏ mã giảm giá.");
+            }
+
             foreach (var order in orderGroup.Orders)
             {
                 decimal orderDiscountAmount = 0;
                 decimal currentOrderRemain = order.SubTotal;
 
-                // 3.1. ÁP MÃ CỦA ĐÚNG SHOP ĐÓ (Nếu có)
-                var matchedShopVoucher = shopVouchers.FirstOrDefault(v => v.CreatorId == order.ShopId);
+                // FIX BUG: Lấy thông tin Shop để lấy ra UserId của chủ Shop
+                var shopInfo = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+                Guid shopOwnerId = shopInfo != null ? shopInfo.UserId : Guid.Empty;
+
+                // 3.1. ÁP MÃ CỦA ĐÚNG SHOP ĐÓ (Sử dụng shopOwnerId thay vì order.ShopId)
+                var matchedShopVoucher = shopVouchers.FirstOrDefault(v => v.CreatorId == shopOwnerId);
                 if (matchedShopVoucher != null)
                 {
-                    // Kiểm tra khách chỉ chọn mua 1 vài món thì có còn đủ MinOrderValue không?
+                    // Kiểm tra lại: Món hàng của riêng Shop này CÓ ĐƯỢC CHỌN ĐỦ MinOrderValue KHÔNG?
                     if (order.SubTotal < matchedShopVoucher.MinOrderValue)
-                        throw new InvalidOperationException($"Your selected items from Shop no longer meet the minimum requirement ({matchedShopVoucher.MinOrderValue:N0}) for voucher {matchedShopVoucher.Code}.");
+                        throw new InvalidOperationException($"Tổng tiền các món bạn chọn từ Shop {shopInfo?.ShopName} không đủ điều kiện tối thiểu để dùng mã {matchedShopVoucher.Code}.");
 
                     decimal shopDiscount = _voucherService.CalculateVoucherDiscount(matchedShopVoucher, order.SubTotal);
                     if (shopDiscount > currentOrderRemain) shopDiscount = currentOrderRemain; // Cap tiền giảm
@@ -595,12 +610,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
 
                 // 3.2. ÁP MÃ CỦA SÀN & PHÂN BỔ (PRORATION)
-                // Tính tỷ trọng đóng góp của Order này vào tổng giỏ hàng
                 decimal weight = totalCheckoutSubTotal > 0 ? (order.SubTotal / totalCheckoutSubTotal) : 0;
 
                 foreach (var sysVoucher in systemVouchers)
                 {
-                    // Tính tổng tiền Sàn giảm cho cả giỏ, sau đó nhân với Tỷ trọng của Order này
                     decimal totalSysDiscount = _voucherService.CalculateVoucherDiscount(sysVoucher, totalCheckoutSubTotal);
                     decimal proratedDiscount = totalSysDiscount * weight;
 
@@ -649,6 +662,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             else
             {
                 cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
+                cartOrder.SubTotal = cartOrder.TotalAmount;
+                cartOrder.DiscountAmount = 0;
+                cartOrder.VoucherId = null;
                 await _unitOfWork.Orders.UpdateOrderAsync(cartOrder);
             }
 
@@ -940,10 +956,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     }
 
                     // --- 3.2 XỬ LÝ VOUCHER & TẠO VOUCHER REFUND (BAO GỒM PHẠT SHOP) ---
+                    // Chắc chắn đơn đã Paid nên không cần check if (PaymentStatus == Paid) nữa, 
+                    // nhưng muốn an toàn thì vẫn giữ.
                     if (order.PaymentStatus == PaymentStatus.Paid)
                     {
-                        // Bước A: Trả lại lượt dùng cho các mã Marketing (Promo/Negotiation)
-                        // và thu thập số tiền Đền bù cũ mà khách đã dùng
                         var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(order.Id);
                         decimal oldCompensationUsed = 0;
 
@@ -952,10 +968,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             var appliedVoucher = await _unitOfWork.Vouchers.GetByIdAsync(av.VoucherId);
                             if (appliedVoucher != null)
                             {
+                                // 1. Tiền đền bù cũ -> Ghi nhận để gộp vào mã mới
                                 if (appliedVoucher.Type == VoucherType.Compensation)
                                 {
                                     oldCompensationUsed += av.DiscountApplied;
                                 }
+                                // 2. Mã Khuyến mãi / Thương lượng -> Hoàn lại 1 lượt cho hệ thống
                                 else if (appliedVoucher.Type == VoucherType.Promotion || appliedVoucher.Type == VoucherType.Negotiation)
                                 {
                                     if (appliedVoucher.UsedCount > 0 && DateTime.UtcNow <= appliedVoucher.EndDate)
@@ -980,7 +998,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         // Bước C: Tạo Voucher Refund
                         if (totalRefundVoucherValue > 0)
                         {
-                            // Gọi trực tiếp không dùng named parameter
                             await _voucherService.CreateCompensationVoucherAsync(
                                 realActionUserId,
                                 issue.UserId,
@@ -1002,15 +1019,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         // D2: Trừ tiền phạt (Penalty)
                         if (penaltyAmount > 0)
                         {
-                            // Gọi đúng tên hàm AdjustBalanceAsync và truyền đủ 2 tham số
                             await _walletService.AdjustBalanceAsync(
-                                realActionUserId, // Tham số adminId (Người thực hiện lệnh)
+                                realActionUserId,
                                  new AdjustBalanceRequest
-                                {
-                                    UserId = realActionUserId, // ID của Shop bị trừ tiền
-                                    Amount = -penaltyAmount,   // Truyền số âm để trừ tiền
-                                    Reason = $"Cancellation fee for Order #{order.Id}"
-                                }
+                                 {
+                                     UserId = realActionUserId,
+                                     Amount = -penaltyAmount,
+                                     Reason = $"Cancellation fee for Order #{order.Id}"
+                                 }
                             );
                         }
 
@@ -1106,6 +1122,66 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var response = _mapper.Map<OrderResponse>(order);
 
             return response;
+        }
+
+        public async Task CancelAbandonedOrdersAsync(CancellationToken token = default)
+        {
+            // Cấu hình thời gian quá hạn (Ví dụ: 24 tiếng. Với Stripe có thể set 30 phút tùy bạn)
+            var expirationTime = DateTime.UtcNow.AddHours(-24);
+
+            var abandonedOrders = await _unitOfWork.Orders.GetAbandonedOrdersAsync(expirationTime, token);
+
+            if (!abandonedOrders.Any()) return;
+
+            foreach (var order in abandonedOrders)
+            {
+                // 1. Cập nhật trạng thái
+                order.OrderStatus = OrderStatus.Cancelled;
+                order.CancelReason = "The order was automatically cancelled because the payment time expired.";
+
+                // 2. Nhả lại kho (Stock) cho Base Product
+                foreach (var item in order.OrderItems)
+                {
+                    var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
+                    if (product != null)
+                    {
+                        product.StockQuantity += item.Quantity;
+                        await _unitOfWork.Models.UpdateAsync(product);
+                    }
+
+                    // 2.1 Nhả lại kho (Stock) cho các linh kiện rời (Nếu là hàng Custom)
+                    if (item.IsCustom && item.OrderItemComponents != null)
+                    {
+                        foreach (var comp in item.OrderItemComponents)
+                        {
+                            var part = await _unitOfWork.Models.GetByIdAsync(comp.PartId);
+                            if (part != null)
+                            {
+                                // Số lượng linh kiện = Số lượng yêu cầu * Số lượng Kit khách mua
+                                part.StockQuantity += (comp.Quantity * item.Quantity);
+                                await _unitOfWork.Models.UpdateAsync(part);
+                            }
+                        }
+                    }
+                }
+
+                // 3. Nhả lại lượt dùng Voucher
+                var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(order.Id);
+                foreach (var av in appliedVouchers)
+                {
+                    var voucherToRestore = await _unitOfWork.Vouchers.GetByIdAsync(av.VoucherId);
+                    if (voucherToRestore != null && voucherToRestore.UsedCount > 0)
+                    {
+                        voucherToRestore.UsedCount--;
+                        _unitOfWork.Vouchers.Update(voucherToRestore);
+                    }
+                }
+
+                await _unitOfWork.Orders.UpdateOrderAsync(order);
+            }
+
+            // Lưu toàn bộ thay đổi cùng 1 lúc
+            await _unitOfWork.CommitAsync();
         }
 
         // =================================================================

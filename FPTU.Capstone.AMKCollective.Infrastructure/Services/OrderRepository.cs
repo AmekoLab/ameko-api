@@ -126,6 +126,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             var stub = new Order { Id = orderId };
             _context.Orders.Attach(stub);
             stub.TotalAmount = newTotalAmount;
+            stub.SubTotal = newTotalAmount;
             stub.UpdatedAt = DateTime.UtcNow;
             _context.Entry(stub).Property(x => x.TotalAmount).IsModified = true;
             _context.Entry(stub).Property(x => x.UpdatedAt).IsModified = true;
@@ -247,6 +248,18 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Include(o => o.OrderItems.Where(oi => !oi.IsDeleted))
                     .ThenInclude(oi => oi.OrderItemComponents) 
                 .FirstOrDefaultAsync(o => o.Id == orderId && !o.IsDeleted);
+        }
+
+        public async Task<List<Order>> GetAbandonedOrdersAsync(DateTime expirationTime, CancellationToken token = default)
+        {
+            return await _context.Orders
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.OrderItemComponents) 
+                .Where(o => o.PaymentStatus == PaymentStatus.Pending
+                         && o.OrderStatus == OrderStatus.Pending
+                         && o.CreatedAt <= expirationTime
+                         && !o.IsDeleted)
+                .ToListAsync(token);
         }
     }
 }

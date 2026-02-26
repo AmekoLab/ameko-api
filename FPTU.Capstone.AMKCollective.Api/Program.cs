@@ -154,6 +154,7 @@ internal class Program
         // Register Background Workers
         builder.Services.AddHostedService<OrderCancellationTimeoutWorker>();
         builder.Services.AddHostedService<FundsReleaseWorker>();
+        builder.Services.AddHostedService<AbandonedOrderCleanupWorker>();
 
         var app = builder.Build();
 

@@ -17,7 +17,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<IEnumerable<OrderVoucher>> GetByOrderIdAsync(Guid orderId)
         {
             return await _context.OrderVouchers
-                .Where(ov => ov.OrderId == orderId && !ov.IsDeleted)
+                .Where(ov => ov.OrderId == orderId)
                 .OrderBy(ov => ov.ApplyOrder)
                 .Include(ov => ov.Voucher)
                 .ToListAsync();
@@ -26,7 +26,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<OrderVoucher?> GetByOrderAndVoucherAsync(Guid orderId, Guid voucherId)
         {
             return await _context.OrderVouchers
-                .FirstOrDefaultAsync(ov => ov.OrderId == orderId && ov.VoucherId == voucherId && !ov.IsDeleted);
+                .FirstOrDefaultAsync(ov => ov.OrderId == orderId && ov.VoucherId == voucherId);
         }
 
         public async Task AddAsync(OrderVoucher orderVoucher)
@@ -36,21 +36,16 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         public void Delete(OrderVoucher orderVoucher)
         {
-            // Soft delete
-            orderVoucher.IsDeleted = true;
-            _context.OrderVouchers.Update(orderVoucher);
+            _context.OrderVouchers.Remove(orderVoucher);
         }
 
         public async Task DeleteAllByOrderIdAsync(Guid orderId)
         {
             var records = await _context.OrderVouchers
-                .Where(ov => ov.OrderId == orderId && !ov.IsDeleted)
+                .Where(ov => ov.OrderId == orderId)
                 .ToListAsync();
 
-            foreach (var record in records)
-            {
-                record.IsDeleted = true;
-            }
+            _context.OrderVouchers.RemoveRange(records);
         }
 
         public void Update(OrderVoucher orderVoucher)

@@ -176,9 +176,47 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             decimal totalDiscountAmount = 0;
             var newAppliedList = new List<OrderVoucher>();
 
-            // Lấy danh sách các món hàng trong giỏ
+            // 1. Lấy danh sách các món hàng trong giỏ
             var cartItems = order.OrderItems.Where(i => !i.IsDeleted).ToList();
+            order.SubTotal = cartItems.Sum(i => i.TotalPrice);
+            // 2. Tính tổng tiền của từng Shop (Dựa trên UserId của chủ shop)
+            var creatorSubTotals = new Dictionary<Guid, decimal>(); // Key: UserId của chủ Shop, Value: Tổng tiền
 
+            var shopCache = new Dictionary<Guid, Guid>(); // Cache phụ: Map ShopId -> UserId để giảm thiểu gọi DB
+            foreach (var item in cartItems)
+            {
+                var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
+                if (product != null && product.ShopId != Guid.Empty)
+                {
+                    Guid shopOwnerUserId = Guid.Empty;
+
+                    // Nếu chưa lấy Shop này bao giờ thì gọi DB, rồi lưu vào cache
+                    if (!shopCache.ContainsKey(product.ShopId))
+                    {
+                        var shop = await _unitOfWork.Shops.GetByIdAsync(product.ShopId);
+                        if (shop != null)
+                        {
+                            shopOwnerUserId = shop.UserId;
+                            shopCache[product.ShopId] = shop.UserId;
+                        }
+                    }
+                    else
+                    {
+                        shopOwnerUserId = shopCache[product.ShopId];
+                    }
+
+                    // Cộng dồn tiền hàng cho chủ shop này
+                    if (shopOwnerUserId != Guid.Empty)
+                    {
+                        if (!creatorSubTotals.ContainsKey(shopOwnerUserId))
+                            creatorSubTotals[shopOwnerUserId] = 0;
+
+                        creatorSubTotals[shopOwnerUserId] += item.TotalPrice;
+                    }
+                }
+            }
+
+            // 3. Xử lý tính toán cho từng Voucher
             for (int i = 0; i < allVouchersToApply.Count; i++)
             {
                 var currentVoucher = allVouchersToApply[i];
@@ -190,23 +228,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 if (currentVoucher.CreatorId != Guid.Empty &&
                     (currentVoucher.Type == VoucherType.Promotion || currentVoucher.Type == VoucherType.Negotiation))
                 {
-                    decimal shopSubTotal = 0;
-                    // Tính tổng tiền của ĐÚNG CÁC MÓN HÀNG thuộc Shop đó
-                    foreach (var item in cartItems)
-                    {
-                        var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
-                        if (product != null && product.ShopId == currentVoucher.CreatorId)
-                        {
-                            shopSubTotal += item.TotalPrice;
-                        }
-                    }
-
-                    baseCalculationAmount = shopSubTotal;
+                    // Lấy ngay tổng tiền đã tính sẵn từ Dictionary ra
+                    baseCalculationAmount = creatorSubTotals.ContainsKey(currentVoucher.CreatorId)
+                                            ? creatorSubTotals[currentVoucher.CreatorId]
+                                            : 0;
 
                     // Chặn: Nếu tổng tiền hàng của riêng Shop này chưa đủ điều kiện
                     if (baseCalculationAmount < currentVoucher.MinOrderValue)
                     {
-                        throw new Exception($"Tổng tiền các sản phẩm của Shop chưa đạt mức tối thiểu {currentVoucher.MinOrderValue:N0} VND để dùng mã {currentVoucher.Code}.");
+                        throw new Exception($"Your order total does not meet the minimum requirement of {currentVoucher.MinOrderValue:N0} VND to apply voucher {currentVoucher.Code}.");
                     }
                 }
                 else
@@ -214,7 +244,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     // Mã Hệ Thống (Sàn/Đền bù): Kiểm tra trên tổng giỏ hàng
                     if (baseCalculationAmount < currentVoucher.MinOrderValue)
                     {
-                        throw new Exception($"Đơn hàng chưa đạt mức tối thiểu {currentVoucher.MinOrderValue:N0} VND để dùng mã {currentVoucher.Code}.");
+                        throw new Exception($"Your order does not meet the minimum requirement of {currentVoucher.MinOrderValue:N0} VND to use voucher {currentVoucher.Code}.");
                     }
                 }
 
@@ -299,7 +329,41 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             decimal totalDiscountAmount = 0;
             var cartItems = order.OrderItems.Where(i => !i.IsDeleted).ToList();
+            order.SubTotal = cartItems.Sum(i => i.TotalPrice);
+            // Tính tổng tiền của từng Shop 1 lần duy nhất
+            var creatorSubTotals = new Dictionary<Guid, decimal>();
+            var shopCache = new Dictionary<Guid, Guid>();
 
+            foreach (var item in cartItems)
+            {
+                var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
+                if (product != null && product.ShopId != Guid.Empty)
+                {
+                    Guid shopOwnerUserId = Guid.Empty;
+                    if (!shopCache.ContainsKey(product.ShopId))
+                    {
+                        var shop = await _unitOfWork.Shops.GetByIdAsync(product.ShopId);
+                        if (shop != null)
+                        {
+                            shopOwnerUserId = shop.UserId;
+                            shopCache[product.ShopId] = shop.UserId;
+                        }
+                    }
+                    else
+                    {
+                        shopOwnerUserId = shopCache[product.ShopId];
+                    }
+
+                    if (shopOwnerUserId != Guid.Empty)
+                    {
+                        if (!creatorSubTotals.ContainsKey(shopOwnerUserId))
+                            creatorSubTotals[shopOwnerUserId] = 0;
+                        creatorSubTotals[shopOwnerUserId] += item.TotalPrice;
+                    }
+                }
+            }
+
+            // Tính toán lại các mã voucher còn lại
             for (int i = 0; i < remainingOrderVouchers.Count; i++)
             {
                 var ov = remainingOrderVouchers[i];
@@ -312,16 +376,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     if (underlyingVoucher.CreatorId != Guid.Empty &&
                        (underlyingVoucher.Type == VoucherType.Promotion || underlyingVoucher.Type == VoucherType.Negotiation))
                     {
-                        decimal shopSubTotal = 0;
-                        foreach (var item in cartItems)
-                        {
-                            var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
-                            if (product != null && product.ShopId == underlyingVoucher.CreatorId)
-                            {
-                                shopSubTotal += item.TotalPrice;
-                            }
-                        }
-                        baseCalculationAmount = shopSubTotal;
+                        // Lấy tổng tiền đã tính sẵn cho chủ Shop này
+                        baseCalculationAmount = creatorSubTotals.ContainsKey(underlyingVoucher.CreatorId)
+                                                ? creatorSubTotals[underlyingVoucher.CreatorId]
+                                                : 0;
                     }
 
                     decimal stepDiscount = CalculateVoucherDiscount(underlyingVoucher, baseCalculationAmount);
@@ -396,7 +454,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // 2. Calculate SubTotal for each Shop and Total Cart
             decimal cartSubTotal = 0;
-            var shopSubTotals = new Dictionary<Guid, decimal>();
+            var shopSubTotals = new Dictionary<Guid, decimal>(); // Key: ShopId
+
+            // Dictionary để map giữa UserId của chủ shop và ShopId
+            var userToShopMap = new Dictionary<Guid, Guid>(); // Key: UserId (CreatorId), Value: ShopId
+
             var cartItems = cartOrder.OrderItems.Where(i => !i.IsDeleted).ToList();
 
             foreach (var item in cartItems)
@@ -405,7 +467,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 if (product != null && product.ShopId != Guid.Empty)
                 {
                     var shopId = product.ShopId;
-                    if (!shopSubTotals.ContainsKey(shopId)) shopSubTotals[shopId] = 0;
+                    if (!shopSubTotals.ContainsKey(shopId))
+                    {
+                        shopSubTotals[shopId] = 0;
+
+                        // Lấy thông tin Shop để liên kết UserId với ShopId
+                        var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
+                        if (shop != null)
+                        {
+                            userToShopMap[shop.UserId] = shopId;
+                        }
+                    }
 
                     shopSubTotals[shopId] += item.TotalPrice;
                     cartSubTotal += item.TotalPrice;
@@ -417,6 +489,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // 4. Categorize and Check MinOrderValue
             var systemVouchers = new List<Domain.Entities.Voucher>();
+
+            // shopVouchersDict vẫn dùng Key là ShopId để trả về response cho chuẩn
             var shopVouchersDict = new Dictionary<Guid, List<Domain.Entities.Voucher>>();
 
             foreach (var v in validVouchers)
@@ -434,15 +508,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     }
                 }
                 // B. Shop Specific Vouchers
-                else if (v.CreatorId != Guid.Empty && shopSubTotals.ContainsKey(v.CreatorId))
+                // Kiểm tra xem CreatorId (UserId) của voucher có khớp với Shop nào trong giỏ hàng không
+                else if (v.CreatorId != Guid.Empty && userToShopMap.TryGetValue(v.CreatorId, out var mappedShopId))
                 {
-                    // Check against SPECIFIC Shop SubTotal
-                    if (shopSubTotals[v.CreatorId] >= v.MinOrderValue)
+                    // Check against SPECIFIC Shop SubTotal (sử dụng mappedShopId)
+                    if (shopSubTotals[mappedShopId] >= v.MinOrderValue)
                     {
-                        if (!shopVouchersDict.ContainsKey(v.CreatorId))
-                            shopVouchersDict[v.CreatorId] = new List<Domain.Entities.Voucher>();
+                        if (!shopVouchersDict.ContainsKey(mappedShopId))
+                            shopVouchersDict[mappedShopId] = new List<Domain.Entities.Voucher>();
 
-                        shopVouchersDict[v.CreatorId].Add(v);
+                        shopVouchersDict[mappedShopId].Add(v);
                     }
                 }
             }
@@ -454,7 +529,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 response.ShopVoucherGroups.Add(new ShopVoucherGroupResponse
                 {
-                    ShopId = kvp.Key,
+                    ShopId = kvp.Key, // kvp.Key lúc này chính xác là ShopId
                     Vouchers = _mapper.Map<List<VoucherResponse>>(kvp.Value)
                 });
             }
