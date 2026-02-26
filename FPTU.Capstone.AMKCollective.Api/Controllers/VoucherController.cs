@@ -1,4 +1,5 @@
 ﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Voucher;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -21,7 +22,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Tạo Voucher Khuyến mãi (Promotion) - Dành cho Shop/Admin
+        /// Create a Promotional Voucher - For Shop/Admin.
+        /// Promotional vouchers are general discount vouchers created by shops or admins.
         /// </summary>
         [HttpPost("promotion")]
         public async Task<IActionResult> CreatePromotionalVoucher([FromBody] CreateVoucherRequest request)
@@ -35,7 +37,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                // Lưu ý: Logic check Role (Shop/Admin) nên nằm ở Service hoặc Attribute [Authorize(Roles="Shop,Admin")]
+                // Note: Role check logic (Shop/Admin) should be placed in Service or use [Authorize(Roles="Shop,Admin")] attribute
 
                 var result = await _voucherService.CreatePromotionalVoucherAsync(userId, request);
                 return SuccessResponse(result, "Promotional voucher created successfully");
@@ -47,7 +49,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Tạo Voucher Thương lượng (Negotiation) - Dành cho Shop chốt deal với khách
+        /// Create a Negotiation Voucher - For Shop to finalize deals with customers.
+        /// Negotiation vouchers are special discount offers created by shops for specific customers.
         /// </summary>
         [HttpPost("negotiation")]
         public async Task<IActionResult> CreateNegotiationVoucher([FromBody] CreateNegotiationRequest request)
@@ -61,7 +64,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             try
             {
                 var shopId = GetCurrentUserId();
-                // Check Role Shop ở đây hoặc dùng Policy
+                // Check Shop role here or use authorization policy
 
                 var result = await _voucherService.CreateNegotiationVoucherAsync(
                     shopId,
@@ -79,7 +82,13 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Áp dụng Voucher vào đơn hàng
+        /// Apply Voucher to Order (Supports Stacking - Maximum 2 vouchers per order).
+        /// Business Rules:
+        ///   Promotion + Compensation - Allowed
+        ///   Negotiation + Compensation - Allowed
+        ///   Promotion + Promotion - Not Allowed
+        ///   Promotion + Negotiation - Not Allowed
+        ///   Compensation + Compensation - Not Allowed
         /// </summary>
         [HttpPost("apply")]
         public async Task<IActionResult> ApplyVoucher([FromBody] ApplyVoucherRequest request)
@@ -87,30 +96,27 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                var discountAmount = await _voucherService.ApplyVoucherAsync(userId, request.OrderId, request.Code);
-
-                // Trả về số tiền được giảm để FE hiển thị
-                return SuccessResponse(new { DiscountAmount = discountAmount }, "Voucher applied successfully");
+                var result = await _voucherService.ApplyVoucherAsync(userId, request.OrderId, request.Code);
+                return SuccessResponse(result, "Voucher applied successfully");
             }
             catch (Exception ex)
             {
-                // Trả về lỗi 400 kèm message chi tiết (VD: Hết hạn, chưa đủ tiền...)
                 return ErrorResponse<object>(ex.Message);
             }
         }
 
         /// <summary>
-        /// Gỡ bỏ Voucher khỏi đơn hàng
+        /// Remove a Specific Voucher from Order by Voucher Code.
+        /// Returns updated stacking information and remaining discount totals.
         /// </summary>
-        [HttpPost("remove/{orderId}")]
-        public async Task<IActionResult> RemoveVoucher(Guid orderId)
+        [HttpDelete("remove/{orderId}/{voucherCode}")]
+        public async Task<IActionResult> RemoveSpecificVoucher(Guid orderId, string voucherCode)
         {
             try
             {
                 var userId = GetCurrentUserId();
-                await _voucherService.RemoveVoucherAsync(userId, orderId);
-
-                return SuccessResponse("Voucher removed successfully");
+                var result = await _voucherService.RemoveSpecificVoucherAsync(userId, orderId, voucherCode);
+                return SuccessResponse(result, "Voucher removed successfully");
             }
             catch (Exception ex)
             {
@@ -119,7 +125,27 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Lấy danh sách Voucher khả dụng của tôi (Voucher công khai + Voucher riêng)
+        /// Remove All Vouchers from Order.
+        /// Used when cancelling order or resetting shopping cart. Clears all applied discounts.
+        /// </summary>
+        [HttpDelete("remove-all/{orderId}")]
+        public async Task<IActionResult> RemoveAllVouchers(Guid orderId)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                await _voucherService.RemoveAllVouchersAsync(userId, orderId);
+                return SuccessResponse("All vouchers removed from order");
+            }
+            catch (Exception ex)
+            {
+                return ErrorResponse<object>(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Get List of Available Vouchers for Current User.
+        /// Returns both public vouchers and privately assigned vouchers for the user.
         /// </summary>
         [HttpGet("my-vouchers")]
         public async Task<IActionResult> GetMyVouchers()
@@ -270,8 +296,44 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
+        /// <summary>
+        /// Gets a list of applicable vouchers based on the user's current shopping cart.
+        /// Automatically categorizes vouchers into System/Platform Vouchers (applied to the whole cart) 
+        /// and Shop Vouchers (applied only to specific shop items).
+        /// Filters out vouchers that do not meet the Minimum Order Value (MinOrderValue).
+        /// </summary>
+        /// <remarks>
+        /// Frontend Usage:
+        /// - Use `systemVouchers` for the bottom-level cart discount section.
+        /// - Iterate through `shopVoucherGroups` and match `shopId` to display vouchers under each specific shop's item list.
+        /// </remarks>
+        /// <response code="200">Returns the structured list of applicable vouchers.</response>
+        /// <response code="401">If the user is not authenticated.</response>
+        [HttpGet("applicable")]
+        [Authorize]
+        [ProducesResponseType(typeof(ApiResponse<ApplicableVoucherResponse>), 200)]
+        public async Task<IActionResult> GetApplicableVouchersForCart()
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
 
-        // Helper private để lấy User Id từ Token
+                var result = await _voucherService.GetApplicableVouchersAsync(userId);
+
+                return SuccessResponse(result, "Applicable vouchers retrieved successfully.");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<ApplicableVoucherResponse>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<ApplicableVoucherResponse>(ex.Message);
+            }
+        }
+
+
+        // Helper method to extract User Id from Token
         //private Guid GetCurrentUserId()
         //{
         //    var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");

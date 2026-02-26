@@ -245,6 +245,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.Type, opt => opt.MapFrom(src => src.Type.ToString()))
                 .ForMember(dest => dest.DiscountType, opt => opt.MapFrom(src => src.DiscountType.ToString()))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()))
+                .ForMember(dest => dest.StackingPolicy, opt => opt.MapFrom(src => src.StackingPolicy.ToString()))
                 .ForMember(dest => dest.CreatorName, opt => opt.MapFrom(src =>
                     src.Creator != null && src.Creator.ShopProfile != null
                     ? src.Creator.ShopProfile.ShopName
