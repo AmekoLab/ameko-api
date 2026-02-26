@@ -17,5 +17,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Shop
         public double Rating { get; set; }
         public int TotalSales { get; set; }
         public DateTime CreatedAt { get; set; }
+        public int FollowersCount { get; set; }
+        public int FollowingCount { get; set; }
     }
 }
