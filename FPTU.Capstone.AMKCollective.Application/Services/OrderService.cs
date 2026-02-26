@@ -390,7 +390,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<CheckoutResponse> CheckoutAsync(Guid userId, CheckoutRequest request, CancellationToken token = default)
         {
-            // 1. LẤY GIỎ HÀNG VÀ ITEM ĐƯỢC CHỌN
+            // 1. Lấy giỏ hàng hiện tại
             var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
             if (cartOrder == null || !cartOrder.OrderItems.Any())
                 throw new InvalidOperationException("Cart is empty.");
@@ -499,9 +499,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             var partEntity = await _unitOfWork.Models.GetByIdAsync(comp.PartId);
                             if (partEntity == null) throw new InvalidOperationException($"Component {comp.PartName} not found.");
 
+                            // Logic tính recipe giữ nguyên
                             int requiredQtyPerKit = 1;
                             if (!string.IsNullOrEmpty(product.Specifications))
-                            {
+                            {                     
                                 try
                                 {
                                     using (System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(product.Specifications))

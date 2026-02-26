@@ -10,6 +10,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Shop
     {
         public Guid Id { get; set; }
         public string ShopName { get; set; } = string.Empty;
+        public string? UserId { get; set; }
         public string? Bio { get; set; }
         public string? LogoUrl { get; set; }
         public string? BannerUrl { get; set; }
