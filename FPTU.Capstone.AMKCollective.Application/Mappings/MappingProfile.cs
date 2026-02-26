@@ -44,9 +44,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             CreateMap<FollowRequest, Follow>();
             CreateMap<Follow, FollowResponse>();
             CreateMap<Follow, FollowedUserResponse>()
-                .ForMember(dest => dest.UserId, opt => opt.MapFrom(src => src.Followed.Id));
+                .ForMember(dest => dest.UserId, opt => opt.MapFrom(src => src.Followed.Id))
+                .ForMember(dest => dest.UserName, opt => opt.MapFrom(src => src.Followed.Username))
+                .ForMember(dest => dest.FullName, opt => opt.MapFrom(src => src.Followed.FirstName + " " + src.Followed.LastName))
+                .ForMember(dest => dest.AvatarUrl, opt => opt.MapFrom(src => src.Followed.Image));
+
             CreateMap<Follow, FollowerResponse>()
-                .ForMember(dest => dest.UserId, opt => opt.MapFrom(src => src.Follower.Id));
+                .ForMember(dest => dest.UserId, opt => opt.MapFrom(src => src.Follower.Id))
+                .ForMember(dest => dest.UserName, opt => opt.MapFrom(src => src.Follower.Username))
+                .ForMember(dest => dest.FullName, opt => opt.MapFrom(src => src.Follower.FirstName + " " + src.Follower.LastName))
+                .ForMember(dest => dest.AvatarUrl, opt => opt.MapFrom(src => src.Follower.Image));
 
             //==================ASSEMBLED PRODUCT=======================//
             CreateMap<AssembledProduct, AssembledProductResponse>()
