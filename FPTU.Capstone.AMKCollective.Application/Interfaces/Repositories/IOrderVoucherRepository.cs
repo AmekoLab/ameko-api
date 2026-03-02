@@ -20,5 +20,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
 
         /// <summary>Delete all OrderVouchers for an order.</summary>
         Task DeleteAllByOrderIdAsync(Guid orderId);
+
+        Task<(IEnumerable<OrderVoucher> Items, int TotalCount)> GetUsageByVoucherIdAsync(Guid voucherId, int pageNumber, int pageSize);
+
+        Task<(IEnumerable<OrderVoucher> Items, int TotalCount)> GetAllUsagesAsync(Guid? creatorId, int pageNumber, int pageSize);
     }
 }

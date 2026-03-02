@@ -262,6 +262,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                     ? src.Creator.ShopProfile.ShopName
                     : (src.Creator != null ? src.Creator.Username : "Unknown")));
 
+            // Map Entity OrderVoucher -> DTO AppliedVoucherResponse
+            CreateMap<OrderVoucher, AppliedVoucherResponse>()
+                .ForMember(dest => dest.VoucherType, opt => opt.MapFrom(src => src.VoucherType.ToString()));
+
             // Map CreateRequest -> Entity
             CreateMap<CreateVoucherRequest, Voucher>()
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => VoucherStatus.Active)) 
@@ -271,6 +275,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // Map UpdateRequest -> Entity
             CreateMap<UpdateVoucherRequest, Voucher>()
                 .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
+
+
+            CreateMap<OrderVoucher, VoucherUsageResponse>()
+                .ForMember(dest => dest.CustomerName, opt => opt.MapFrom(src => src.Order.Customer.Username))
+                .ForMember(dest => dest.OrderTotalAmount, opt => opt.MapFrom(src => src.Order.TotalAmount))
+                .ForMember(dest => dest.AppliedAt, opt => opt.MapFrom(src => src.Order.CreatedAt));
+
 
             // =========================================================
             // PAYMENT (PAYMENT -> DTO)

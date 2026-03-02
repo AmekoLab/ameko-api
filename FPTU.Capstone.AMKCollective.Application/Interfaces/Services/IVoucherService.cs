@@ -37,9 +37,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<List<VoucherResponse>> GetMyVouchersAsync(Guid userId);
 
         // Lấy voucher công khai của một Shop cụ thể (để hiển thị trên trang Shop Detail)
-        Task<List<VoucherResponse>> GetShopPublicVouchersAsync(Guid shopId); 
+        Task<List<VoucherResponse>> GetShopPublicVouchersAsync(Guid shopId);
 
-
+        Task<List<AppliedVoucherResponse>> GetAppliedVouchersByOrderIdAsync(Guid orderId);
         // --- 3. LOGIC NỘI BỘ / SYSTEM ---
 
         // Tạo voucher thương lượng (Auto-generated)
@@ -58,5 +58,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task RemoveAllVouchersAsync(Guid userId, Guid orderId);
         decimal CalculateVoucherDiscount(Voucher voucher, decimal baseAmount);
         Task<ApplicableVoucherResponse> GetApplicableVouchersAsync(Guid userId);
+
+        Task<PaginatedResult<VoucherUsageResponse>> GetVoucherUsageHistoryAsync(Guid userId, Guid voucherId, int pageNumber, int pageSize);
+        Task<PaginatedResult<VoucherUsageResponse>> GetAllVoucherUsagesAsync(Guid userId, int pageNumber, int pageSize);
+
     }
 }

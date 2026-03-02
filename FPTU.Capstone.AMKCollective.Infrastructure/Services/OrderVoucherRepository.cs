@@ -52,5 +52,41 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             _context.OrderVouchers.Update(orderVoucher);
         }
+
+        public async Task<(IEnumerable<OrderVoucher> Items, int TotalCount)> GetUsageByVoucherIdAsync(Guid voucherId, int pageNumber, int pageSize)
+        {
+            var query = _context.OrderVouchers
+                .Include(ov => ov.Order)
+                    .ThenInclude(o => o.Customer)
+                .Where(ov => ov.VoucherId == voucherId);
+
+            var totalCount = await query.CountAsync();
+            var items = await query.OrderByDescending(ov => ov.Order.CreatedAt)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return (items, totalCount);
+        }
+        public async Task<(IEnumerable<OrderVoucher> Items, int TotalCount)> GetAllUsagesAsync(Guid? creatorId, int pageNumber, int pageSize)
+        {
+            var query = _context.OrderVouchers
+                .Include(ov => ov.Order)
+                    .ThenInclude(o => o.Customer)
+                .Include(ov => ov.Voucher) 
+                .AsQueryable();
+            if (creatorId.HasValue)
+            {
+                query = query.Where(ov => ov.Voucher.CreatorId == creatorId.Value);
+            }
+
+            var totalCount = await query.CountAsync();
+            var items = await query.OrderByDescending(ov => ov.Order.CreatedAt)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return (items, totalCount);
+        }
     }
 }
