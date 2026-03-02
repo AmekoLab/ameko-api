@@ -202,8 +202,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             CreateMap<OrderItem, OrderItemResponse>()               
                 .ForMember(dest => dest.OrderItemId, opt => opt.MapFrom(src => src.Id))
                .ForMember(dest => dest.ProductId, opt => opt.MapFrom(src => src.ProductId))
-               .ForMember(dest => dest.ShopId, opt => opt.MapFrom(src => src.Product.ShopId))
-                .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Product.Shop.ShopName))
                .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.Name : src.ProductName))
                .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => src.Product != null ? src.Product.ThumbnailURL : src.ProductImage))
                .ForMember(dest => dest.ShopId, opt => opt.MapFrom(src => src.Product.ShopId))
