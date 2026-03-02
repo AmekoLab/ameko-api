@@ -76,6 +76,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Include(o => o.Shop)
                 .Include(o => o.OrderItems.Where(oi => !oi.IsDeleted))
                     .ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.Shop)
                 .OrderByDescending(o => o.CreatedAt)
                 .FirstOrDefaultAsync(o => o.CustomerId == userId
                                 && o.OrderStatus == status

@@ -199,7 +199,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // =========================================================
             // 3. ORDER ITEM (ORDER ITEM -> DTO)
             // =========================================================
-            CreateMap<OrderItem, OrderItemResponse>()
+            CreateMap<OrderItem, OrderItemResponse>()               
                 .ForMember(dest => dest.OrderItemId, opt => opt.MapFrom(src => src.Id))
                .ForMember(dest => dest.ProductId, opt => opt.MapFrom(src => src.ProductId))
                .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.Name : src.ProductName))
