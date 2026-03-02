@@ -146,16 +146,40 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (appliedList.Any(av => av.VoucherId == incomingVoucher.Id))
                 throw new Exception("This voucher has already been applied to this order.");
 
-            if (appliedList.Count >= 2)
-                throw new Exception("Maximum 2 vouchers can be applied to one order.");
-
-            if (appliedList.Count == 1)
+            // Lấy chi tiết các Voucher đang nằm trong giỏ
+            var existingVouchers = new List<Voucher>();
+            foreach (var av in appliedList)
             {
-                var existingVoucher = await _unitOfWork.Vouchers.GetByIdAsync(appliedList[0].VoucherId);
-                if (existingVoucher == null || !existingVoucher.IsStackable || !incomingVoucher.IsStackable)
-                    throw new Exception("One of the applied vouchers does not allow stacking.");
+                var v = await _unitOfWork.Vouchers.GetByIdAsync(av.VoucherId);
+                if (v != null) existingVouchers.Add(v);
+            }
 
-                ValidateStackingCombination(existingVoucher.Type, incomingVoucher.Type);
+            // 1. Kiểm tra cờ IsStackable chung
+            if (!incomingVoucher.IsStackable && existingVouchers.Any())
+                throw new Exception("This voucher cannot be stacked with others.");
+            if (existingVouchers.Any(v => !v.IsStackable))
+                throw new Exception("An existing applied voucher does not allow stacking.");
+
+            // 2. Xác định loại của mã đang muốn Apply
+            bool isIncomingCompensation = incomingVoucher.Type == VoucherType.Compensation;
+            bool isIncomingSystemPromo = incomingVoucher.CreatorId == Guid.Empty && incomingVoucher.Type == VoucherType.Promotion;
+            bool isIncomingShopVoucher = incomingVoucher.CreatorId != Guid.Empty &&
+                                         (incomingVoucher.Type == VoucherType.Promotion || incomingVoucher.Type == VoucherType.Negotiation);
+
+            // 3. KIỂM TRA GIỚI HẠN 
+            if (!isIncomingCompensation)
+            {
+                // Nếu không phải tiền Refund, thì áp dụng luật: Tối đa 1 mã Sàn + 1 mã Shop
+                if (isIncomingSystemPromo)
+                {
+                    if (existingVouchers.Any(v => v.CreatorId == Guid.Empty && v.Type == VoucherType.Promotion))
+                        throw new Exception("You can only apply ONE System Promotion voucher per order.");
+                }
+                else if (isIncomingShopVoucher)
+                {
+                    if (existingVouchers.Any(v => v.CreatorId != Guid.Empty && (v.Type == VoucherType.Promotion || v.Type == VoucherType.Negotiation)))
+                        throw new Exception("You can only apply ONE Shop voucher (Promotion or Negotiation) per order.");
+                }
             }
 
             // --- PREPARE CALCULATION PIPELINE ---
@@ -549,19 +573,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         ///   Promotion  + Negotiation   - Not Allowed
         ///   Compensation + Compensation - Not Allowed
         /// </summary>
-        private static void ValidateStackingCombination(VoucherType existing, VoucherType incoming)
-        {
-            bool allowed =
-                (existing == VoucherType.Promotion && incoming == VoucherType.Compensation) ||
-                (existing == VoucherType.Compensation && incoming == VoucherType.Promotion) ||
-                (existing == VoucherType.Negotiation && incoming == VoucherType.Compensation) ||
-                (existing == VoucherType.Compensation && incoming == VoucherType.Negotiation);
+        //private static void ValidateStackingCombination(VoucherType existing, VoucherType incoming)
+        //{
+        //    bool allowed =
+        //        (existing == VoucherType.Promotion && incoming == VoucherType.Compensation) ||
+        //        (existing == VoucherType.Compensation && incoming == VoucherType.Promotion) ||
+        //        (existing == VoucherType.Negotiation && incoming == VoucherType.Compensation) ||
+        //        (existing == VoucherType.Compensation && incoming == VoucherType.Negotiation);
 
-            if (!allowed)
-                throw new Exception(
-                    $"Cannot combine a '{incoming}' voucher with an already-applied '{existing}' voucher. " +
-                    "Allowed stacking: Promotion/Negotiation + Compensation only.");
-        }
+        //    if (!allowed)
+        //        throw new Exception(
+        //            $"Cannot combine a '{incoming}' voucher with an already-applied '{existing}' voucher. " +
+        //            "Allowed stacking: Promotion/Negotiation + Compensation only.");
+        //}
 
         private async Task ValidateVoucherScopeAsync(Voucher voucher, Order order)
         {

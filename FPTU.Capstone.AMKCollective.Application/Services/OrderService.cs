@@ -572,28 +572,29 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             foreach (var sysVoucher in systemVouchers)
             {
                 if (totalCheckoutSubTotal < sysVoucher.MinOrderValue)
-                    throw new InvalidOperationException($"Tổng tiền các món bạn chọn ({totalCheckoutSubTotal:N0}đ) không đủ điều kiện tối thiểu ({sysVoucher.MinOrderValue:N0}đ) để dùng mã hệ thống {sysVoucher.Code}. Vui lòng chọn thêm sản phẩm hoặc bỏ mã giảm giá.");
+                    throw new InvalidOperationException(
+                        $"The order total ({totalCheckoutSubTotal:N0} VND) does not satisfy the minimum requirement ({sysVoucher.MinOrderValue:N0} VND) for applying system voucher {sysVoucher.Code}. Please add more items or remove the voucher."
+                    );
             }
 
             foreach (var order in orderGroup.Orders)
             {
                 decimal orderDiscountAmount = 0;
+                decimal systemDiscountForThisOrder = 0; // ---> THÊM BIẾN NÀY ĐỂ ĐẾM TIỀN SÀN BÙ
                 decimal currentOrderRemain = order.SubTotal;
 
-                // FIX BUG: Lấy thông tin Shop để lấy ra UserId của chủ Shop
-                var shopInfo = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+                var shopInfo = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value); // Giả sử order.ShopId có value
                 Guid shopOwnerId = shopInfo != null ? shopInfo.UserId : Guid.Empty;
 
-                // 3.1. ÁP MÃ CỦA ĐÚNG SHOP ĐÓ (Sử dụng shopOwnerId thay vì order.ShopId)
+                // 3.1. ÁP MÃ CỦA ĐÚNG SHOP ĐÓ
                 var matchedShopVoucher = shopVouchers.FirstOrDefault(v => v.CreatorId == shopOwnerId);
                 if (matchedShopVoucher != null)
                 {
-                    // Kiểm tra lại: Món hàng của riêng Shop này CÓ ĐƯỢC CHỌN ĐỦ MinOrderValue KHÔNG?
                     if (order.SubTotal < matchedShopVoucher.MinOrderValue)
-                        throw new InvalidOperationException($"Tổng tiền các món bạn chọn từ Shop {shopInfo?.ShopName} không đủ điều kiện tối thiểu để dùng mã {matchedShopVoucher.Code}.");
+                        throw new InvalidOperationException($"Tổng tiền các món bạn chọn từ Shop không đủ điều kiện tối thiểu để dùng mã {matchedShopVoucher.Code}.");
 
                     decimal shopDiscount = _voucherService.CalculateVoucherDiscount(matchedShopVoucher, order.SubTotal);
-                    if (shopDiscount > currentOrderRemain) shopDiscount = currentOrderRemain; // Cap tiền giảm
+                    if (shopDiscount > currentOrderRemain) shopDiscount = currentOrderRemain;
 
                     await _unitOfWork.OrderVouchers.AddAsync(new OrderVoucher
                     {
@@ -617,7 +618,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     decimal totalSysDiscount = _voucherService.CalculateVoucherDiscount(sysVoucher, totalCheckoutSubTotal);
                     decimal proratedDiscount = totalSysDiscount * weight;
 
-                    if (proratedDiscount > currentOrderRemain) proratedDiscount = currentOrderRemain; // Cap tiền giảm
+                    if (proratedDiscount > currentOrderRemain) proratedDiscount = currentOrderRemain;
 
                     await _unitOfWork.OrderVouchers.AddAsync(new OrderVoucher
                     {
@@ -630,11 +631,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     });
 
                     orderDiscountAmount += proratedDiscount;
+                    systemDiscountForThisOrder += proratedDiscount; // ---> CỘNG DỒN TIỀN SÀN VÀO ĐÂY
                     currentOrderRemain -= proratedDiscount;
                 }
 
                 // 3.3. CHỐT TIỀN CHO ĐƠN NÀY (Đã trừ mọi khoản discount)
                 order.DiscountAmount = orderDiscountAmount;
+                order.SystemDiscountAmount = systemDiscountForThisOrder;
                 order.TotalAmount = Math.Max(0, (order.SubTotal + order.ShippingFee) - order.DiscountAmount);
 
                 orderGroup.TotalGroupAmount += order.TotalAmount;
@@ -1341,8 +1344,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     // ReleaseHeldMoneyAsync sẽ tự động:
                     // - Update Wallet.HeldBalance và Wallet.Balance
                     // - Tạo Payment log với Type=SalesReleased
-                    await _walletService.ReleaseHeldMoneyAsync(shop.UserId, order.Id, order.TotalAmount);
-
+                    decimal actualShopRevenue = order.TotalAmount + order.SystemDiscountAmount;
+                    await _walletService.ReleaseHeldMoneyAsync(shop.UserId, order.Id, actualShopRevenue);
                     // 5. Đánh dấu đơn đã nhả tiền
                     order.PaymentStatus = PaymentStatus.Released;
                     await _unitOfWork.Orders.UpdateOrderAsync(order, token);

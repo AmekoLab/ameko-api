@@ -26,6 +26,8 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public decimal TotalAmount { get; set; }
         [Column(TypeName = "decimal(18,2)")]
         public decimal DiscountAmount { get; set; } = 0;
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal SystemDiscountAmount { get; set; } = 0;
         //TODO: need enum for order status
         public OrderStatus OrderStatus { get; set; } = OrderStatus.Pending;  //OrderStatus == "InCart" 
         public PaymentStatus PaymentStatus { get; set; } = PaymentStatus.Pending;

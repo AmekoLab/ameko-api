@@ -71,5 +71,43 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Where(x => x.Status == OrderIssueStatus.InProgress && x.CreatedAt <= threshold)
                 .ToListAsync();
         }
+
+        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetUserIssuesPaginatedAsync(Guid userId, OrderIssueStatus? status, int pageNumber, int pageSize)
+        {
+            var query = _context.OrderIssues
+                .Include(oi => oi.Order)
+                    .ThenInclude(o => o.Shop)
+                .Where(oi => oi.UserId == userId && !oi.IsDeleted);
+
+            if (status.HasValue)
+                query = query.Where(oi => oi.Status == status.Value);
+
+            var totalCount = await query.CountAsync();
+            var items = await query.OrderByDescending(oi => oi.CreatedAt)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return (items, totalCount);
+        }
+
+        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetShopIssuesPaginatedAsync(Guid shopId, OrderIssueStatus? status, int pageNumber, int pageSize)
+        {
+            var query = _context.OrderIssues
+                .Include(oi => oi.Order)
+                .Include(oi => oi.User) 
+                .Where(oi => oi.Order.ShopId == shopId && !oi.IsDeleted);
+
+            if (status.HasValue)
+                query = query.Where(oi => oi.Status == status.Value);
+
+            var totalCount = await query.CountAsync();
+            var items = await query.OrderByDescending(oi => oi.CreatedAt)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return (items, totalCount);
+        }
     }
 }
