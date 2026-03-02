@@ -331,7 +331,87 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return ServerErrorResponse<ApplicableVoucherResponse>(ex.Message);
             }
         }
+        /// <summary>
+        /// Get Applied Vouchers by Order ID
+        /// </summary>
+        /// <remarks>
+        /// **Description:** Retrieves the list of discount vouchers that have been applied to a specific order.
+        /// **Frontend usage:** Call this API on the "Order Details" screen to display the breakdown of applied discounts 
+        /// (e.g., 50,000₫ from Shop Voucher, 100,000₫ from Platform Voucher).
+        /// </remarks>
+        [HttpGet("order/{orderId}")]
+        public async Task<IActionResult> GetAppliedVouchersByOrderId(Guid orderId)
+        {
+            try
+            {
+                var result = await _voucherService.GetAppliedVouchersByOrderIdAsync(orderId);
+                return SuccessResponse(result, "Successfully retrieved the order's applied vouchers.");
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
 
+        /// <summary>
+        /// Get Voucher Usage History (Shop/Admin)
+        /// </summary>
+        /// <remarks>
+        /// **Description:** Retrieves the list of orders that successfully applied a specific voucher 
+        /// (used for reconciliation and reporting).
+        /// 
+        /// **Security:** Only Admins or the shop owner who created the voucher are allowed to access this API.
+        /// 
+        /// **Frontend usage:** Used in the "Voucher Details" screen within the Shop/Admin management dashboard.
+        /// </remarks>
+        [HttpGet("{id}/usage")]
+        public async Task<IActionResult> GetVoucherUsageHistory(Guid id, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var result = await _voucherService.GetVoucherUsageHistoryAsync(userId, id, pageNumber, pageSize);
+                return SuccessResponse(result, "Successfully retrieved the voucher usage history.");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return ErrorResponse<object>(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return ErrorResponse<object>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Get All Voucher Usages (Dashboard View)
+        /// </summary>
+        /// <remarks>
+        /// **Description:** Retrieves the usage history of ALL vouchers.
+        /// - **Admin:** Can view the complete voucher usage history across the entire system.
+        /// - **Shop:** Can only view the usage history of vouchers created by their own shop.
+        /// 
+        /// **Frontend usage:** Used in the "Promotion Analytics" or "Transaction History" dashboard for Shop/Admin.
+        /// </remarks>
+        [HttpGet("usages")]
+        [Authorize]
+        public async Task<IActionResult> GetAllVoucherUsages([FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var result = await _voucherService.GetAllVoucherUsagesAsync(userId, pageNumber, pageSize);
+                return SuccessResponse(result, "Successfully retrieved the aggregated voucher usage data.");
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
 
         // Helper method to extract User Id from Token
         //private Guid GetCurrentUserId()

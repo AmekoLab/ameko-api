@@ -146,7 +146,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (appliedList.Any(av => av.VoucherId == incomingVoucher.Id))
                 throw new Exception("This voucher has already been applied to this order.");
 
-            // Lấy chi tiết các Voucher đang nằm trong giỏ
             var existingVouchers = new List<Voucher>();
             foreach (var av in appliedList)
             {
@@ -160,25 +159,41 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (existingVouchers.Any(v => !v.IsStackable))
                 throw new Exception("An existing applied voucher does not allow stacking.");
 
-            // 2. Xác định loại của mã đang muốn Apply
+            // 2. Phân loại mã đang muốn áp dụng
             bool isIncomingCompensation = incomingVoucher.Type == VoucherType.Compensation;
             bool isIncomingSystemPromo = incomingVoucher.CreatorId == Guid.Empty && incomingVoucher.Type == VoucherType.Promotion;
             bool isIncomingShopVoucher = incomingVoucher.CreatorId != Guid.Empty &&
                                          (incomingVoucher.Type == VoucherType.Promotion || incomingVoucher.Type == VoucherType.Negotiation);
 
-            // 3. KIỂM TRA GIỚI HẠN 
+            // 3. KIỂM TRA GIỚI HẠN, HỖ TRỢ MULTI-SHOP
             if (!isIncomingCompensation)
             {
-                // Nếu không phải tiền Refund, thì áp dụng luật: Tối đa 1 mã Sàn + 1 mã Shop
                 if (isIncomingSystemPromo)
                 {
+                    // Chỉ được 1 mã của Sàn cho toàn bộ giỏ hàng
                     if (existingVouchers.Any(v => v.CreatorId == Guid.Empty && v.Type == VoucherType.Promotion))
                         throw new Exception("You can only apply ONE System Promotion voucher per order.");
                 }
                 else if (isIncomingShopVoucher)
                 {
-                    if (existingVouchers.Any(v => v.CreatorId != Guid.Empty && (v.Type == VoucherType.Promotion || v.Type == VoucherType.Negotiation)))
-                        throw new Exception("You can only apply ONE Shop voucher (Promotion or Negotiation) per order.");
+                    // MULTI-SHOP: Chỉ chặn nếu TRONG CÙNG 1 SHOP (CreatorId) đã có mã
+                    if (existingVouchers.Any(v => v.CreatorId == incomingVoucher.CreatorId &&
+                                            (v.Type == VoucherType.Promotion || v.Type == VoucherType.Negotiation)))
+                    {
+                        throw new Exception("You can only apply ONE Shop voucher per specific shop in this cart.");
+                    }
+
+                    // (Tùy chọn) Kiểm tra xem Shop đó có hàng trong giỏ không
+                    bool hasItemFromThisShop = order.OrderItems.Any(i =>
+                    {
+                        var productTask = _unitOfWork.Models.GetByIdAsync(i.ProductId).Result;
+                        if (productTask == null || productTask.ShopId == Guid.Empty) return false;
+                        var shopTask = _unitOfWork.Shops.GetByIdAsync(productTask.ShopId).Result;
+                        return shopTask != null && shopTask.UserId == incomingVoucher.CreatorId;
+                    });
+
+                    if (!hasItemFromThisShop)
+                        throw new Exception("You do not have any items from this shop in your cart to apply this voucher.");
                 }
             }
 
@@ -559,6 +574,47 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             return response;
+        }
+
+        public async Task<List<AppliedVoucherResponse>> GetAppliedVouchersByOrderIdAsync(Guid orderId)
+        {
+            // Lấy danh sách record từ bảng cầu nối OrderVouchers
+            var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(orderId);
+            return _mapper.Map<List<AppliedVoucherResponse>>(appliedVouchers);
+        }
+
+        public async Task<PaginatedResult<VoucherUsageResponse>> GetVoucherUsageHistoryAsync(Guid userId, Guid voucherId, int pageNumber, int pageSize)
+        {
+            var voucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId);
+            if (voucher == null) throw new KeyNotFoundException("Voucher not found.");
+
+            // Security Check: Lấy user hiện tại để kiểm tra quyền
+            var currentUser = await _unitOfWork.Users.GetByIdAsync(userId);
+            bool isAdmin = currentUser?.Role?.Name == RoleType.Admin;
+
+            // Chỉ cho phép Admin, hoặc chính Chủ shop đã tạo ra mã đó được quyền xem
+            if (!isAdmin && voucher.CreatorId != userId)
+            {
+                throw new UnauthorizedAccessException("Access denied. You are not authorized to view this voucher’s statistics.");
+            }
+
+            var (items, totalCount) = await _unitOfWork.OrderVouchers.GetUsageByVoucherIdAsync(voucherId, pageNumber, pageSize);
+
+            var mappedItems = _mapper.Map<List<VoucherUsageResponse>>(items);
+            return new PaginatedResult<VoucherUsageResponse>(mappedItems, totalCount, pageNumber, pageSize);
+        }
+        public async Task<PaginatedResult<VoucherUsageResponse>> GetAllVoucherUsagesAsync(Guid userId, int pageNumber, int pageSize)
+        {
+            var currentUser = await _unitOfWork.Users.GetByIdAsync(userId);
+            bool isAdmin = currentUser?.Role?.Name == RoleType.Admin;
+
+            // Nếu Admin thì filterId = null (Lấy hết). Nếu Shop thì filterId = userId của shop.
+            Guid? filterCreatorId = isAdmin ? null : userId;
+
+            var (items, totalCount) = await _unitOfWork.OrderVouchers.GetAllUsagesAsync(filterCreatorId, pageNumber, pageSize);
+
+            var mappedItems = _mapper.Map<List<VoucherUsageResponse>>(items);
+            return new PaginatedResult<VoucherUsageResponse>(mappedItems, totalCount, pageNumber, pageSize);
         }
 
         // ─── Private Helpers ────────────────────────────────────────────────────────
