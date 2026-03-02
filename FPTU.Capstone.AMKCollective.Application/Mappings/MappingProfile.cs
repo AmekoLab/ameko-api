@@ -168,12 +168,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // 1. ORDER GROUP (ORDER GROUP -> DTO)
             // =========================================================
             CreateMap<OrderGroup, OrderGroupResponse>()
+                .ForMember(dest => dest.OrderGroupId, opt => opt.MapFrom(src => src.Id))
                 .ForMember(dest => dest.PaymentStatus, opt => opt.MapFrom(src => src.PaymentStatus));
 
             // =========================================================
             // 2. ORDER (ORDER -> DTO)
             // =========================================================
             CreateMap<Order, OrderResponse>()
+                .ForMember(dest => dest.OrderId, opt => opt.MapFrom(src => src.Id))
         // 1. Xử lý Shop: BẮT BUỘC check null để không crash API GetCart
                 .ForMember(dest => dest.ShopId, opt => opt.MapFrom(src => src.ShopId))
                 .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Shop != null ? src.Shop.ShopName : "N/A"))
@@ -198,7 +200,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // 3. ORDER ITEM (ORDER ITEM -> DTO)
             // =========================================================
             CreateMap<OrderItem, OrderItemResponse>()
-                .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.OrderItemId, opt => opt.MapFrom(src => src.Id))
                .ForMember(dest => dest.ProductId, opt => opt.MapFrom(src => src.ProductId))
                .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.Name : src.ProductName))
                .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => src.Product != null ? src.Product.ThumbnailURL : src.ProductImage))
