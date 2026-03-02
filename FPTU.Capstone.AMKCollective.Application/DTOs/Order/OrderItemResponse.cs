@@ -8,7 +8,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
 {
     public class OrderItemResponse
     {
-        public Guid Id { get; set; }
+        public Guid OrderItemId { get; set; }
         public Guid? ProductId { get; set; }
         public Guid? AssembledProductId { get; set; }
         public string ProductName { get; set; } = string.Empty;
