@@ -63,7 +63,9 @@ internal class Program
                     ValidateAudience = true,
                     ValidAudience = builder.Configuration["JwtSettings:Audience"],
                     ValidateLifetime = true,
-                    ClockSkew = TimeSpan.Zero
+                    ClockSkew = TimeSpan.Zero,
+                    RoleClaimType = "role",
+                    NameClaimType = "nameid"
                 };
             });
 
@@ -167,9 +169,9 @@ internal class Program
         // }
 
         app.UseHttpsRedirection();
+        app.UseCors("AllowFrontend");
         app.UseAuthentication();
         app.UseAuthorization();
-        app.UseCors("AllowFrontend");
         app.MapControllers();
         //app.MapHub<RealTimeHub>("/hub");
 

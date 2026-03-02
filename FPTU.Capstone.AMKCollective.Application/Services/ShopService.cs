@@ -42,9 +42,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
 
-            if (shop == null || shop.Status != ShopStatus.Active || !shop.IsActive)
+            if (shop == null
+        || shop.Status == ShopStatus.Banned
+        || shop.Status == ShopStatus.PendingApproval
+        || shop.Status == ShopStatus.Rejected
+        || shop.Status == ShopStatus.Inactive)
             {
-                throw new KeyNotFoundException("Shop not found or inactive");
+                throw new KeyNotFoundException("Shop not found.");
             }
 
             var response = _mapper.Map<ShopResponse>(shop);
