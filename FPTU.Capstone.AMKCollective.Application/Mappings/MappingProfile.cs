@@ -222,9 +222,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // =========================================================
             // ORDER ISSUES (ORDER ISSUES -> DTO)
             // =========================================================
-            CreateMap<OrderIssue, OrderIssueResponse>();
+            CreateMap<OrderIssue, OrderIssueResponse>()
+                .ForMember(dest => dest.OrderTotalAmount, opt => opt.MapFrom(src => src.Order != null ? src.Order.TotalAmount : 0))
+                .ForMember(dest => dest.CustomerName, opt => opt.MapFrom(src => src.User != null ? src.User.Username : string.Empty))
+                .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src =>
+                    src.Order != null && src.Order.Shop != null ? src.Order.Shop.ShopName : string.Empty));
 
-
+            CreateMap<OrderIssueLog, OrderIssueLogResponse>();
             // =========================================================
             // WALLET (WALLET -> DTO)
             // =========================================================
