@@ -2,11 +2,13 @@
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Builder;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Wallet;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -24,14 +26,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IPaymentService _paymentService;
         private readonly IVoucherService _voucherService;
         private readonly IWalletService _walletService;
+        private readonly OrderSettings _orderSettings;
+        private readonly FrontendUrls _frontendUrls;
 
-        public OrderService(IUnitOfWork unitOfWork, IMapper mapper, IPaymentService paymentService, IVoucherService voucher, IWalletService wallet)
+        public OrderService(IUnitOfWork unitOfWork, IMapper mapper, IPaymentService paymentService, IVoucherService voucher, IWalletService wallet, IOptions<OrderSettings> orderOptions,
+        IOptions<FrontendUrls> urlOptions)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _paymentService = paymentService;
             _voucherService = voucher;
             _walletService = wallet;
+            _orderSettings = orderOptions.Value;
+            _frontendUrls = urlOptions.Value;
         }
 
         // =================================================================
@@ -429,9 +436,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             // Chuẩn bị URL
-            string successUrl = string.IsNullOrEmpty(request.SuccessUrl) || !request.SuccessUrl.StartsWith("http") ? "http://localhost:3000/payment/success" : request.SuccessUrl;
-            string cancelUrl = string.IsNullOrEmpty(request.CancelUrl) || !request.CancelUrl.StartsWith("http") ? "http://localhost:3000/payment/cancel" : request.CancelUrl;
-
+            string successUrl = string.IsNullOrEmpty(request.SuccessUrl) ? _frontendUrls.PaymentSuccessPath : request.SuccessUrl;           
+            string cancelUrl = string.IsNullOrEmpty(request.CancelUrl) ? _frontendUrls.PaymentCancelPath : request.CancelUrl;
             // 2. KHỞI TẠO ORDER GROUP
             var orderGroup = new OrderGroup
             {
@@ -555,7 +561,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
 
                 order.SubTotal = shopSubTotal;
-                order.ShippingFee = 30000; // Thay bằng logic tính ship sau này
+                order.ShippingFee = _orderSettings.DefaultShippingFee;
 
                 totalCheckoutSubTotal += shopSubTotal;
                 orderGroup.Orders.Add(order);
@@ -648,7 +654,29 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // 4. Lưu dữ liệu OrderGroup
             await _unitOfWork.OrderGroups.CreateAsync(orderGroup);
 
-            // Xóa OrderVouchers nháp của Giỏ hàng (Cart)
+            // 4.1 Lấy danh sách ID của các voucher đã được dùng trong đợt Checkout này
+            var checkedOutVoucherIds = orderGroup.Orders
+                .SelectMany(o => o.OrderVouchers.Select(ov => ov.VoucherId))
+                .ToHashSet();
+
+            // 4.2 Xử lý các voucher nháp đang nằm trong giỏ hàng
+            var draftCartVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(cartOrder.Id);
+            foreach (var draftVoucher in draftCartVouchers)
+            {
+                // Nếu voucher trong giỏ KHÔNG nằm trong danh sách được thanh toán (Ví dụ: Khách bỏ tick đồ Shop 2)
+                if (!checkedOutVoucherIds.Contains(draftVoucher.VoucherId))
+                {
+                    // Hoàn trả lại lượt sử dụng (UsedCount)
+                    var unusedVoucher = await _unitOfWork.Vouchers.GetByIdAsync(draftVoucher.VoucherId);
+                    if (unusedVoucher != null && unusedVoucher.UsedCount > 0)
+                    {
+                        unusedVoucher.UsedCount--;
+                        _unitOfWork.Vouchers.Update(unusedVoucher);
+                    }
+                }
+            }
+
+            // 4.3 Bây giờ mới an toàn Xóa OrderVouchers nháp của Giỏ hàng (Cart)
             await _unitOfWork.OrderVouchers.DeleteAllByOrderIdAsync(cartOrder.Id);
 
             // Dọn dẹp giỏ hàng
@@ -829,14 +857,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             // 2. Check Spam: Hủy >= 4 đơn/tuần
-            var lastWeek = DateTime.UtcNow.AddDays(-7);
+            var lastWeek = DateTime.UtcNow.AddDays(-_orderSettings.CancellationSpamCheckDays);
             int cancelledCount = await _unitOfWork.OrderIssues.CountUserIssuesAsync(
                 userId,
                 OrderIssueStatus.AutoCancelled, 
                 lastWeek
             );
 
-            bool isSpamRequest = cancelledCount >= 4;
+            bool isSpamRequest = cancelledCount >= _orderSettings.MaxCancellationsPerPeriod;
 
             // 3. Create Entity OrderIssue
             var issue = new OrderIssue
@@ -992,7 +1020,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         decimal cashPaidAmount = order.TotalAmount;
 
                         // Mức phạt Shop hủy đơn (Ví dụ 10%)
-                        decimal penaltyRate = 0.10m;
+                        decimal penaltyRate = _orderSettings.ShopCancellationPenaltyRate;
                         decimal penaltyAmount = cashPaidAmount * penaltyRate;
 
                         // Tổng Voucher hoàn lại = Tiền thật + Tiền đền bù cũ + Tiền phạt Shop
@@ -1096,8 +1124,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var paymentRequest = new CreateCheckoutSessionRequest
             {
                 OrderGroupId = orderGroup.Id,
-                SuccessUrl = "http://localhost:3000/payment/success",
-                CancelUrl = "http://localhost:3000/orders?status=pending" 
+                SuccessUrl = _frontendUrls.PaymentSuccessPath,
+                CancelUrl = _frontendUrls.OrderPendingPath
             };
 
             var paymentRes = await _paymentService.CreateCheckoutSessionAsync(paymentRequest, token);
@@ -1130,7 +1158,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task CancelAbandonedOrdersAsync(CancellationToken token = default)
         {
             // Cấu hình thời gian quá hạn (Ví dụ: 24 tiếng. Với Stripe có thể set 30 phút tùy bạn)
-            var expirationTime = DateTime.UtcNow.AddHours(-24);
+            var expirationTime = DateTime.UtcNow.AddHours(-_orderSettings.AbandonedOrderTimeoutHours);
 
             var abandonedOrders = await _unitOfWork.Orders.GetAbandonedOrdersAsync(expirationTime, token);
 
@@ -1318,7 +1346,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task ReleaseFundsForEligibleOrdersAsync(CancellationToken token = default)
         {
             // 1. Xác định thời điểm hết hạn bảo hành (30 ngày trước)
-            var warrantyThreshold = DateTime.UtcNow.AddDays(-30);
+            var warrantyThreshold = DateTime.UtcNow.AddDays(-_orderSettings.WarrantyPeriodDays);
 
             // 2. Lấy danh sách các đơn đủ điều kiện nhả tiền
             // Điều kiện: Status=Completed, PaymentStatus=Paid (chưa Released), UpdatedAt <= 30 ngày trước
