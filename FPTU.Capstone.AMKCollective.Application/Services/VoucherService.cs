@@ -1,9 +1,11 @@
 ﻿using AutoMapper;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Voucher;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,11 +18,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private readonly VoucherSettings _voucherSettings;
 
-        public VoucherService(IUnitOfWork unitOfWork, IMapper mapper)
+        public VoucherService(IUnitOfWork unitOfWork, IMapper mapper, IOptions<VoucherSettings> voucherOptions)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
+            _voucherSettings = voucherOptions.Value;
         }
 
         // 1. Create Promotional Voucher (Marketing)
@@ -65,7 +69,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 MinOrderValue = minOrderValue, // Constraint: Must purchase the agreed amount
 
                 StartDate = DateTime.Now,
-                EndDate = DateTime.Now.AddDays(7), // Expires in 7 days to close the deal
+                EndDate = DateTime.Now.AddDays(_voucherSettings.NegotiationValidityDays), // Expires in 7 days to close the deal
                 UsageLimit = 1,
                 UsedCount = 0,
                 Status = VoucherStatus.Active,
@@ -104,7 +108,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 MinOrderValue = 0, // No minimum order value, can be used on any order
 
                 StartDate = DateTime.Now,
-                EndDate = DateTime.Now.AddMonths(1), // Expires in 1 month
+                EndDate = DateTime.Now.AddMonths(_voucherSettings.CompensationValidityMonths), 
                 UsageLimit = 1,
                 UsedCount = 0,
                 Status = VoucherStatus.Active,

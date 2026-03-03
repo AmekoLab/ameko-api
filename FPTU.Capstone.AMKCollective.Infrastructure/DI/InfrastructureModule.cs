@@ -1,4 +1,5 @@
 using Autofac;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
@@ -73,6 +74,25 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
             //     .Where(t => t.Name.EndsWith("Service"))
             //     .AsImplementedInterfaces()
             //     .InstancePerLifetimeScope();
+
+            RegisterOptions<OrderSettings>(builder, "OrderSettings");
+            RegisterOptions<FrontendUrls>(builder, "FrontendUrls");
+            RegisterOptions<BuilderSettings>(builder, "BuilderSettings");
+            RegisterOptions<VoucherSettings>(builder, "VoucherSettings");
+            RegisterOptions<WalletSettings>(builder, "WalletSettings");
+            RegisterOptions<WorkerIntervals>(builder, "WorkerIntervals");
+        }
+
+        private void RegisterOptions<T>(ContainerBuilder builder, string sectionName) where T : class, new()
+        {
+            builder.Register(c =>
+            {
+                var settings = new T();
+                _configuration.GetSection(sectionName).Bind(settings);
+                return Options.Create(settings); 
+            })
+            .As<IOptions<T>>()
+            .SingleInstance();
         }
     }
 }

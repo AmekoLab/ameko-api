@@ -1,4 +1,6 @@
-﻿using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
+﻿using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
+using Microsoft.Extensions.Options;
 
 namespace FPTU.Capstone.AMKCollective.API.Workers
 {
@@ -6,11 +8,13 @@ namespace FPTU.Capstone.AMKCollective.API.Workers
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<AbandonedOrderCleanupWorker> _logger;
+        private readonly WorkerIntervals _workerIntervals;
 
-        public AbandonedOrderCleanupWorker(IServiceProvider serviceProvider, ILogger<AbandonedOrderCleanupWorker> logger)
+        public AbandonedOrderCleanupWorker(IServiceProvider serviceProvider, ILogger<AbandonedOrderCleanupWorker> logger, IOptions<WorkerIntervals> intervalOptions)
         {
             _serviceProvider = serviceProvider;
             _logger = logger;
+            _workerIntervals = intervalOptions.Value;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -33,7 +37,7 @@ namespace FPTU.Capstone.AMKCollective.API.Workers
                 {
                     _logger.LogError(ex, "Error occurred while cleaning up abandoned orders.");
                 }
-                await Task.Delay(TimeSpan.FromMinutes(30), stoppingToken);
+                await Task.Delay(TimeSpan.FromMinutes(_workerIntervals.AbandonedOrderCleanupMinutes), stoppingToken);
             }
         }
     }
