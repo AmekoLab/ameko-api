@@ -1,5 +1,10 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Swashbuckle.AspNetCore.Annotations;
@@ -110,19 +115,31 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             catch (Exception ex) { return ServerErrorResponse<object>(ex.Message); }
         }
 
-        /// <summary>
-        /// Retrieves the current user's warranty requests.
-        /// </summary>
+        /// <param name="status">Optional: Filter by status (0: Pending, 1: InProgress, 2: ShopAccepted, 3: Rejected, 4: AutoCancelled, 5: AwaitingReturn, 6: Returning, 7: Returned, 8: Completed).</param>
+        /// <param name="currentPage">Page number.</param>
+        /// <param name="pageSize">Items per page.</param>
         [Authorize]
         [HttpGet("my-requests")]
-        [SwaggerOperation(Summary = "Customer: Get my warranty requests")]
+        [SwaggerOperation(
+            Summary = "Customer: Get my warranty requests",
+            Description = "Returns a paginated list of your warranty/return requests. Filter by status:\n\n" +
+                          "• 0 (Pending): New request created\n" +
+                          "• 1 (InProgress): Validated, waiting for Shop response\n" +
+                          "• 2 (ShopAccepted): Shop approved, pending Admin final decision\n" +
+                          "• 3 (Rejected): Request denied by Shop or Admin\n" +
+                          "• 4 (AutoCancelled): Cancelled due to timeout or user withdrawal\n" +
+                          "• 5 (AwaitingReturn): Admin approved return, waiting for customer shipment\n" +
+                          "• 6 (Returning): Customer submitted shipment evidence, item in transit\n" +
+                          "• 7 (Returned): Shop confirmed receipt of return product\n" +
+                          "• 8 (Completed): Finalized (Money refunded, stock reintegrated)"
+        )]
         [SwaggerResponse(200, "Successfully retrieved my warranty requests", typeof(FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>))]
-        public async Task<IActionResult> GetMyWarrantyIssues([FromQuery] int currentPage = 1, [FromQuery] int pageSize = 10)
+        public async Task<IActionResult> GetMyWarrantyIssues([FromQuery] OrderIssueStatus? status, [FromQuery] int currentPage = 1, [FromQuery] int pageSize = 10)
         {
             try
             {
                 var userId = GetCurrentUserId();
-                var result = await _warrantyService.GetMyWarrantyIssuesAsync(userId, currentPage, pageSize);
+                var result = await _warrantyService.GetMyWarrantyIssuesAsync(userId, status, currentPage, pageSize);
                 return SuccessResponse(result);
             }
             catch (Exception ex)
@@ -209,19 +226,29 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
 
         #region Shop Owner Endpoints
 
-        /// <summary>
-        /// Retrieves warranty requests related to the shop owner's shop.
-        /// </summary>
+        /// <param name="status">Optional: Filter by status (0: Pending, 1: InProgress, 2: ShopAccepted, 3: Rejected, 4: AutoCancelled, 5: AwaitingReturn, 6: Returning, 7: Returned, 8: Completed).</param>
         [Authorize(Roles = "Shop")]
         [HttpGet("shop-requests")]
-        [SwaggerOperation(Summary = "Shop: Get my shop's warranty requests")]
+        [SwaggerOperation(
+            Summary = "Shop: Get my shop's warranty requests",
+            Description = "Returns a paginated list of warranty/return requests for your shop. Filter by status:\n\n" +
+                          "• 0 (Pending): New request created\n" +
+                          "• 1 (InProgress): Validated, waiting for your response\n" +
+                          "• 2 (ShopAccepted): You approved, pending Admin final decision\n" +
+                          "• 3 (Rejected): Request denied by you or Admin\n" +
+                          "• 4 (AutoCancelled): Cancelled due to timeout or withdrawal\n" +
+                          "• 5 (AwaitingReturn): Admin approved return, waiting for customer shipment\n" +
+                          "• 6 (Returning): Customer submitted shipment evidence\n" +
+                          "• 7 (Returned): You confirmed receipt of return product\n" +
+                          "• 8 (Completed): Finalized (Money refunded, stock reintegrated)"
+        )]
         [SwaggerResponse(200, "Successfully retrieved shop warranty requests", typeof(FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>))]
-        public async Task<IActionResult> GetShopWarrantyIssues([FromQuery] int currentPage = 1, [FromQuery] int pageSize = 10)
+        public async Task<IActionResult> GetShopWarrantyIssues([FromQuery] OrderIssueStatus? status, [FromQuery] int currentPage = 1, [FromQuery] int pageSize = 10)
         {
             try
             {
                 var userId = GetCurrentUserId();
-                var result = await _warrantyService.GetShopWarrantyIssuesAsync(userId, currentPage, pageSize);
+                var result = await _warrantyService.GetShopWarrantyIssuesAsync(userId, status, currentPage, pageSize);
                 return SuccessResponse(result);
             }
             catch (UnauthorizedAccessException ex)
@@ -324,9 +351,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
 
         #region Admin Endpoints
 
-        /// <summary>
-        /// Retrieves a paginated list of all warranty requests.
-        /// </summary>
+        /// <param name="status">Optional: Filter by status (0: Pending, 1: InProgress, 2: ShopAccepted, 3: Rejected, 4: AutoCancelled, 5: AwaitingReturn, 6: Returning, 7: Returned, 8: Completed).</param>
         /// <param name="currentPage">The page number to retrieve.</param>
         /// <param name="pageSize">The number of items per page.</param>
         /// <returns>A paginated result containing warranty requests.</returns>
@@ -334,16 +359,25 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [HttpGet]
         [SwaggerOperation(
             Summary = "Admin: Get all warranty requests",
-            Description = "Returns a paginated list of all submitted warranty and return requests."
+            Description = "Returns a paginated list of all submitted warranty and return requests. Optionally filtered by status:\n\n" +
+                          "• 0 (Pending): New request\n" +
+                          "• 1 (InProgress): Validated, waiting for Shop\n" +
+                          "• 2 (ShopAccepted): Shop approved, waiting for your decision\n" +
+                          "• 3 (Rejected): Request denied\n" +
+                          "• 4 (AutoCancelled): Cancelled/Timeout\n" +
+                          "• 5 (AwaitingReturn): You approved return flow, wait for ship\n" +
+                          "• 6 (Returning): Item in transit\n" +
+                          "• 7 (Returned): Shop received return\n" +
+                          "• 8 (Completed): Refunded and completed"
         )]
         [SwaggerResponse(200, "Successfully retrieved list of warranty requests", typeof(FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>))]
         [SwaggerResponse(401, "Unauthorized access")]
         [SwaggerResponse(403, "Forbidden - Requires Admin role")]
-        public async Task<IActionResult> GetAllWarrantyIssues([FromQuery] int currentPage = 1, [FromQuery] int pageSize = 10)
+        public async Task<IActionResult> GetAllWarrantyIssues([FromQuery] OrderIssueStatus? status, [FromQuery] int currentPage = 1, [FromQuery] int pageSize = 10)
         {
             try
             {
-                var result = await _warrantyService.GetAllWarrantyIssuesAsync(currentPage, pageSize);
+                var result = await _warrantyService.GetAllWarrantyIssuesAsync(status, currentPage, pageSize);
                 return SuccessResponse(result, "Warranty requests retrieved successfully.");
             }
             catch (Exception ex)

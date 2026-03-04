@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
@@ -73,14 +77,21 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .ToListAsync();
         }
 
-        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetAllPagedAsync(int pageNumber, int pageSize, CancellationToken token = default)
+        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetAllPagedAsync(OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default)
         {
             var query = _context.OrderIssues
                 .Include(oi => oi.Logs)
                 .Include(oi => oi.Order)
+                    .ThenInclude(o => o.OrderItems)
                 .Include(oi => oi.User)
-                .Where(oi => !oi.IsDeleted)
-                .OrderByDescending(oi => oi.CreatedAt);
+                .Where(oi => !oi.IsDeleted);
+
+            if (status.HasValue)
+            {
+                query = query.Where(oi => oi.Status == status.Value);
+            }
+
+            query = query.OrderByDescending(oi => oi.CreatedAt);
 
             var totalCount = await query.CountAsync(token);
             var items = await query
@@ -91,14 +102,21 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return (items, totalCount);
         }
 
-        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetByUserIdPagedAsync(Guid userId, int pageNumber, int pageSize, CancellationToken token = default)
+        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetByUserIdPagedAsync(Guid userId, OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default)
         {
             var query = _context.OrderIssues
                 .Include(oi => oi.Logs)
                 .Include(oi => oi.Order)
+                    .ThenInclude(o => o.OrderItems)
                 .Include(oi => oi.User)
-                .Where(oi => oi.UserId == userId && !oi.IsDeleted)
-                .OrderByDescending(oi => oi.CreatedAt);
+                .Where(oi => oi.UserId == userId && !oi.IsDeleted);
+
+            if (status.HasValue)
+            {
+                query = query.Where(oi => oi.Status == status.Value);
+            }
+
+            query = query.OrderByDescending(oi => oi.CreatedAt);
 
             var totalCount = await query.CountAsync(token);
             var items = await query
@@ -109,20 +127,28 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return (items, totalCount);
         }
 
-        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetByShopIdPagedAsync(Guid shopId, int pageNumber, int pageSize, CancellationToken token = default)
+        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetByShopIdPagedAsync(Guid shopId, OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default)
         {
             var query = _context.OrderIssues
                 .Include(oi => oi.Logs)
                 .Include(oi => oi.Order)
+                    .ThenInclude(o => o.OrderItems)
                 .Include(oi => oi.User)
-                .Where(oi => oi.Order.ShopId == shopId && !oi.IsDeleted)
-                .OrderByDescending(oi => oi.CreatedAt);
+                .Where(oi => oi.Order.ShopId == shopId && !oi.IsDeleted);
+
+            if (status.HasValue)
+            {
+                query = query.Where(oi => oi.Status == status.Value);
+            }
+
+            query = query.OrderByDescending(oi => oi.CreatedAt);
 
             var totalCount = await query.CountAsync(token);
             var items = await query
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync(token);
+
 
             return (items, totalCount);
         }

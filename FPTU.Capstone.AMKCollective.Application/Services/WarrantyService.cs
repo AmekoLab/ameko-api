@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
@@ -180,7 +184,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     }
                 }
 
-                responses.Add(MapToResponse(issueToCreate));
+                var refundAmount = 0m;
+                if (issueToCreate.Order != null)
+                {
+                    refundAmount = await CalculateRefundAmountAsync(issueToCreate, issueToCreate.Order);
+                }
+                responses.Add(MapToResponse(issueToCreate, refundAmount));
             }
 
             await _unitOfWork.CommitAsync();
@@ -242,7 +251,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             });
 
             await _unitOfWork.CommitAsync();
-            return MapToResponse(issue);
+            var refundAmount = 0m;
+            if (issue.Order != null)
+            {
+                refundAmount = await CalculateRefundAmountAsync(issue, issue.Order);
+            }
+            return MapToResponse(issue, refundAmount);
         }
 
         public async Task DeleteWarrantyIssueAsync(Guid userId, Guid issueId, CancellationToken ct = default)
@@ -609,32 +623,62 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
         }
 
-        public async Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetAllWarrantyIssuesAsync(int currentPage, int pageSize, CancellationToken ct = default)
+        public async Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetAllWarrantyIssuesAsync(OrderIssueStatus? status, int currentPage, int pageSize, CancellationToken ct = default)
         {
-            var (items, totalCount) = await _unitOfWork.OrderIssues.GetAllPagedAsync(currentPage, pageSize, ct);
-            var mappedItems = items.Select(MapToResponse);
+            var (items, totalCount) = await _unitOfWork.OrderIssues.GetAllPagedAsync(status, currentPage, pageSize, ct);
+            
+            var mappedItems = new List<WarrantyIssueResponse>();
+            foreach (var issue in items)
+            {
+                var refundAmount = 0m;
+                if (issue.Order != null) 
+                {
+                    refundAmount = await CalculateRefundAmountAsync(issue, issue.Order);
+                }
+                mappedItems.Add(MapToResponse(issue, refundAmount));
+            }
 
             return new FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>(
                 mappedItems, totalCount, currentPage, pageSize);
         }
 
-        public async Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetMyWarrantyIssuesAsync(Guid userId, int currentPage, int pageSize, CancellationToken ct = default)
+        public async Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetMyWarrantyIssuesAsync(Guid userId, OrderIssueStatus? status, int currentPage, int pageSize, CancellationToken ct = default)
         {
-            var (items, totalCount) = await _unitOfWork.OrderIssues.GetByUserIdPagedAsync(userId, currentPage, pageSize, ct);
-            var mappedItems = items.Select(MapToResponse);
+            var (items, totalCount) = await _unitOfWork.OrderIssues.GetByUserIdPagedAsync(userId, status, currentPage, pageSize, ct);
+            
+            var mappedItems = new List<WarrantyIssueResponse>();
+            foreach (var issue in items)
+            {
+                var refundAmount = 0m;
+                if (issue.Order != null) 
+                {
+                    refundAmount = await CalculateRefundAmountAsync(issue, issue.Order);
+                }
+                mappedItems.Add(MapToResponse(issue, refundAmount));
+            }
 
             return new FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>(
                 mappedItems, totalCount, currentPage, pageSize);
         }
 
-        public async Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetShopWarrantyIssuesAsync(Guid shopOwnerId, int currentPage, int pageSize, CancellationToken ct = default)
+        public async Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetShopWarrantyIssuesAsync(Guid shopOwnerId, OrderIssueStatus? status, int currentPage, int pageSize, CancellationToken ct = default)
         {
             var shop = await _unitOfWork.Shops.GetByUserIdAsync(shopOwnerId, ct);
             if (shop == null)
                 throw new UnauthorizedAccessException("This account is not a Shop Owner.");
 
-            var (items, totalCount) = await _unitOfWork.OrderIssues.GetByShopIdPagedAsync(shop.Id, currentPage, pageSize, ct);
-            var mappedItems = items.Select(MapToResponse);
+            var (items, totalCount) = await _unitOfWork.OrderIssues.GetByShopIdPagedAsync(shop.Id, status, currentPage, pageSize, ct);
+            
+            var mappedItems = new List<WarrantyIssueResponse>();
+            foreach (var issue in items)
+            {
+                var refundAmount = 0m;
+                if (issue.Order != null) 
+                {
+                    refundAmount = await CalculateRefundAmountAsync(issue, issue.Order);
+                }
+                mappedItems.Add(MapToResponse(issue, refundAmount));
+            }
 
             return new FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>(
                 mappedItems, totalCount, currentPage, pageSize);
@@ -801,7 +845,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
         }
 
-        private static WarrantyIssueResponse MapToResponse(OrderIssue issue)
+        private static WarrantyIssueResponse MapToResponse(OrderIssue issue, decimal refundAmount = 0)
         {
             return new WarrantyIssueResponse
             {
@@ -809,7 +853,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 OrderId = issue.OrderId,
                 UserId = issue.UserId,
                 Type = issue.Type,
+                TypeName = issue.Type.ToString(),
                 Status = issue.Status,
+                StatusName = issue.Status.ToString(),
                 Reason = issue.Reason,
                 Description = issue.Description,
                 EvidenceUrl = issue.EvidenceUrl,
@@ -821,6 +867,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                                  (issue.Order != null && (issue.Order.OrderStatus == OrderStatus.Completed || issue.Order.OrderStatus == OrderStatus.Shipped)))
                                  ? "Loại Trả hàng: Duyệt đơn sẽ đi vào luồng Trả hàng (Return then Refund)" 
                                  : (issue.Type == OrderIssueType.WarrantyClaim ? "Loại Bảo hành: Duyệt đơn sẽ Hoàn tiền ngay (Immediate Refund)" : "Loại Hủy đơn: Duyệt đơn sẽ Hoàn tiền ngay (Immediate Refund)"),
+                RefundAmount = refundAmount,
                 IsSystemValid = issue.IsSystemValid,
                 ShopResponse = issue.ShopResponse,
                 AdminNote = issue.AdminNote,
