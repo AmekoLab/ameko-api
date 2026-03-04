@@ -22,6 +22,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         private IOrderIssueLogRepository? _orderIssueLogs;
         private IVoucherRepository? _voucher;
         private INotificationRepository? _notifications;
+        private IOrderVoucherRepository? _orderVoucher;
+        private ICommissionRequestRepository? _commissionRequests;
+        private ICommissionQuoteRepository? _commissionQuotes; 
+
         public UnitOfWork(ApplicationDbContext context)
         {
             _context = context;
@@ -46,6 +50,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public IOrderIssueLogRepository OrderIssueLogs => _orderIssueLogs ??= new OrderIssueLogRepository(_context);
         public IVoucherRepository Vouchers => _voucher ??= new VoucherRepository(_context);
         public INotificationRepository Notifications => _notifications ??= new NotificationRepository(_context);
+        public IOrderVoucherRepository OrderVouchers => _orderVoucher ??= new OrderVoucherRepository(_context);
+        public ICommissionRequestRepository CommissionRequests => _commissionRequests ??= new CommissionRequestRepository(_context);
+        public ICommissionQuoteRepository CommissionQuotes => _commissionQuotes ??= new CommissionQuoteRepository(_context);
 
         public async Task CommitAsync()
         {

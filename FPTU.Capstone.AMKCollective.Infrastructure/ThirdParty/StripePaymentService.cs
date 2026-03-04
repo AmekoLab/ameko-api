@@ -38,7 +38,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
         public async Task<CheckoutSessionResponse> CreateCheckoutSessionAsync(CreateCheckoutSessionRequest request, CancellationToken token = default)
         {
             var orderGroup = await _unitOfWork.OrderGroups.GetByIdAsync(request.OrderGroupId);
-            if (orderGroup == null) throw new KeyNotFoundException("Order Group not found");
+            if (orderGroup == null) throw new KeyNotFoundException("Order Group not found");           
 
             var options = new SessionCreateOptions
             {
@@ -55,43 +55,22 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                 LineItems = new List<SessionLineItemOptions>()
             };
 
-            foreach (var order in orderGroup.Orders)
-            {
-                foreach (var item in order.OrderItems)
-                {
-                    options.LineItems.Add(new SessionLineItemOptions
-                    {
-                        PriceData = new SessionLineItemPriceDataOptions
-                        {
-                            UnitAmount = (long)item.UnitPrice,
-                            Currency = "vnd",
-                            ProductData = new SessionLineItemPriceDataProductDataOptions
-                            {
-                                Name = item.ProductName,
-                                Description = item.IsCustom ? "Custom Build" : "Part"
-                            },
-                        },
-                        Quantity = item.Quantity,
-                    });
-                }
 
-                if (order.ShippingFee > 0)
+            // Gửi 1 dòng thanh toán tổng cho cả OrderGroup (Đã bao gồm mọi loại Voucher và Phí ship)
+            options.LineItems.Add(new SessionLineItemOptions
+            {
+                PriceData = new SessionLineItemPriceDataOptions
                 {
-                    options.LineItems.Add(new SessionLineItemOptions
+                    UnitAmount = (long)orderGroup.TotalGroupAmount, 
+                    Currency = "vnd",
+                    ProductData = new SessionLineItemPriceDataProductDataOptions
                     {
-                        PriceData = new SessionLineItemPriceDataOptions
-                        {
-                            UnitAmount = (long)order.ShippingFee,
-                            Currency = "vnd",
-                            ProductData = new SessionLineItemPriceDataProductDataOptions
-                            {
-                                Name = $"Shipping Fee (Shop ID: {order.ShopId})"
-                            },
-                        },
-                        Quantity = 1,
-                    });
-                }
-            }
+                        Name = "AMK Collective - Order Payment",
+                        Description = $"Payment for {orderGroup.Orders.Count} orders, including shipping fees and all applied discounts/vouchers."
+                    },
+                },
+                Quantity = 1,
+            });
 
             var service = new SessionService();
             Session session = await service.CreateAsync(options, cancellationToken: token);
