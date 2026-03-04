@@ -205,8 +205,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                .ForMember(dest => dest.ProductId, opt => opt.MapFrom(src => src.ProductId))
                .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.Name : src.ProductName))
                .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => src.Product != null ? src.Product.ThumbnailURL : src.ProductImage))
-               .ForMember(dest => dest.ShopId, opt => opt.MapFrom(src => src.Product.ShopId))
-               .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Product.Shop.ShopName))
+               .ForMember(dest => dest.ShopId, opt => opt.MapFrom(src =>
+                    src.Product != null ? src.Product.ShopId : GetShopIdFromConfig(src.DesignConfig)))
+
+            .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src =>
+                src.Product != null && src.Product.Shop != null ? src.Product.Shop.ShopName : GetShopNameFromConfig(src.DesignConfig)))
                .ForMember(dest => dest.UnitPrice, opt => opt.MapFrom(src => src.UnitPrice))
                .ForMember(dest => dest.TotalPrice, opt => opt.MapFrom(src => src.TotalPrice))
                .ForMember(dest => dest.Quantity, opt => opt.MapFrom(src => src.Quantity))
@@ -374,8 +377,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
         {
             const int maxResubmitsPerMonth = 2;
             var now = DateTime.UtcNow;
-
-            // Nếu chưa từng resubmit hoặc đã sang tháng mới → còn đủ 2 lần
             if (!lastResubmitTime.HasValue ||
                 lastResubmitTime.Value.Year != now.Year ||
                 lastResubmitTime.Value.Month != now.Month)
@@ -384,6 +385,32 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             }
 
             return Math.Max(0, maxResubmitsPerMonth - resubmitCount);
+        }
+
+        private static Guid GetShopIdFromConfig(string? jsonConfig)
+        {
+            if (string.IsNullOrEmpty(jsonConfig)) return Guid.Empty;
+            try
+            {
+                using var doc = JsonDocument.Parse(jsonConfig);
+                if (doc.RootElement.TryGetProperty("ShopId", out var shopIdProp) && shopIdProp.TryGetGuid(out var shopId))
+                    return shopId;
+            }
+            catch {  }
+            return Guid.Empty;
+        }
+
+        private static string GetShopNameFromConfig(string? jsonConfig)
+        {
+            if (string.IsNullOrEmpty(jsonConfig)) return "N/A";
+            try
+            {
+                using var doc = JsonDocument.Parse(jsonConfig);
+                if (doc.RootElement.TryGetProperty("ShopName", out var shopNameProp))
+                    return shopNameProp.GetString() ?? "N/A";
+            }
+            catch {  }
+            return "N/A";
         }
 
     }

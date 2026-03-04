@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Text.Json;
 
 namespace FPTU.Capstone.AMKCollective.Application.Services
 {
@@ -196,60 +197,68 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 otherQuote.Status = QuoteStatus.Rejected;
                 await _unitOfWork.CommissionQuotes.UpdateAsync(otherQuote);
             }
-            decimal totalPrice = quote.QuotedPrice * request.Quantity;
-            // 2. KHỞI TẠO ORDER (Giỏ hàng)
-            var orderId = Guid.NewGuid();
-            var order = new Order
+            // 2. TÌM GIỎ HÀNG HIỆN TẠI (Hoặc tạo mới nếu chưa có)
+            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
+            if (cartOrder == null)
             {
-                Id = orderId,
-                CustomerId = userId,
-                ShopId = quote.ShopId,
-                SubTotal = totalPrice,         
-                TotalAmount = totalPrice,
-                OrderStatus = OrderStatus.InCart, 
-                PaymentStatus = PaymentStatus.Pending,
-                Note = "Custom Request order from the public board."
-            };
-
-            // 3. KHỞI TẠO ORDER ITEM (Chứa thông tin Custom Request)
-            // Lấy ảnh đầu tiên (nếu user có upload nhiều ảnh URL cách nhau bởi phẩy)
-            string firstImage = "";
-            if (!string.IsNullOrEmpty(request.ReferenceImages))
-            {
-                firstImage = request.ReferenceImages.Split(',')[0].Trim();
+                cartOrder = new Order
+                {
+                    Id = Guid.NewGuid(),
+                    CustomerId = userId,
+                    OrderStatus = OrderStatus.InCart,
+                    PaymentStatus = PaymentStatus.Pending,
+                    SubTotal = 0,
+                    TotalAmount = 0,
+                    OrderItems = new List<OrderItem>()
+                };
+                await _unitOfWork.Orders.AddAsync(cartOrder); // Thêm giỏ hàng mới vào DB
             }
 
+            decimal totalPrice = quote.QuotedPrice * request.Quantity;
+
+            // Lấy thông tin Shop để lưu vào Config
+            var shop = await _unitOfWork.Shops.GetByIdAsync(quote.ShopId);
+
+            // Đóng gói thông tin Shop và Description vào DesignConfig
+            var commissionConfig = new
+            {
+                Type = "Commission",
+                ShopId = quote.ShopId,
+                ShopName = shop != null ? shop.ShopName : "N/A",
+                Description = request.Description
+            };
+
+            string firstImage = !string.IsNullOrEmpty(request.ReferenceImages) ? request.ReferenceImages.Split(',')[0].Trim() : "";
+
+            // 3. KHỞI TẠO ORDER ITEM VÀ NHÉT VÀO GIỎ
             var orderItem = new OrderItem
             {
                 Id = Guid.NewGuid(),
-                OrderId = orderId,
-                ProductId = null, 
-                AssembledProductId = null, 
-
-                // Lưu Snapshot dữ liệu
+                OrderId = cartOrder.Id, 
+                ProductId = null,
+                AssembledProductId = null,
                 ProductName = $"Custom Request: {request.Title}",
                 ProductImage = firstImage,
-                Quantity = request.Quantity,           
-                UnitPrice = quote.QuotedPrice,         
+                Quantity = request.Quantity,
+                UnitPrice = quote.QuotedPrice,
                 TotalPrice = totalPrice,
-
-                // Bật cờ Custom và lưu Công thức (Description) vào DesignConfig
                 IsCustom = true,
-                DesignConfig = request.Description,
-                Notes = quote.ShopNotes 
+                DesignConfig = JsonSerializer.Serialize(commissionConfig), 
+                Notes = quote.ShopNotes
             };
 
-            order.OrderItems.Add(orderItem);
+            cartOrder.OrderItems.Add(orderItem);
 
-            // 4. Lưu vào Database
-            await _unitOfWork.Orders.AddAsync(order);
+            // Tính lại tiền cho giỏ hàng
+            cartOrder.SubTotal = cartOrder.OrderItems.Where(i => !i.IsDeleted).Sum(i => i.TotalPrice);
+            cartOrder.TotalAmount = Math.Max(0, cartOrder.SubTotal - cartOrder.DiscountAmount);
+
             await _unitOfWork.CommissionQuotes.UpdateAsync(quote);
             await _unitOfWork.CommissionRequests.UpdateAsync(request);
 
             await _unitOfWork.CommitAsync();
 
-            // Trả về OrderId để FE có thể redirect thẳng qua trang Checkout
-            return (true, order.Id, string.Empty);
+            return (true, cartOrder.Id, string.Empty);
         }
 
         public async Task<(bool Success, string ErrorMessage)> RevokeQuoteAsync(Guid shopUserId, Guid quoteId)

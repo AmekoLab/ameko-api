@@ -190,10 +190,29 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     // (Tùy chọn) Kiểm tra xem Shop đó có hàng trong giỏ không
                     bool hasItemFromThisShop = order.OrderItems.Any(i =>
                     {
-                        var productTask = _unitOfWork.Models.GetByIdAsync(i.ProductId).Result;
-                        if (productTask == null || productTask.ShopId == Guid.Empty) return false;
-                        var shopTask = _unitOfWork.Shops.GetByIdAsync(productTask.ShopId).Result;
-                        return shopTask != null && shopTask.UserId == incomingVoucher.CreatorId;
+                        Guid sId = Guid.Empty;
+                        if (i.ProductId.HasValue)
+                        {
+                            var productTask = _unitOfWork.Models.GetByIdAsync(i.ProductId.Value).Result;
+                            if (productTask != null) sId = productTask.ShopId;
+                        }
+                        else if (!string.IsNullOrEmpty(i.DesignConfig))
+                        {
+                            try
+                            {
+                                using var doc = System.Text.Json.JsonDocument.Parse(i.DesignConfig);
+                                if (doc.RootElement.TryGetProperty("ShopId", out var shopIdProp) && shopIdProp.TryGetGuid(out var parsedShopId))
+                                    sId = parsedShopId;
+                            }
+                            catch { }
+                        }
+
+                        if (sId != Guid.Empty)
+                        {
+                            var shopTask = _unitOfWork.Shops.GetByIdAsync(sId).Result;
+                            return shopTask != null && shopTask.UserId == incomingVoucher.CreatorId;
+                        }
+                        return false;
                     });
 
                     if (!hasItemFromThisShop)
@@ -228,27 +247,42 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var shopCache = new Dictionary<Guid, Guid>(); // Cache phụ: Map ShopId -> UserId để giảm thiểu gọi DB
             foreach (var item in cartItems)
             {
-                var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
-                if (product != null && product.ShopId != Guid.Empty)
+                Guid shopId = Guid.Empty;
+
+                if (item.ProductId.HasValue)
+                {
+                    var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId.Value);
+                    if (product != null) shopId = product.ShopId;
+                }
+                else if (!string.IsNullOrEmpty(item.DesignConfig))
+                {
+                    try
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(item.DesignConfig);
+                        if (doc.RootElement.TryGetProperty("ShopId", out var shopIdProp) && shopIdProp.TryGetGuid(out var parsedShopId))
+                            shopId = parsedShopId;
+                    }
+                    catch { }
+                }
+
+                if (shopId != Guid.Empty)
                 {
                     Guid shopOwnerUserId = Guid.Empty;
 
-                    // Nếu chưa lấy Shop này bao giờ thì gọi DB, rồi lưu vào cache
-                    if (!shopCache.ContainsKey(product.ShopId))
+                    if (!shopCache.ContainsKey(shopId))
                     {
-                        var shop = await _unitOfWork.Shops.GetByIdAsync(product.ShopId);
+                        var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
                         if (shop != null)
                         {
                             shopOwnerUserId = shop.UserId;
-                            shopCache[product.ShopId] = shop.UserId;
+                            shopCache[shopId] = shop.UserId;
                         }
                     }
                     else
                     {
-                        shopOwnerUserId = shopCache[product.ShopId];
+                        shopOwnerUserId = shopCache[shopId];
                     }
 
-                    // Cộng dồn tiền hàng cho chủ shop này
                     if (shopOwnerUserId != Guid.Empty)
                     {
                         if (!creatorSubTotals.ContainsKey(shopOwnerUserId))
@@ -379,22 +413,39 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             foreach (var item in cartItems)
             {
-                var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
-                if (product != null && product.ShopId != Guid.Empty)
+                Guid shopId = Guid.Empty;
+
+                if (item.ProductId.HasValue)
+                {
+                    var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId.Value);
+                    if (product != null) shopId = product.ShopId;
+                }
+                else if (!string.IsNullOrEmpty(item.DesignConfig))
+                {
+                    try
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(item.DesignConfig);
+                        if (doc.RootElement.TryGetProperty("ShopId", out var shopIdProp) && shopIdProp.TryGetGuid(out var parsedShopId))
+                            shopId = parsedShopId;
+                    }
+                    catch { }
+                }
+
+                if (shopId != Guid.Empty)
                 {
                     Guid shopOwnerUserId = Guid.Empty;
-                    if (!shopCache.ContainsKey(product.ShopId))
+                    if (!shopCache.ContainsKey(shopId))
                     {
-                        var shop = await _unitOfWork.Shops.GetByIdAsync(product.ShopId);
+                        var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
                         if (shop != null)
                         {
                             shopOwnerUserId = shop.UserId;
-                            shopCache[product.ShopId] = shop.UserId;
+                            shopCache[shopId] = shop.UserId;
                         }
                     }
                     else
                     {
-                        shopOwnerUserId = shopCache[product.ShopId];
+                        shopOwnerUserId = shopCache[shopId];
                     }
 
                     if (shopOwnerUserId != Guid.Empty)
@@ -506,10 +557,29 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             foreach (var item in cartItems)
             {
-                var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
-                if (product != null && product.ShopId != Guid.Empty)
+                Guid shopId = Guid.Empty;
+
+                // 1. Hàng thường & Builder (Có ProductId)
+                if (item.ProductId.HasValue)
                 {
-                    var shopId = product.ShopId;
+                    var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId.Value);
+                    if (product != null) shopId = product.ShopId;
+                }
+                // 2. Hàng Commission (Lấy ShopId từ DesignConfig)
+                else if (!string.IsNullOrEmpty(item.DesignConfig))
+                {
+                    try
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(item.DesignConfig);
+                        if (doc.RootElement.TryGetProperty("ShopId", out var shopIdProp) && shopIdProp.TryGetGuid(out var parsedShopId))
+                            shopId = parsedShopId;
+                    }
+                    catch { /* Ignore parse error */ }
+                }
+
+                // Tính tổng tiền cho Shop
+                if (shopId != Guid.Empty)
+                {
                     if (!shopSubTotals.ContainsKey(shopId))
                     {
                         shopSubTotals[shopId] = 0;
