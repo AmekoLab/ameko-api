@@ -330,11 +330,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             CreateMap<SubmitQuoteRequest, CommissionQuote>();
 
             CreateMap<CommissionQuote, CommissionQuoteResponse>()
+                .ForMember(dest => dest.CommissionQuoteId, opt => opt.MapFrom(src => src.Id))
                 .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Shop != null ? src.Shop.ShopName : ""))
                 .ForMember(dest => dest.ShopAvatar, opt => opt.MapFrom(src => src.Shop != null ? src.Shop.LogoUrl : ""))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()));
 
             CreateMap<CommissionRequest, CommissionRequestResponse>()
+                .ForMember(dest => dest.CommissionRequestId, opt => opt.MapFrom(src => src.Id))
                 .ForMember(dest => dest.UserName, opt => opt.MapFrom(src =>
                    src.User != null ? $"{src.User.FirstName} {src.User.LastName}".Trim() : ""))
                 .ForMember(dest => dest.TargetedShopName, opt => opt.MapFrom(src =>         src.TargetedShop != null ? src.TargetedShop.ShopName : ""))

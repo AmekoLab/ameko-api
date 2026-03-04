@@ -8,7 +8,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Commission
 {
     public class CommissionQuoteResponse
     {
-        public Guid Id { get; set; }
+        public Guid CommissionQuoteId { get; set; }
         public Guid CommissionRequestId { get; set; }
         public Guid ShopId { get; set; }
         public string ShopName { get; set; } = string.Empty;
