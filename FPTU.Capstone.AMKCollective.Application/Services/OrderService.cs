@@ -346,11 +346,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (appliedVouchers != null && appliedVouchers.Any())
             {
                 // Nếu có, lập tức gỡ bỏ toàn bộ voucher để tránh sai lệch tính toán.
-                // Hàm này bên VoucherService đã có sẵn logic trả lại UsedCount, xóa OrderVoucher và cập nhật TotalAmount.
                 await _voucherService.RemoveAllVouchersAsync(userId, cartOrder.Id);
             }
             // 5. Lưu thay đổi
-            // Lúc này EF sẽ thực hiện lệnh DELETE thật sự
             await _unitOfWork.CommitAsync();
         }
 
@@ -368,30 +366,88 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var item = cartOrder.OrderItems.FirstOrDefault(i => i.Id == orderItemId);
             if (item == null) throw new KeyNotFoundException("Item not found.");
 
-            // Check Stock Realtime
-            var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
-            if (product != null)
+            // ==========================================
+            // LOGIC TÍNH LẠI GIÁ & CHECK KHO TỒN
+            // ==========================================
+            if (item.IsCustom)
             {
-                if (product.StockQuantity < newQuantity)
-                    throw new InvalidOperationException($"Insufficient stock. Available: {product.StockQuantity}");
+                // 1. TRƯỜNG HỢP: ĐƠN COMMISSION (ProductId = null)
+                if (!item.ProductId.HasValue)
+                {
+                    // Commission không check kho linh kiện, giữ nguyên UnitPrice đã chốt ban đầu
+                    item.Quantity = newQuantity;
+                    item.TotalPrice = item.Quantity * item.UnitPrice;
+                }
+                // 2. TRƯỜNG HỢP: HÀNG TỪ BUILDER SESSION (Có ProductId và Components)
+                else
+                {
+                    var baseKit = await _unitOfWork.Models.GetByIdAsync(item.ProductId.Value);
+                    if (baseKit == null) throw new InvalidOperationException("Base kit not found.");
+                    if (baseKit.StockQuantity < newQuantity)
+                        throw new InvalidOperationException($"Insufficient base kit stock. Available: {baseKit.StockQuantity}");
 
-                // Update Price Realtime (Tránh lỗi giá cũ)
-                item.UnitPrice = product.Price;
+                    decimal currentCustomUnitPrice = baseKit.Price; // Khởi tạo bằng giá Base Kit mới nhất
+
+                    // Check kho và tính tổng giá các linh kiện con
+                    if (item.OrderItemComponents != null && item.OrderItemComponents.Any())
+                    {
+                        foreach (var comp in item.OrderItemComponents)
+                        {
+                            var part = await _unitOfWork.Models.GetByIdAsync(comp.PartId);
+                            if (part != null)
+                            {
+                                int totalPartNeeded = comp.Quantity * newQuantity;
+                                if (part.StockQuantity < totalPartNeeded)
+                                {
+                                    throw new InvalidOperationException($"Insufficient stock for component '{part.Name}'. Needed: {totalPartNeeded}, Available: {part.StockQuantity}");
+                                }
+
+                                // Cập nhật lại giá linh kiện phòng khi Shop đổi giá
+                                comp.PartPriceSnapshot = part.Price;
+                                currentCustomUnitPrice += (part.Price * comp.Quantity);
+                            }
+                        }
+                    }
+
+                    // Gán lại giá và tổng tiền
+                    item.UnitPrice = currentCustomUnitPrice;
+                    item.Quantity = newQuantity;
+                    item.TotalPrice = item.Quantity * item.UnitPrice;
+                }
+            }
+            else
+            {
+                // 3. TRƯỜNG HỢP: HÀNG THƯỜNG (Base Kit mua lẻ, linh kiện mua lẻ...)
+                if (item.ProductId.HasValue)
+                {
+                    var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId.Value);
+                    if (product != null)
+                    {
+                        if (product.StockQuantity < newQuantity)
+                            throw new InvalidOperationException($"Insufficient stock. Available: {product.StockQuantity}");
+
+                        // Update Price Realtime cho hàng thường
+                        item.UnitPrice = product.Price;
+                    }
+                }
+                item.Quantity = newQuantity;
+                item.TotalPrice = item.Quantity * item.UnitPrice;
             }
 
-            item.Quantity = newQuantity;
-            item.TotalPrice = item.Quantity * item.UnitPrice;
-
-            cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
+            // ==========================================
+            // CẬP NHẬT TỔNG TIỀN VÀ XỬ LÝ VOUCHER
+            // ==========================================
+            cartOrder.TotalAmount = cartOrder.OrderItems.Where(i => !i.IsDeleted).Sum(i => i.TotalPrice);
             cartOrder.SubTotal = cartOrder.TotalAmount;
-            var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(cartOrder.Id); // cartOrder là biến lưu order giỏ hàng hiện tại của bạn
+
+            var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(cartOrder.Id);
 
             if (appliedVouchers != null && appliedVouchers.Any())
             {
-                // Nếu có, lập tức gỡ bỏ toàn bộ voucher để tránh sai lệch tính toán.
-                // Hàm này bên VoucherService đã có sẵn logic trả lại UsedCount, xóa OrderVoucher và cập nhật TotalAmount.
+                // Gỡ bỏ toàn bộ voucher để tránh sai lệch tính toán
                 await _voucherService.RemoveAllVouchersAsync(userId, cartOrder.Id);
             }
+
             await _unitOfWork.CommitAsync();
         }
 
