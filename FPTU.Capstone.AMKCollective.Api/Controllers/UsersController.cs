@@ -42,6 +42,25 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         }
 
         /// <summary>
+        /// Searches users by first name or last name with pagination.
+        /// </summary>
+        /// <param name="name">The search term.</param>
+        /// <param name="currentPage">The page number.</param>
+        /// <param name="pageSize">The page size.</param>
+        /// <returns>A paginated list of users matching the search criteria.</returns>
+        [Authorize(Roles = "Admin")]
+        [HttpGet("search")]
+        [SwaggerOperation(Summary = "Search users by name", Description = "Searches for users by first name or last name. Requires Admin role.")]
+        [SwaggerResponse(200, "Successfully retrieved search results", typeof(PaginatedResult<UserResponse>))]
+        [SwaggerResponse(401, "Unauthorized")]
+        [SwaggerResponse(403, "Forbidden - Requires Admin role")]
+        public async Task<IActionResult> SearchByName([FromQuery] string? name, [FromQuery] int currentPage = 1, [FromQuery] int pageSize = 10)
+        {
+            var result = await _userService.SearchByNameAsync(name ?? string.Empty, currentPage, pageSize);
+            return SuccessResponse(result);
+        }
+
+        /// <summary>
         /// Authenticates a user and returns a JWT token.
         /// </summary>
         /// <param name="request">The login credentials.</param>
