@@ -8,10 +8,12 @@ namespace FPTU.Capstone.AMKCollective.Domain.Enums
 {
     public enum QuoteStatus
     {
-        PendingUserDecision = 0, // Chờ khách hàng chốt (Accept/Reject)
+        PendingUserDecision = 0,    // Chờ khách hàng chốt (Accept/Reject)
 
-        Accepted = 1,            // Khách hàng đã đồng ý báo giá này
+        Accepted = 1,               // Khách hàng đã đồng ý báo giá này
 
-        Rejected = 2             // Khách hàng đã từ chối báo giá này
+        Rejected = 2,               // Khách hàng đã từ chối báo giá này
+        Revoked = 3                 // Shop tự rút lại/thu hồi báo giá
+
     }
 }

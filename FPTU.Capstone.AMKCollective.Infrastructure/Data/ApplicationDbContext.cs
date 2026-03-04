@@ -40,6 +40,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data
         public DbSet<Wallet> Wallets { get; set; } = null!;
         public DbSet<OrderIssue> OrderIssues { get; set; } = null!;
         public DbSet<OrderIssueLog> OrderIssueLogs { get; set; } = null!;
+        public DbSet<CommissionRequest> CommissionRequests => Set<CommissionRequest>();
+        public DbSet<CommissionQuote> CommissionQuotes => Set<CommissionQuote>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

@@ -1,10 +1,11 @@
 using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Commission;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Follow;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
-using FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Voucher;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Wallet;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
@@ -319,6 +320,23 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 // Gán cứng lý do 
                 .ForMember(dest => dest.Reason, opt => opt.MapFrom(src => "Reserved Funds (Until Order is Completed)"));
 
+            // =========================================================
+            // Commission (Commission -> DTO)
+            // =========================================================
+            CreateMap<CreateCommissionRequest, CommissionRequest>();
+            CreateMap<SubmitQuoteRequest, CommissionQuote>();
+
+            CreateMap<CommissionQuote, CommissionQuoteResponse>()
+                .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Shop != null ? src.Shop.ShopName : ""))
+                .ForMember(dest => dest.ShopAvatar, opt => opt.MapFrom(src => src.Shop != null ? src.Shop.LogoUrl : ""))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()));
+
+            CreateMap<CommissionRequest, CommissionRequestResponse>()
+                .ForMember(dest => dest.UserName, opt => opt.MapFrom(src =>
+                   src.User != null ? $"{src.User.FirstName} {src.User.LastName}".Trim() : ""))
+                .ForMember(dest => dest.TargetedShopName, opt => opt.MapFrom(src =>         src.TargetedShop != null ? src.TargetedShop.ShopName : ""))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()))
+                .ForMember(dest => dest.Quotes, opt => opt.MapFrom(src => src.Quotes));
         }
 
 

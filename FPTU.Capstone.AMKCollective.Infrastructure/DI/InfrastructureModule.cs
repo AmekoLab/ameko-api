@@ -81,6 +81,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
             RegisterOptions<VoucherSettings>(builder, "VoucherSettings");
             RegisterOptions<WalletSettings>(builder, "WalletSettings");
             RegisterOptions<WorkerIntervals>(builder, "WorkerIntervals");
+            RegisterOptions<CommissionSettings>(builder, "CommissionSettings");
         }
 
         private void RegisterOptions<T>(ContainerBuilder builder, string sectionName) where T : class, new()

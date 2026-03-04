@@ -24,6 +24,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public string? ShopNotes { get; set; }
 
         public QuoteStatus Status { get; set; } = QuoteStatus.PendingUserDecision;
+        public DateTime ExpiredAt { get; set; }
 
         // Navigation Properties
         public virtual CommissionRequest CommissionRequest { get; set; } = null!;
