@@ -449,7 +449,25 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Orders = new List<Order>()
             };
 
-            var itemsByShop = selectedItems.GroupBy(i => i.Product?.ShopId ?? Guid.Empty);
+            var itemsByShop = selectedItems.GroupBy(i => {
+                // 1. Hàng thường & Builder (Có ProductId)
+                if (i.ProductId.HasValue && i.Product != null)
+                    return i.Product.ShopId;
+
+                // 2. Hàng Commission (ProductId = null, lấy từ DesignConfig)
+                if (!string.IsNullOrEmpty(i.DesignConfig))
+                {
+                    try
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(i.DesignConfig);
+                        if (doc.RootElement.TryGetProperty("ShopId", out var shopIdProp) && shopIdProp.TryGetGuid(out var shopId))
+                            return shopId;
+                    }
+                    catch { }
+                }
+
+                return Guid.Empty;
+            });
             decimal totalCheckoutSubTotal = 0;
 
             // BƯỚC 2.1: TẠO ĐƠN HÀNG LẺ CHO TỪNG SHOP VÀ TÍNH TỔNG TIỀN GỐC (SUBTOTAL)
@@ -477,13 +495,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                 foreach (var cartItem in shopGroup)
                 {
-                    var product = await _unitOfWork.Models.GetByIdAsync(cartItem.ProductId);
-                    if (product == null) throw new InvalidOperationException($"Product {cartItem.ProductName} missing.");
-                    if (product.StockQuantity < cartItem.Quantity) throw new InvalidOperationException($"Out of stock: {product.Name}");
+                    Model product = null; // Khai báo biến product ra ngoài
 
-                    // Trừ kho
-                    product.StockQuantity -= cartItem.Quantity;
-                    await _unitOfWork.Models.UpdateAsync(product);
+                    // Chỉ check kho và trừ kho nếu món hàng CÓ ProductId (Hàng thường & Builder)
+                    if (cartItem.ProductId.HasValue)
+                    {
+                        product = await _unitOfWork.Models.GetByIdAsync(cartItem.ProductId.Value);
+                        if (product == null) throw new InvalidOperationException($"Product {cartItem.ProductName} missing.");
+                        if (product.StockQuantity < cartItem.Quantity) throw new InvalidOperationException($"Out of stock: {product.Name}");
+
+                        // Trừ kho
+                        product.StockQuantity -= cartItem.Quantity;
+                        await _unitOfWork.Models.UpdateAsync(product);
+                    }
 
                     // Clone OrderItem
                     var orderItem = new OrderItem
@@ -511,7 +535,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                             // Logic tính recipe giữ nguyên
                             int requiredQtyPerKit = 1;
-                            if (!string.IsNullOrEmpty(product.Specifications))
+                            if (product != null && !string.IsNullOrEmpty(product.Specifications))
                             {                     
                                 try
                                 {

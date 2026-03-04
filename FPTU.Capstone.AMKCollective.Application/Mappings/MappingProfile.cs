@@ -1,10 +1,11 @@
 using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Commission;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Follow;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
-using FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Voucher;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Wallet;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
@@ -204,8 +205,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                .ForMember(dest => dest.ProductId, opt => opt.MapFrom(src => src.ProductId))
                .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.Name : src.ProductName))
                .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => src.Product != null ? src.Product.ThumbnailURL : src.ProductImage))
-               .ForMember(dest => dest.ShopId, opt => opt.MapFrom(src => src.Product.ShopId))
-               .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Product.Shop.ShopName))
+               .ForMember(dest => dest.ShopId, opt => opt.MapFrom(src =>
+                    src.Product != null ? src.Product.ShopId : GetShopIdFromConfig(src.DesignConfig)))
+
+            .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src =>
+                src.Product != null && src.Product.Shop != null ? src.Product.Shop.ShopName : GetShopNameFromConfig(src.DesignConfig)))
                .ForMember(dest => dest.UnitPrice, opt => opt.MapFrom(src => src.UnitPrice))
                .ForMember(dest => dest.TotalPrice, opt => opt.MapFrom(src => src.TotalPrice))
                .ForMember(dest => dest.Quantity, opt => opt.MapFrom(src => src.Quantity))
@@ -319,6 +323,25 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 // Gán cứng lý do 
                 .ForMember(dest => dest.Reason, opt => opt.MapFrom(src => "Reserved Funds (Until Order is Completed)"));
 
+            // =========================================================
+            // Commission (Commission -> DTO)
+            // =========================================================
+            CreateMap<CreateCommissionRequest, CommissionRequest>();
+            CreateMap<SubmitQuoteRequest, CommissionQuote>();
+
+            CreateMap<CommissionQuote, CommissionQuoteResponse>()
+                .ForMember(dest => dest.CommissionQuoteId, opt => opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Shop != null ? src.Shop.ShopName : ""))
+                .ForMember(dest => dest.ShopAvatar, opt => opt.MapFrom(src => src.Shop != null ? src.Shop.LogoUrl : ""))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()));
+
+            CreateMap<CommissionRequest, CommissionRequestResponse>()
+                .ForMember(dest => dest.CommissionRequestId, opt => opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.UserName, opt => opt.MapFrom(src =>
+                   src.User != null ? $"{src.User.FirstName} {src.User.LastName}".Trim() : ""))
+                .ForMember(dest => dest.TargetedShopName, opt => opt.MapFrom(src =>         src.TargetedShop != null ? src.TargetedShop.ShopName : ""))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()))
+                .ForMember(dest => dest.Quotes, opt => opt.MapFrom(src => src.Quotes));
         }
 
 
@@ -356,8 +379,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
         {
             const int maxResubmitsPerMonth = 2;
             var now = DateTime.UtcNow;
-
-            // Nếu chưa từng resubmit hoặc đã sang tháng mới → còn đủ 2 lần
             if (!lastResubmitTime.HasValue ||
                 lastResubmitTime.Value.Year != now.Year ||
                 lastResubmitTime.Value.Month != now.Month)
@@ -366,6 +387,32 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             }
 
             return Math.Max(0, maxResubmitsPerMonth - resubmitCount);
+        }
+
+        private static Guid GetShopIdFromConfig(string? jsonConfig)
+        {
+            if (string.IsNullOrEmpty(jsonConfig)) return Guid.Empty;
+            try
+            {
+                using var doc = JsonDocument.Parse(jsonConfig);
+                if (doc.RootElement.TryGetProperty("ShopId", out var shopIdProp) && shopIdProp.TryGetGuid(out var shopId))
+                    return shopId;
+            }
+            catch {  }
+            return Guid.Empty;
+        }
+
+        private static string GetShopNameFromConfig(string? jsonConfig)
+        {
+            if (string.IsNullOrEmpty(jsonConfig)) return "N/A";
+            try
+            {
+                using var doc = JsonDocument.Parse(jsonConfig);
+                if (doc.RootElement.TryGetProperty("ShopName", out var shopNameProp))
+                    return shopNameProp.GetString() ?? "N/A";
+            }
+            catch {  }
+            return "N/A";
         }
 
     }

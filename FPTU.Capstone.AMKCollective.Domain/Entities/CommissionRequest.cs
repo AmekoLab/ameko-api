@@ -29,6 +29,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public decimal? MinBudget { get; set; }
         [Column(TypeName = "decimal(18,2)")]
         public decimal? MaxBudget { get; set; }
+        public int Quantity { get; set; } = 1;
 
         public CommissionStatus Status { get; set; } = CommissionStatus.OpenPool;
 
