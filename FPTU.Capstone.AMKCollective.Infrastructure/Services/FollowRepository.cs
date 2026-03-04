@@ -49,15 +49,5 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             return await _context.Follows.FirstOrDefaultAsync(f => f.FollowerId == followerId && f.FollowedId == followedId);
         }
-
-        public async Task<int> GetFollowersCountAsync(Guid userId, CancellationToken token = default)
-        {
-            return await _context.Follows.CountAsync(f => f.FollowedId == userId, token);
-        }
-
-        public async Task<int> GetFollowingCountAsync(Guid userId, CancellationToken token = default)
-        {
-            return await _context.Follows.CountAsync(f => f.FollowerId == userId, token);
-        }
     }
 }
