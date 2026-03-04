@@ -19,6 +19,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         IOrderIssueRepository OrderIssues { get; }
         IOrderIssueLogRepository OrderIssueLogs { get; }
         IVoucherRepository Vouchers { get; }
+        INotificationRepository Notifications { get; }
         Task CommitAsync();
         void Rollback();
         /// <summary>

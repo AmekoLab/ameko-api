@@ -63,7 +63,9 @@ internal class Program
                     ValidateAudience = true,
                     ValidAudience = builder.Configuration["JwtSettings:Audience"],
                     ValidateLifetime = true,
-                    ClockSkew = TimeSpan.Zero
+                    ClockSkew = TimeSpan.Zero,
+                    NameClaimType = "nameid",
+                    RoleClaimType = "role"
                 };
             });
 

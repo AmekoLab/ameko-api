@@ -28,6 +28,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             return await _context.OrderIssues
                 .Include(oi => oi.Logs)
+                .Include(oi => oi.User)
                 .Where(oi => oi.OrderId == orderId && !oi.IsDeleted)
                 .ToListAsync();
         }
@@ -68,8 +69,62 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<List<OrderIssue>> GetExpiredIssuesAsync(DateTime threshold)
         {
             return await _context.OrderIssues
-                .Where(x => x.Status == OrderIssueStatus.InProgress && x.CreatedAt <= threshold)
+                .Where(x => x.Status == OrderIssueStatus.AwaitingReturn && x.UpdatedAt <= threshold)
                 .ToListAsync();
+        }
+
+        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetAllPagedAsync(int pageNumber, int pageSize, CancellationToken token = default)
+        {
+            var query = _context.OrderIssues
+                .Include(oi => oi.Logs)
+                .Include(oi => oi.Order)
+                .Include(oi => oi.User)
+                .Where(oi => !oi.IsDeleted)
+                .OrderByDescending(oi => oi.CreatedAt);
+
+            var totalCount = await query.CountAsync(token);
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(token);
+
+            return (items, totalCount);
+        }
+
+        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetByUserIdPagedAsync(Guid userId, int pageNumber, int pageSize, CancellationToken token = default)
+        {
+            var query = _context.OrderIssues
+                .Include(oi => oi.Logs)
+                .Include(oi => oi.Order)
+                .Include(oi => oi.User)
+                .Where(oi => oi.UserId == userId && !oi.IsDeleted)
+                .OrderByDescending(oi => oi.CreatedAt);
+
+            var totalCount = await query.CountAsync(token);
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(token);
+
+            return (items, totalCount);
+        }
+
+        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetByShopIdPagedAsync(Guid shopId, int pageNumber, int pageSize, CancellationToken token = default)
+        {
+            var query = _context.OrderIssues
+                .Include(oi => oi.Logs)
+                .Include(oi => oi.Order)
+                .Include(oi => oi.User)
+                .Where(oi => oi.Order.ShopId == shopId && !oi.IsDeleted)
+                .OrderByDescending(oi => oi.CreatedAt);
+
+            var totalCount = await query.CountAsync(token);
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(token);
+
+            return (items, totalCount);
         }
     }
 }
