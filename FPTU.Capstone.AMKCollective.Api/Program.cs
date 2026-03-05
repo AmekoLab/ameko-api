@@ -66,6 +66,7 @@ internal class Program
                     ClockSkew = TimeSpan.Zero,
                     RoleClaimType = "role",
                     NameClaimType = "nameid"
+                    ClockSkew = TimeSpan.Zero
                 };
             });
 

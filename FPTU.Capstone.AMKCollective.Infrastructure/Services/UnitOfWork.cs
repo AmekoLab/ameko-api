@@ -54,6 +54,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public ICommissionRequestRepository CommissionRequests => _commissionRequests ??= new CommissionRequestRepository(_context);
         public ICommissionQuoteRepository CommissionQuotes => _commissionQuotes ??= new CommissionQuoteRepository(_context);
 
+
         public async Task CommitAsync()
         {
             await _context.SaveChangesAsync();
