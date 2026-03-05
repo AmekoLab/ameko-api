@@ -886,8 +886,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<PaginatedResult<VoucherResponse>> GetVouchersByShopAsync(Guid userId, VoucherFilterRequest filter)
         {
-            // userId ở đây là ID của User (Chủ Shop)
-            var (items, totalCount) = await _unitOfWork.Vouchers.GetVouchersByFilterAsync(userId, filter);
+            var currentUser = await _unitOfWork.Users.GetByIdAsync(userId);
+            bool isAdmin = currentUser?.Role?.Name == RoleType.Admin;
+
+            // Nếu là Admin -> Truyền null xuống Repo để lấy toàn bộ mã
+            // Nếu là Shop -> Truyền ID thật của Shop để giới hạn dữ liệu
+            Guid? targetCreatorId = isAdmin ? null : userId;
+
+            var (items, totalCount) = await _unitOfWork.Vouchers.GetVouchersByFilterAsync(targetCreatorId, filter);
 
             var mappedItems = _mapper.Map<List<VoucherResponse>>(items);
             return new PaginatedResult<VoucherResponse>(mappedItems, totalCount, filter.PageNumber, filter.PageSize);

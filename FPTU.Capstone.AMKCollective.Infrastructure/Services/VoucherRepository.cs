@@ -81,10 +81,16 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return await _context.VoucherUsageLogs.AnyAsync(x => x.VoucherId == voucherId && !x.IsDeleted);
         }
 
-        public async Task<(IEnumerable<Voucher> Items, int TotalCount)> GetVouchersByFilterAsync(Guid creatorId, VoucherFilterRequest filter)
+        public async Task<(IEnumerable<Voucher> Items, int TotalCount)> GetVouchersByFilterAsync(Guid? creatorId, VoucherFilterRequest filter)
         {
-            var query = _context.Vouchers
-                .Where(v => v.CreatorId == creatorId && !v.IsDeleted);
+            var query = _context.Vouchers.Where(v => !v.IsDeleted);
+
+            // Nếu có ID (Shop gọi) -> Lọc đúng mã của Shop đó
+            // Nếu ID null (Admin gọi) -> Bỏ qua bước lọc này, lấy toàn bộ
+            if (creatorId.HasValue)
+            {
+                query = query.Where(v => v.CreatorId == creatorId.Value);
+            }
 
             // 1. Filter by Code/Name
             if (!string.IsNullOrEmpty(filter.SearchCode))
