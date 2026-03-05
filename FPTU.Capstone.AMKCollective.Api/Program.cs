@@ -156,7 +156,6 @@ internal class Program
         // Register Background Workers
         builder.Services.AddHostedService<OrderCancellationTimeoutWorker>();
         builder.Services.AddHostedService<FundsReleaseWorker>();
-        builder.Services.AddHostedService<AbandonedOrderCleanupWorker>();
 
         var app = builder.Build();
 
@@ -168,10 +167,10 @@ internal class Program
             app.UseRewriter(new RewriteOptions().AddRedirect("^$", "swagger"));
         // }
 
-        //app.UseHttpsRedirection();
-        app.UseCors("AllowFrontend");
+        app.UseHttpsRedirection();
         app.UseAuthentication();
         app.UseAuthorization();
+        app.UseCors("AllowFrontend");
         app.MapControllers();
         //app.MapHub<RealTimeHub>("/hub");
 
