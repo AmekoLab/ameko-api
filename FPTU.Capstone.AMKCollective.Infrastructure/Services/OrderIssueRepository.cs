@@ -73,7 +73,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         }
 
 
-        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetAllPagedAsync(OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default)
+
+        // public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetAllPagedAsync(OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default)
 
 
         // public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetAllPagedAsync(int pageNumber, int pageSize, CancellationToken token = default)
@@ -81,25 +82,27 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         // public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetAllPagedAsync(int pageNumber, int pageSize, CancellationToken token = default)
 
+
+        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetAllPagedAsync(int pageNumber, int pageSize, CancellationToken token = default)
         {
             var query = _context.OrderIssues
                 .Include(oi => oi.Logs)
                 .Include(oi => oi.Order)
                 .Include(oi => oi.User)
-                .Where(oi => !oi.IsDeleted);
 
-            if (status.HasValue)
-            {
-                query = query.Where(oi => oi.Status == status.Value);
-            }
+//                 .Where(oi => !oi.IsDeleted);
 
-
-            query = query.OrderByDescending(oi => oi.CreatedAt);
-
-                // .Where(oi => !oi.IsDeleted)
-                // .OrderByDescending(oi => oi.CreatedAt);
+//             if (status.HasValue)
+//             {
+//                 query = query.Where(oi => oi.Status == status.Value);
+//             }
 
 
+//             query = query.OrderByDescending(oi => oi.CreatedAt);
+
+                .Where(oi => !oi.IsDeleted)
+                .OrderByDescending(oi => oi.CreatedAt);
+        
             return (items, totalCount);
         }
 
@@ -125,15 +128,17 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             var query = _context.OrderIssues
                 .Include(oi => oi.Order)
-                    .ThenInclude(o => o.Shop)
-                .Where(oi => oi.UserId == userId && !oi.IsDeleted);
+// <<<<<<< HEAD
+//                     .ThenInclude(o => o.Shop)
+//                 .Where(oi => oi.UserId == userId && !oi.IsDeleted);
 
-            if (status.HasValue)
-                query = query.Where(oi => oi.Status == status.Value);
+//             if (status.HasValue)
+//                 query = query.Where(oi => oi.Status == status.Value);
 
-            var totalCount = await query.CountAsync();
-            var items = await query.OrderByDescending(oi => oi.CreatedAt)
+//             var totalCount = await query.CountAsync();
+//             var items = await query.OrderByDescending(oi => oi.CreatedAt)
 
+// =======
                 .Include(oi => oi.User)
                 .Where(oi => oi.UserId == userId && !oi.IsDeleted)
                 .OrderByDescending(oi => oi.CreatedAt);
@@ -149,23 +154,29 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         }
 
 
+
         // public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetShopIssuesPaginatedAsync(Guid shopId, OrderIssueStatus? status, int pageNumber, int pageSize)
+
         public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetByShopIdPagedAsync(Guid shopId, int pageNumber, int pageSize, CancellationToken token = default)
         {
             var query = _context.OrderIssues
                 .Include(oi => oi.Order)
-                .Include(oi => oi.User) 
-                .Where(oi => oi.Order.ShopId == shopId && !oi.IsDeleted);
+// <<<<<<< HEAD
+//                 .Include(oi => oi.User) 
+//                 .Where(oi => oi.Order.ShopId == shopId && !oi.IsDeleted);
 
-            if (status.HasValue)
-                query = query.Where(oi => oi.Status == status.Value);
+//             if (status.HasValue)
+//                 query = query.Where(oi => oi.Status == status.Value);
 
-            var totalCount = await query.CountAsync();
-            var items = await query.OrderByDescending(oi => oi.CreatedAt)
+//             var totalCount = await query.CountAsync();
+//             var items = await query.OrderByDescending(oi => oi.CreatedAt)
 // =======
 //                 .Include(oi => oi.User)
 //                 .Where(oi => oi.Order.ShopId == shopId && !oi.IsDeleted)
 //                 .OrderByDescending(oi => oi.CreatedAt);
+                .Include(oi => oi.User)
+                .Where(oi => oi.Order.ShopId == shopId && !oi.IsDeleted)
+                .OrderByDescending(oi => oi.CreatedAt);
 
 //             var totalCount = await query.CountAsync(token);
 //             var items = await query
