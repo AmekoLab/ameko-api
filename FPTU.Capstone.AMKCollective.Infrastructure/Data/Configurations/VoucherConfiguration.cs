@@ -38,6 +38,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.HasOne(v => v.Creator)
                 .WithMany(u => u.CreatedVouchers)
                 .HasForeignKey(v => v.CreatorId)
+                .IsRequired(false)
                 .OnDelete(DeleteBehavior.Restrict);
 
             builder.HasOne(v => v.TargetUser)

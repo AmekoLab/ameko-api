@@ -32,12 +32,29 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                 fileStream.Position = 0;
             }
 
-            var uploadParams = new ImageUploadParams()
+            var extension = Path.GetExtension(fileName).ToLower();
+            var isVideo = extension == ".mp4" || extension == ".mov" || extension == ".avi" || extension == ".webm";
+
+            RawUploadParams uploadParams;
+
+            if (isVideo)
             {
-                File = new FileDescription(fileName, fileStream),
-                Folder = $"amk-collective/{folderName}",
-                PublicId = Path.GetFileNameWithoutExtension(fileName) + "_" + Guid.NewGuid()
-            };
+                uploadParams = new VideoUploadParams()
+                {
+                    File = new FileDescription(fileName, fileStream),
+                    Folder = $"amk-collective/{folderName}",
+                    PublicId = Path.GetFileNameWithoutExtension(fileName) + "_" + Guid.NewGuid()
+                };
+            }
+            else
+            {
+                uploadParams = new ImageUploadParams()
+                {
+                    File = new FileDescription(fileName, fileStream),
+                    Folder = $"amk-collective/{folderName}",
+                    PublicId = Path.GetFileNameWithoutExtension(fileName) + "_" + Guid.NewGuid()
+                };
+            }
 
             var uploadResult = await _cloudinary.UploadAsync(uploadParams);
             return uploadResult.SecureUrl.ToString();
@@ -84,6 +101,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
 
                 return null;
             }
-        }
+        }      
     }
 }

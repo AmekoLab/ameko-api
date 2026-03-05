@@ -6,7 +6,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
 {
     public class Voucher : BaseEntity
     {
-        public Guid CreatorId { get; set; }
+        public Guid? CreatorId { get; set; }
         public string Code { get; set; } = string.Empty;
 
         public string Name { get; set; } = string.Empty; //voucher's name
@@ -42,7 +42,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public StackingPolicy StackingPolicy { get; set; } = StackingPolicy.None;
 
         // Navigation Properties
-        public virtual User Creator { get; set; } = null!;
+        public virtual User? Creator { get; set; } = null!;
         public virtual User? TargetUser { get; set; }
         public virtual ICollection<Order> Orders { get; set; } = new List<Order>();
         public virtual ICollection<VoucherUsageLog> VoucherUsageLogs { get; set; } = new List<VoucherUsageLog>();
