@@ -10,7 +10,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
     public interface IUserService
     {
         Task<PaginatedResult<UserResponse>> GetAllAsync(int pageNumber, int pageSize);
-        Task<PaginatedResult<UserResponse>> SearchByNameAsync(string name, int pageNumber, int pageSize);
         Task<LoginResponse?> LoginAsync(LoginRequest request);
         Task<UserProfileResponse?> GetProfileAsync(Guid userId);
         Task<bool> UpdateProfileAsync(Guid userId, UpdateProfileRequest request);

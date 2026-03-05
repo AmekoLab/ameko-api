@@ -56,5 +56,6 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
 
         public virtual ICollection<CommissionRequest> TargetedCommissionRequests { get; set; } = new List<CommissionRequest>();
         public virtual ICollection<CommissionQuote> CommissionQuotes { get; set; } = new List<CommissionQuote>();
+        public virtual ICollection<AssemblyStepTemplate> AssemblyStepTemplates { get; set; } = new List<AssemblyStepTemplate>();
     }
 }

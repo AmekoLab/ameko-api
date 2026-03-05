@@ -35,5 +35,6 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public virtual Model? Product { get; set; }
         public virtual Order Order { get; set; } = null!;
         public virtual ICollection<OrderItemComponent> OrderItemComponents { get; set; } = new List<OrderItemComponent>();
+        public virtual ICollection<AssemblyProgressLog> AssemblyProgressLogs { get; set; } = new List<AssemblyProgressLog>();
     }
 }

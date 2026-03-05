@@ -36,7 +36,23 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 throw new Exception($"Voucher code '{request.Code}' already exists.");
 
             var voucher = _mapper.Map<Voucher>(request);
-            voucher.CreatorId = userId;
+            var currentUser = await _unitOfWork.Users.GetByIdAsync(userId);
+            bool isAdmin = currentUser?.Role?.Name == RoleType.Admin;
+
+            if (isAdmin)
+            {
+                // Nếu là Admin tạo -> Ép CreatorId = null để hệ thống nhận diện đây là Mã Sàn
+                voucher.CreatorId = null;
+            }
+            else
+            {
+                // Nếu là Shop tạo -> Lưu ID của Shop để khóa dòng tiền cho riêng Shop đó
+                voucher.CreatorId = userId;
+            }
+
+            // ---> FIX 2: ÉP CỨNG LOẠI VOUCHER CHỐNG GIAN LẬN <---
+            // Bất kể Front-end truyền lên Type là gì, API này chỉ được phép tạo mã Promotion
+            voucher.Type = VoucherType.Promotion;
 
             // Default logic for Promotion
             voucher.Status = VoucherStatus.Active;
@@ -306,8 +322,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     (currentVoucher.Type == VoucherType.Promotion || currentVoucher.Type == VoucherType.Negotiation))
                 {
                     // Lấy ngay tổng tiền đã tính sẵn từ Dictionary ra
-                    baseCalculationAmount = creatorSubTotals.ContainsKey(currentVoucher.CreatorId)
-                                            ? creatorSubTotals[currentVoucher.CreatorId]
+                    baseCalculationAmount = creatorSubTotals.ContainsKey(currentVoucher.CreatorId.Value)
+                                            ? creatorSubTotals[currentVoucher.CreatorId.Value]
                                             : 0;
 
                     // Chặn: Nếu tổng tiền hàng của riêng Shop này chưa đủ điều kiện
@@ -471,8 +487,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                        (underlyingVoucher.Type == VoucherType.Promotion || underlyingVoucher.Type == VoucherType.Negotiation))
                     {
                         // Lấy tổng tiền đã tính sẵn cho chủ Shop này
-                        baseCalculationAmount = creatorSubTotals.ContainsKey(underlyingVoucher.CreatorId)
-                                                ? creatorSubTotals[underlyingVoucher.CreatorId]
+                        baseCalculationAmount = creatorSubTotals.ContainsKey(underlyingVoucher.CreatorId.Value)
+                                                ? creatorSubTotals[underlyingVoucher.CreatorId.Value]
                                                 : 0;
                     }
 
@@ -622,7 +638,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
                 // B. Shop Specific Vouchers
                 // Kiểm tra xem CreatorId (UserId) của voucher có khớp với Shop nào trong giỏ hàng không
-                else if (v.CreatorId != Guid.Empty && userToShopMap.TryGetValue(v.CreatorId, out var mappedShopId))
+                else if (v.CreatorId != Guid.Empty && userToShopMap.TryGetValue(v.CreatorId.Value, out var mappedShopId))
                 {
                     // Check against SPECIFIC Shop SubTotal (sử dụng mappedShopId)
                     if (shopSubTotals[mappedShopId] >= v.MinOrderValue)
@@ -726,7 +742,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (order.Shop == null) return;
 
-            var voucherCreator = await _unitOfWork.Users.GetByIdAsync(voucher.CreatorId);
+            var voucherCreator = await _unitOfWork.Users.GetByIdAsync(voucher.CreatorId.Value);
             bool isShopOwner = voucher.CreatorId == order.Shop.UserId;
             bool isAdmin = voucherCreator?.Role?.Name == RoleType.Admin;
 

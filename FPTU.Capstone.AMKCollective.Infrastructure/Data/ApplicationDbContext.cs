@@ -42,7 +42,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data
         public DbSet<OrderIssueLog> OrderIssueLogs { get; set; } = null!;
         public DbSet<CommissionRequest> CommissionRequests => Set<CommissionRequest>();
         public DbSet<CommissionQuote> CommissionQuotes => Set<CommissionQuote>();
-
+        public DbSet<AssemblyProgressLog> AssemblyProgressLogs { get; set; }
+        public DbSet<AssemblyStepTemplate> AssemblyStepTemplates { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
