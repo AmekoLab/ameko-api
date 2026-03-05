@@ -34,18 +34,10 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public VoucherStatus Status { get; set; } = VoucherStatus.Active;
         public Guid? TargetUserId { get; set; }
 
-        // --- Stacking Configuration ---
-        /// <summary>Indicates whether this voucher can be combined with other vouchers.</summary>
-        public bool IsStackable { get; set; } = false;
-
-        /// <summary>Stacking policy: None, WithCompensationOnly, or All.</summary>
-        public StackingPolicy StackingPolicy { get; set; } = StackingPolicy.None;
-
         // Navigation Properties
         public virtual User? Creator { get; set; } = null!;
         public virtual User? TargetUser { get; set; }
         public virtual ICollection<Order> Orders { get; set; } = new List<Order>();
         public virtual ICollection<VoucherUsageLog> VoucherUsageLogs { get; set; } = new List<VoucherUsageLog>();
-        public virtual ICollection<OrderVoucher> OrderVouchers { get; set; } = new List<OrderVoucher>();
     }
 }

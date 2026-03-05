@@ -8,7 +8,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
 {
     public class OrderResponse
     {
-        public Guid OrderId { get; set; }
+        public Guid Id { get; set; }
 
         // 1. Nhóm thông tin Shop & Group (Để navigate hoặc hiển thị avatar)
         public Guid OrderGroupId { get; set; } 

@@ -1,11 +1,8 @@
 ﻿using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
-using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
-using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,14 +17,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly IStorageService _storageService;
-        private readonly BuilderSettings _builderSettings;
 
-        public CustomBuilderService(IUnitOfWork unitOfWork, IMapper mapper, IStorageService storageService, IOptions<BuilderSettings> builderOptions)
+        public CustomBuilderService(IUnitOfWork unitOfWork, IMapper mapper, IStorageService storageService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _storageService = storageService;
-            _builderSettings = builderOptions.Value;
         }
 
         public async Task<BuilderConfigResponse> GetBuilderConfigAsync(Guid baseKitId)
@@ -176,7 +171,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 CurrentStep = firstStep.Step, // <--Dùng biến động, không hard-code "case"
                 SelectedItemsJson = "{}",
                 TotalPrice = baseKit.Price,
-                ExpiresAt = DateTime.UtcNow.AddHours(_builderSettings.SessionExpirationHours)
+                ExpiresAt = DateTime.UtcNow.AddHours(48)
             };
 
             await _unitOfWork.BuilderSessions.CreateSessionAsync(session);
@@ -563,7 +558,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 CurrentStep = "complete", // Đánh dấu là đã hoàn thành
                 SelectedItemsJson = JsonSerializer.Serialize(selection),
                 TotalPrice = orderItem.UnitPrice, // Lấy giá tại thời điểm mua hoặc tính lại
-                ExpiresAt = DateTime.UtcNow.AddHours(_builderSettings.SessionExpirationHours),
+                ExpiresAt = DateTime.UtcNow.AddHours(48),
                 CreatedAt = DateTime.UtcNow
             };
 

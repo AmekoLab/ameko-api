@@ -1,12 +1,10 @@
 ﻿using AutoMapper;
-using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Wallet;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -24,11 +22,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IPasswordHasher<User> _passwordHasher;
         private readonly IEmailService _emailService;
         private readonly IPaymentService _paymentService;
-        private readonly WalletSettings _walletSettings;
-        private readonly FrontendUrls _frontendUrls;
 
         public WalletService (IUnitOfWork unitOfWork, IMapper mapper, //UserManager<User> userManager,
-            IPasswordHasher<User> passwordHasher, IEmailService emailService, IPaymentService paymentService, IOptions<WalletSettings> walletOptions, IOptions<FrontendUrls> urlOptions)
+            IPasswordHasher<User> passwordHasher, IEmailService emailService, IPaymentService paymentService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
@@ -36,8 +32,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _passwordHasher = passwordHasher;
             _emailService = emailService;
             _paymentService = paymentService;
-            _walletSettings = walletOptions.Value;
-            _frontendUrls = urlOptions.Value;
         }
 
         public async Task<WalletResponse?> GetWalletByUserIdAsync(Guid userId)
@@ -97,7 +91,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             // 4. Tính toán phí và kiểm tra số dư
-            decimal feePercent = _walletSettings.WithdrawalFeePercent;
+            // TODO: đưa số này vào constant hoặc setting
+            // Giả sử phí sàn là 0.2%
+            decimal feePercent = 0.002m;
             decimal feeAmount = request.Amount * feePercent;
             decimal totalDeduct = request.Amount + feeAmount;
 
@@ -107,8 +103,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             }
 
-
-            if (wallet.Balance - totalDeduct < _walletSettings.MinimumBalanceAfterWithdrawal)
+            // Rule: Phải giữ lại tối thiểu 2.000.000 VND trong ví?
+            
+            if (wallet.Balance - totalDeduct < 2000000)
             {
                 throw new InvalidOperationException("The remaining balance after withdrawal must be at least 2,000,000 VND.");
             }
@@ -516,7 +513,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // 2. Lưu vào DB (Hết hạn sau 5 phút)
             wallet.PinResetCode = otp;
-            wallet.PinResetExpiry = DateTime.UtcNow.AddMinutes(_walletSettings.PinResetOtpExpiryMinutes);
+            wallet.PinResetExpiry = DateTime.UtcNow.AddMinutes(5);
 
             _unitOfWork.Wallets.Update(wallet);
             await _unitOfWork.CommitAsync();
@@ -575,8 +572,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (user == null) throw new KeyNotFoundException("User not found");
 
             // TODO: Thay URL này bằng URL thật của Frontend
-            var successUrl = _frontendUrls.DepositSuccessPath;
-            var cancelUrl = _frontendUrls.DepositCancelPath;
+            var successUrl = "https://your-frontend.com/wallet/deposit-success";
+            var cancelUrl = "https://your-frontend.com/wallet/deposit-cancel";
 
             // Gọi PaymentService
             var stripeResult = await _paymentService.CreateDepositSessionAsync(
