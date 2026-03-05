@@ -1,6 +1,7 @@
 using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct;
+using FPTU.Capstone.AMKCollective.Application.DTOs.AssemblyTracking;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Commission;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Follow;
@@ -342,6 +343,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.TargetedShopName, opt => opt.MapFrom(src =>         src.TargetedShop != null ? src.TargetedShop.ShopName : ""))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()))
                 .ForMember(dest => dest.Quotes, opt => opt.MapFrom(src => src.Quotes));
+
+            //==================ASSEMBLY TRACKING MODULE=======================//
+            // 1. Template Mapping
+            CreateMap<AssemblyStepTemplate, AssemblyStepTemplateResponse>()
+                .ForMember(dest => dest.TemplateId, opt => opt.MapFrom(src => src.Id));
+
+            CreateMap<SaveAssemblyStepTemplateRequest, AssemblyStepTemplate>();
+
+            // 2. Progress Log Mapping
+            CreateMap<AssemblyProgressLog, AssemblyProgressLogResponse>()
+                .ForMember(dest => dest.ProgressLogId, opt => opt.MapFrom(src => src.Id));
+
+
         }
 
 
