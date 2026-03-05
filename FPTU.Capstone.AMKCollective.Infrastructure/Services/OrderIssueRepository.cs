@@ -72,14 +72,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .ToListAsync();
         }
 
-
-
-
         public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetAllPagedAsync(OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default)
-
-
-        // public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetAllPagedAsync(int pageNumber, int pageSize, CancellationToken token = default)
-
         {
             var query = _context.OrderIssues
                 .Include(oi => oi.Logs)
@@ -93,23 +86,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 query = query.Where(oi => oi.Status == status.Value);
             }
 
-
-            query = query.OrderByDescending(oi => oi.CreatedAt);
-
-            return (items, totalCount);
-        }
-
-        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetByUserIdPagedAsync(Guid userId, int pageNumber, int pageSize, CancellationToken token = default)
-        {
-            var query = _context.OrderIssues
-                .Include(oi => oi.Logs)
-                .Include(oi => oi.Order)
-                .Include(oi => oi.User)
-                .Where(oi => oi.UserId == userId && !oi.IsDeleted)
-                .OrderByDescending(oi => oi.CreatedAt);
-
             var totalCount = await query.CountAsync(token);
             var items = await query
+                .OrderByDescending(oi => oi.CreatedAt)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync(token);
@@ -120,39 +99,55 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetByUserIdPagedAsync(Guid userId, OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default)
         {
             var query = _context.OrderIssues
+                .Include(oi => oi.Logs)
                 .Include(oi => oi.Order)
-                    .ThenInclude(o => o.Shop)
+                    .ThenInclude(o => o.OrderItems)
+                .Include(oi => oi.User)
                 .Where(oi => oi.UserId == userId && !oi.IsDeleted);
 
             if (status.HasValue)
+            {
                 query = query.Where(oi => oi.Status == status.Value);
+            }
 
-            var totalCount = await query.CountAsync();
-            var items = await query.OrderByDescending(oi => oi.CreatedAt)
-                .Skip((pageNumber - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync();
-
-            return (items, totalCount);
-        }
-
-        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetShopIssuesPaginatedAsync(Guid shopId, OrderIssueStatus? status, int pageNumber, int pageSize)
-        {
-            var query = _context.OrderIssues
-                .Include(oi => oi.Order)
-                .Include(oi => oi.User) 
-                .Where(oi => oi.Order.ShopId == shopId && !oi.IsDeleted);
-
-            if (status.HasValue)
-                query = query.Where(oi => oi.Status == status.Value);
-
-            var totalCount = await query.CountAsync();
-            var items = await query.OrderByDescending(oi => oi.CreatedAt)
+            var totalCount = await query.CountAsync(token);
+            var items = await query
+                .OrderByDescending(oi => oi.CreatedAt)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync(token);
 
             return (items, totalCount);
         }
+
+        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetByShopIdPagedAsync(Guid shopId, OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default)
+        {
+            var query = _context.OrderIssues
+                .Include(oi => oi.Logs)
+                .Include(oi => oi.Order)
+                    .ThenInclude(o => o.OrderItems)
+                .Include(oi => oi.User)
+                .Where(oi => oi.Order.ShopId == shopId && !oi.IsDeleted);
+
+            if (status.HasValue)
+            {
+                query = query.Where(oi => oi.Status == status.Value);
+            }
+
+            var totalCount = await query.CountAsync(token);
+            var items = await query
+                .OrderByDescending(oi => oi.CreatedAt)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(token);
+
+            return (items, totalCount);
+        }
+
+        public Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetUserIssuesPaginatedAsync(Guid userId, OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default)
+            => GetByUserIdPagedAsync(userId, status, pageNumber, pageSize, token);
+
+        public Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetShopIssuesPaginatedAsync(Guid shopId, OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default)
+            => GetByShopIdPagedAsync(shopId, status, pageNumber, pageSize, token);
     }
 }

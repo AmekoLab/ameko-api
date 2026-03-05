@@ -23,7 +23,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         IOrderVoucherRepository OrderVouchers { get; }
         ICommissionRequestRepository CommissionRequests { get; }
         ICommissionQuoteRepository CommissionQuotes { get; }
-
         Task CommitAsync();
         void Rollback();
         /// <summary>

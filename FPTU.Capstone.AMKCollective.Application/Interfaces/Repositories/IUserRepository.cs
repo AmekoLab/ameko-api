@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
@@ -19,5 +20,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<User?> GetUserWithRefreshTokensAsync(Guid id);
         Task AddRefreshTokenAsync(RefreshToken token);
         Task RemoveAllRefreshTokensAsync(Guid userId);
+        Task<(IEnumerable<User> Items, int TotalCount)> SearchByNamePagedAsync(string name, int pageNumber, int pageSize, CancellationToken token = default);
     }
 }
