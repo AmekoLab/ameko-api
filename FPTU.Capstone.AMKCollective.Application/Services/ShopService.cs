@@ -42,12 +42,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
 
-            if (shop == null || shop.Status != ShopStatus.Active || !shop.IsActive)
+            if (shop == null
+        || shop.Status == ShopStatus.Banned
+        || shop.Status == ShopStatus.PendingApproval
+        || shop.Status == ShopStatus.Rejected
+        || shop.Status == ShopStatus.Inactive)
             {
-                throw new KeyNotFoundException("Shop not found or inactive");
+                throw new KeyNotFoundException("Shop not found.");
             }
 
-            return _mapper.Map<ShopResponse>(shop);
+            var response = _mapper.Map<ShopResponse>(shop);
+            response.FollowersCount = await _unitOfWork.Follows.GetFollowersCountAsync(shop.UserId);
+            response.FollowingCount = await _unitOfWork.Follows.GetFollowingCountAsync(shop.UserId);
+            return response;
         }
 
         public async Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetMarketplaceShopAsync(string? searchTerm, int page, int size)

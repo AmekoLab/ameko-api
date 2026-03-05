@@ -88,26 +88,5 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             var tokens = await _context.RefreshTokens.Where(rt => rt.UserId == userId).ToListAsync();
             _context.RefreshTokens.RemoveRange(tokens);
         }
-
-        public async Task<(IEnumerable<User> Items, int TotalCount)> SearchByNamePagedAsync(string name, int pageNumber, int pageSize)
-        {
-            var query = _context.Users.Include(u => u.Role).AsQueryable();
-
-            if (!string.IsNullOrWhiteSpace(name))
-            {
-                var searchTerm = name.Trim().ToLower();
-                query = query.Where(u => u.FirstName.ToLower().Contains(searchTerm) ||
-                                         u.LastName.ToLower().Contains(searchTerm));
-            }
-
-            var totalCount = await query.CountAsync();
-            var items = await query
-                .OrderBy(u => u.Username)
-                .Skip((pageNumber - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync();
-
-            return (items, totalCount);
-        }
     }
 }

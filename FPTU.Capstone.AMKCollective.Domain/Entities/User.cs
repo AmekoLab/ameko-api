@@ -68,5 +68,8 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         // Order Issues
         public virtual ICollection<OrderIssue> OrderIssues { get; set; } = new List<OrderIssue>();
         public virtual ICollection<OrderIssueLog> OrderIssueActions { get; set; } = new List<OrderIssueLog>();
+
+        // CommissionRequest
+        public virtual ICollection<CommissionRequest> CommissionRequests { get; set; } = new List<CommissionRequest>();
     }
 }

@@ -1,7 +1,9 @@
 ﻿using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
+using Microsoft.Extensions.Options;
 
 namespace FPTU.Capstone.AMKCollective.API.Workers
 {
@@ -9,11 +11,15 @@ namespace FPTU.Capstone.AMKCollective.API.Workers
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<OrderCancellationTimeoutWorker> _logger;
+        private readonly WorkerIntervals _workerIntervals;
+        private readonly OrderSettings _orderSettings;
 
-        public OrderCancellationTimeoutWorker(IServiceProvider serviceProvider, ILogger<OrderCancellationTimeoutWorker> logger)
+        public OrderCancellationTimeoutWorker(IServiceProvider serviceProvider, ILogger<OrderCancellationTimeoutWorker> logger, IOptions<WorkerIntervals> intervalOptions, IOptions<OrderSettings> orderOptions)
         {
             _serviceProvider = serviceProvider;
             _logger = logger;
+            _workerIntervals = intervalOptions.Value;
+            _orderSettings = orderOptions.Value;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -34,7 +40,7 @@ namespace FPTU.Capstone.AMKCollective.API.Workers
 
                         // 1. Tìm các Issue quá hạn (Logic này cần thêm vào Repo)
                         // Lấy các đơn InProgress tạo cách đây hơn 24h
-                        var timeoutThreshold = DateTime.UtcNow.AddHours(-24);
+                        var timeoutThreshold = DateTime.UtcNow.AddHours(-_orderSettings.ShopResponseTimeoutHours);
 
                         // Cần thêm hàm này vào IOrderIssueRepository:
                         // Task<List<OrderIssue>> GetExpiredIssuesAsync(DateTime threshold);
@@ -80,7 +86,7 @@ namespace FPTU.Capstone.AMKCollective.API.Workers
                 }
 
                 // Chờ 30 phút (hoặc 1 tiếng) quét 1 lần. Không nên quét quá nhanh.
-                await Task.Delay(TimeSpan.FromMinutes(30), stoppingToken);
+                await Task.Delay(TimeSpan.FromMinutes(_workerIntervals.OrderCancellationTimeoutMinutes), stoppingToken);
             }
         }
     }

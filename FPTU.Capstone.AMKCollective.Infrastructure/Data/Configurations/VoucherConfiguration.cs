@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 
 namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
 {
@@ -29,6 +30,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(v => v.DiscountType);
             builder.Property(v => v.Status);
 
+            // Stacking
+            builder.Property(v => v.IsStackable).HasDefaultValue(false);
+            //builder.Property(v => v.StackingPolicy).HasDefaultValue(0);
+            builder.Property(v => v.StackingPolicy).HasDefaultValue(StackingPolicy.None);
             // Relationships
             builder.HasOne(v => v.Creator)
                 .WithMany(u => u.CreatedVouchers)

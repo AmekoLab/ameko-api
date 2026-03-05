@@ -49,20 +49,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             };
         }
 
-        public async Task<PaginatedResult<UserResponse>> SearchByNameAsync(string name, int pageNumber, int pageSize)
-        {
-            var (users, totalCount) = await _unitOfWork.Users.SearchByNamePagedAsync(name, pageNumber, pageSize);
-            var userDtos = _mapper.Map<IEnumerable<UserResponse>>(users);
-
-            return new PaginatedResult<UserResponse>
-            {
-                Items = userDtos,
-                TotalCount = totalCount,
-                CurrentPage = pageNumber,
-                PageSize = pageSize
-            };
-        }
-
         public async Task<LoginResponse?> LoginAsync(LoginRequest request)
         {
             var user = await _unitOfWork.Users.GetByEmailAsync(request.Email);

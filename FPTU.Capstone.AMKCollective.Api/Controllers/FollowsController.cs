@@ -137,6 +137,25 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             var followers = await _followService.GetFollowersByUserId(userId);
             return SuccessResponse(followers, "List of followers of this user");
         }
+
+        /// <summary>
+        /// Get the list of users a specific user is FOLLOWING (That user's Following List)
+        /// 
+        /// FE INSTRUCTION:
+        /// Use this to display "Following" tab on any user's profile
+        /// Pass any userId (can be current user hoặc user khác) để xem danh sách họ đang theo dõi
+        /// </summary>
+        /// <param name="userId">ID of the user whose following list you want to see</param>
+        /// <returns>List of users that user is following (FollowedUserResponse with their IDs)</returns>
+        [HttpGet("following/{userId}")]
+        [AllowAnonymous]
+        [SwaggerOperation(Summary = "Get following of any user - PUBLIC endpoint", Description = "Retrieve a list of users that the specified user is following. Can pass any userId - no authentication required.")]
+        [SwaggerResponse(200, "List of followed users retrieved successfully", typeof(ApiResponse<IEnumerable<FollowedUserResponse>>))]
+        public async Task<IActionResult> GetFollowingByUserId(Guid userId)
+        {
+            var followedUsers = await _followService.GetFollowedUsersByFollower(userId);
+            return SuccessResponse(followedUsers, "List of users this user is following");
+        }
     }
 }
 
