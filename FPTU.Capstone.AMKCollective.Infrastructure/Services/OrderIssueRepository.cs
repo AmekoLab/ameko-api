@@ -72,7 +72,52 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .ToListAsync();
         }
 
-        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetUserIssuesPaginatedAsync(Guid userId, OrderIssueStatus? status, int pageNumber, int pageSize)
+
+
+
+        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetAllPagedAsync(OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default)
+
+
+        // public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetAllPagedAsync(int pageNumber, int pageSize, CancellationToken token = default)
+
+        {
+            var query = _context.OrderIssues
+                .Include(oi => oi.Logs)
+                .Include(oi => oi.Order)
+                    .ThenInclude(o => o.OrderItems)
+                .Include(oi => oi.User)
+                .Where(oi => !oi.IsDeleted);
+
+            if (status.HasValue)
+            {
+                query = query.Where(oi => oi.Status == status.Value);
+            }
+
+
+            query = query.OrderByDescending(oi => oi.CreatedAt);
+
+            return (items, totalCount);
+        }
+
+        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetByUserIdPagedAsync(Guid userId, int pageNumber, int pageSize, CancellationToken token = default)
+        {
+            var query = _context.OrderIssues
+                .Include(oi => oi.Logs)
+                .Include(oi => oi.Order)
+                .Include(oi => oi.User)
+                .Where(oi => oi.UserId == userId && !oi.IsDeleted)
+                .OrderByDescending(oi => oi.CreatedAt);
+
+            var totalCount = await query.CountAsync(token);
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(token);
+
+            return (items, totalCount);
+        }
+
+        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetByUserIdPagedAsync(Guid userId, OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default)
         {
             var query = _context.OrderIssues
                 .Include(oi => oi.Order)
@@ -105,7 +150,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             var items = await query.OrderByDescending(oi => oi.CreatedAt)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
-                .ToListAsync();
+                .ToListAsync(token);
 
             return (items, totalCount);
         }
