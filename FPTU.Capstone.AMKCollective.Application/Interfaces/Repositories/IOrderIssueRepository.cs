@@ -14,9 +14,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task AddAsync(OrderIssue orderIssue);
         void Update(OrderIssue orderIssue);
         void Delete(OrderIssue orderIssue);
-        Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetUserIssuesPaginatedAsync(Guid userId, OrderIssueStatus? status, int pageNumber, int pageSize);
 
-        Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetShopIssuesPaginatedAsync(Guid shopId, OrderIssueStatus? status, int pageNumber, int pageSize);
         Task<int> CountUserIssuesAsync(Guid userId, OrderIssueStatus status, DateTime fromDate);
         Task<List<OrderIssue>> GetExpiredIssuesAsync(DateTime threshold);
         Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetAllPagedAsync(OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default);

@@ -53,8 +53,5 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public virtual User User { get; set; } = null!;
         public virtual ICollection<Model> Models { get; set; } = new List<Model>();
         public virtual ICollection<Order> Orders { get; set; } = new List<Order>();
-
-        public virtual ICollection<CommissionRequest> TargetedCommissionRequests { get; set; } = new List<CommissionRequest>();
-        public virtual ICollection<CommissionQuote> CommissionQuotes { get; set; } = new List<CommissionQuote>();
     }
 }

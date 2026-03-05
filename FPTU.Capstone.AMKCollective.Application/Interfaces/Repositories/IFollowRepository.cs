@@ -14,7 +14,5 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<IEnumerable<Follow>> GetByFollower(Guid followerId);
         Task<Follow?> GetFollowRecord(Guid followerId, Guid followedId);
         Task<IEnumerable<Follow>> GetByFollowedId(Guid followedId);
-        Task<int> GetFollowersCountAsync(Guid userId, CancellationToken token = default);
-        Task<int> GetFollowingCountAsync(Guid userId, CancellationToken token = default);
     }
 }
