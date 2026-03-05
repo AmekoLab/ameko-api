@@ -1,4 +1,5 @@
 ﻿using FPTU.Capstone.AMKCollective.Application.DTOs.Voucher;
+using FPTU.Capstone.AMKCollective.Domain.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -36,9 +37,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<List<VoucherResponse>> GetMyVouchersAsync(Guid userId);
 
         // Lấy voucher công khai của một Shop cụ thể (để hiển thị trên trang Shop Detail)
-        Task<List<VoucherResponse>> GetShopPublicVouchersAsync(Guid shopId); 
+        Task<List<VoucherResponse>> GetShopPublicVouchersAsync(Guid shopId);
 
-
+        Task<List<AppliedVoucherResponse>> GetAppliedVouchersByOrderIdAsync(Guid orderId);
         // --- 3. LOGIC NỘI BỘ / SYSTEM ---
 
         // Tạo voucher thương lượng (Auto-generated)
@@ -47,10 +48,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         // Tạo voucher đền bù (Auto-generated)
         Task<VoucherResponse> CreateCompensationVoucherAsync(Guid userId, Guid targetUserId, decimal refundAmount);
 
-        // Áp dụng voucher vào đơn hàng
-        Task<decimal> ApplyVoucherAsync(Guid userId, Guid orderId, string code);
+        // Áp dụng voucher vào đơn hàng (hỗ trợ stacking — tối đa 2 voucher)
+        Task<ApplyVoucherResult> ApplyVoucherAsync(Guid userId, Guid orderId, string code);
 
-        // Gỡ voucher khỏi đơn hàng
-        Task RemoveVoucherAsync(Guid userId, Guid orderId);
+        // Gỡ một voucher cụ thể khỏi đơn hàng theo code
+        Task<ApplyVoucherResult> RemoveSpecificVoucherAsync(Guid userId, Guid orderId, string voucherCode);
+
+        // Gỡ toàn bộ voucher khỏi đơn hàng (dùng khi hủy đơn)
+        Task RemoveAllVouchersAsync(Guid userId, Guid orderId);
+        decimal CalculateVoucherDiscount(Voucher voucher, decimal baseAmount);
+        Task<ApplicableVoucherResponse> GetApplicableVouchersAsync(Guid userId);
+
+        Task<PaginatedResult<VoucherUsageResponse>> GetVoucherUsageHistoryAsync(Guid userId, Guid voucherId, int pageNumber, int pageSize);
+        Task<PaginatedResult<VoucherUsageResponse>> GetAllVoucherUsagesAsync(Guid userId, int pageNumber, int pageSize);
+
     }
 }

@@ -77,6 +77,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .ToListAsync();
         }
 
+
         public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetAllPagedAsync(int pageNumber, int pageSize, CancellationToken token = default)
 
         {
@@ -99,6 +100,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync(token);
+
 
             return (items, totalCount);
         }
@@ -151,6 +153,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync(token);
+
 
             return (items, totalCount);
         }
