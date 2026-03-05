@@ -65,8 +65,7 @@ internal class Program
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.Zero,
                     RoleClaimType = "role",
-                    NameClaimType = "nameid"
-                    ClockSkew = TimeSpan.Zero
+                    NameClaimType = "nameid",     
                 };
             });
 

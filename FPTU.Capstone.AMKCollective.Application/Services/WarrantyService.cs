@@ -609,31 +609,31 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
         }
 
-        public async Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetAllWarrantyIssuesAsync(int currentPage, int pageSize, CancellationToken ct = default)
+        public async Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetAllWarrantyIssuesAsync(OrderIssueStatus? status, int currentPage, int pageSize, CancellationToken ct = default)
         {
-            var (items, totalCount) = await _unitOfWork.OrderIssues.GetAllPagedAsync(currentPage, pageSize, ct);
+            var (items, totalCount) = await _unitOfWork.OrderIssues.GetAllPagedAsync(status, currentPage, pageSize, ct);
             var mappedItems = items.Select(MapToResponse);
 
             return new FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>(
                 mappedItems, totalCount, currentPage, pageSize);
         }
 
-        public async Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetMyWarrantyIssuesAsync(Guid userId, int currentPage, int pageSize, CancellationToken ct = default)
+        public async Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetMyWarrantyIssuesAsync(Guid userId, OrderIssueStatus? status, int currentPage, int pageSize, CancellationToken ct = default)
         {
-            var (items, totalCount) = await _unitOfWork.OrderIssues.GetByUserIdPagedAsync(userId, currentPage, pageSize, ct);
+            var (items, totalCount) = await _unitOfWork.OrderIssues.GetByUserIdPagedAsync(userId, status, currentPage, pageSize, ct);
             var mappedItems = items.Select(MapToResponse);
 
             return new FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>(
                 mappedItems, totalCount, currentPage, pageSize);
         }
 
-        public async Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetShopWarrantyIssuesAsync(Guid shopOwnerId, int currentPage, int pageSize, CancellationToken ct = default)
+        public async Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetShopWarrantyIssuesAsync(Guid shopOwnerId, OrderIssueStatus? status, int currentPage, int pageSize, CancellationToken ct = default)
         {
             var shop = await _unitOfWork.Shops.GetByUserIdAsync(shopOwnerId, ct);
             if (shop == null)
                 throw new UnauthorizedAccessException("This account is not a Shop Owner.");
 
-            var (items, totalCount) = await _unitOfWork.OrderIssues.GetByShopIdPagedAsync(shop.Id, currentPage, pageSize, ct);
+            var (items, totalCount) = await _unitOfWork.OrderIssues.GetByShopIdPagedAsync(shop.Id, status, currentPage, pageSize, ct);
             var mappedItems = items.Select(MapToResponse);
 
             return new FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>(
@@ -803,13 +803,40 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         private static WarrantyIssueResponse MapToResponse(OrderIssue issue)
         {
+            decimal refund = 0;
+            if (!string.IsNullOrEmpty(issue.Description))
+            {
+                if (issue.Description.StartsWith("[OrderLevel]"))
+                {
+                    refund = issue.Order?.TotalAmount ?? 0;
+                }
+                else if (issue.Description.StartsWith("[Items:"))
+                {
+                    int endIdx = issue.Description.IndexOf("]");
+                    if (endIdx > 7)
+                    {
+                        var idsStr = issue.Description.Substring(7, endIdx - 7);
+                        var itemIds = idsStr.Split(',').Select(id => Guid.Parse(id.Trim())).ToList();
+                        if (issue.Order?.OrderItems != null)
+                        {
+                            refund = issue.Order.OrderItems
+                                .Where(oi => itemIds.Contains(oi.Id))
+                                .Sum(oi => oi.TotalPrice);
+                        }
+                    }
+                }
+            }
+
             return new WarrantyIssueResponse
             {
                 Id = issue.Id,
                 OrderId = issue.OrderId,
                 UserId = issue.UserId,
                 Type = issue.Type,
+                TypeName = issue.Type.ToString(),
                 Status = issue.Status,
+                StatusName = issue.Status.ToString(),
+                RefundAmount = refund,
                 Reason = issue.Reason,
                 Description = issue.Description,
                 EvidenceUrl = issue.EvidenceUrl,

@@ -31,7 +31,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         /// <returns>A paginated result containing users.</returns>
         [SwaggerOperation(
             Summary = "Get all users",
-            Description = "Returns a paginated list of all registered users. Admin role suggested for production." )]
+            Description = "Returns a paginated list of all registered users. Admin role suggested for production.")]
         [SwaggerResponse(200, "Successfully retrieved list of users", typeof(PaginatedResult<UserResponse>))]
         [SwaggerResponse(401, "Unauthorized access")]
         [HttpGet]
@@ -39,6 +39,25 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         {
             var users = await _userService.GetAllAsync(currentPage, pageSize);
             return SuccessResponse(users);
+        }
+
+        /// <summary>
+        /// Searches users by first name or last name with pagination.
+        /// </summary>
+        /// <param name="name">The search term.</param>
+        /// <param name="currentPage">The page number.</param>
+        /// <param name="pageSize">The page size.</param>
+        /// <returns>A paginated list of users matching the search criteria.</returns>
+        [Authorize(Roles = "Admin")]
+        [HttpGet("search")]
+        [SwaggerOperation(Summary = "Search users by name", Description = "Searches for users by first name or last name. Requires Admin role.")]
+        [SwaggerResponse(200, "Successfully retrieved search results", typeof(PaginatedResult<UserResponse>))]
+        [SwaggerResponse(401, "Unauthorized")]
+        [SwaggerResponse(403, "Forbidden - Requires Admin role")]
+        public async Task<IActionResult> SearchByName([FromQuery] string? name, [FromQuery] int currentPage = 1, [FromQuery] int pageSize = 10)
+        {
+            var result = await _userService.SearchByNameAsync(name ?? string.Empty, currentPage, pageSize);
+            return SuccessResponse(result);
         }
 
         /// <summary>
@@ -415,7 +434,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         /// <returns>A success response if the password was reset.</returns>
         [HttpPost("reset-password")]
         [SwaggerOperation(
-            Summary = "Reset password",        
+            Summary = "Reset password",
             Description = "Completes the password recovery process by verifying the code and setting a new password. Invalidates all active sessions for security.\n\n" +
         "Usage steps:\n\n" +
         "Step 1: Call POST /forgot-password to send a 6-digit activation code to the user's email.\n\n" +
@@ -435,7 +454,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
 
 
         #endregion
-        
+
         #region Account Activation
 
         /// <summary>

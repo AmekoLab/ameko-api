@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
@@ -87,6 +89,24 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             var tokens = await _context.RefreshTokens.Where(rt => rt.UserId == userId).ToListAsync();
             _context.RefreshTokens.RemoveRange(tokens);
+        }
+
+        public async Task<(IEnumerable<User> Items, int TotalCount)> SearchByNamePagedAsync(string name, int pageNumber, int pageSize, CancellationToken token = default)
+        {
+            var query = _context.Users
+                .Include(u => u.Role)
+                .Where(u => EF.Functions.Like(u.FirstName, $"%{name}%") || EF.Functions.Like(u.LastName, $"%{name}%"))
+                .AsQueryable();
+
+            var totalCount = await query.CountAsync(token);
+            var items = await query
+                .OrderBy(u => u.LastName)
+                .ThenBy(u => u.FirstName)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(token);
+
+            return (items, totalCount);
         }
     }
 }

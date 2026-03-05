@@ -1,9 +1,16 @@
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 {
     public interface IWarrantyService
     {
+        // ... (keeping other methods as is for brevity in this tool call, but ensuring the interface is correct)
+        
         /// <summary>
         /// Phase 1: Customer creates a warranty/return issue.
         /// </summary>
@@ -47,17 +54,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         /// <summary>
         /// Admin: retrieves a paginated list of all warranty requests.
         /// </summary>
-        Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetAllWarrantyIssuesAsync(int currentPage, int pageSize, CancellationToken ct = default);
+        Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetAllWarrantyIssuesAsync(OrderIssueStatus? status, int currentPage, int pageSize, CancellationToken ct = default);
 
         /// <summary>
         /// Customer: retrieves their own paginated list of warranty requests.
         /// </summary>
-        Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetMyWarrantyIssuesAsync(Guid userId, int currentPage, int pageSize, CancellationToken ct = default);
+        Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetMyWarrantyIssuesAsync(Guid userId, OrderIssueStatus? status, int currentPage, int pageSize, CancellationToken ct = default);
 
         /// <summary>
         /// Shop: retrieves paginated list of warranty requests related to their shop.
         /// </summary>
-        Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetShopWarrantyIssuesAsync(Guid shopOwnerId, int currentPage, int pageSize, CancellationToken ct = default);
+        Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetShopWarrantyIssuesAsync(Guid shopOwnerId, OrderIssueStatus? status, int currentPage, int pageSize, CancellationToken ct = default);
 
         /// <summary>
         /// Customer: withdraws an active warranty request. Limited to a configured number of times.
