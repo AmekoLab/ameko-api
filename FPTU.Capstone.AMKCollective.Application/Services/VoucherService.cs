@@ -181,8 +181,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // 2. Phân loại mã đang muốn áp dụng
             bool isIncomingCompensation = incomingVoucher.Type == VoucherType.Compensation;
-            bool isIncomingSystemPromo = incomingVoucher.CreatorId == Guid.Empty && incomingVoucher.Type == VoucherType.Promotion;
-            bool isIncomingShopVoucher = incomingVoucher.CreatorId != Guid.Empty &&
+            bool isIncomingSystemPromo = incomingVoucher.CreatorId == null && incomingVoucher.Type == VoucherType.Promotion; 
+            bool isIncomingShopVoucher = incomingVoucher.CreatorId != null && 
                                          (incomingVoucher.Type == VoucherType.Promotion || incomingVoucher.Type == VoucherType.Negotiation);
 
             // 3. KIỂM TRA GIỚI HẠN, HỖ TRỢ MULTI-SHOP
@@ -191,7 +191,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 if (isIncomingSystemPromo)
                 {
                     // Chỉ được 1 mã của Sàn cho toàn bộ giỏ hàng
-                    if (existingVouchers.Any(v => v.CreatorId == Guid.Empty && v.Type == VoucherType.Promotion))
+                    if (existingVouchers.Any(v => v.CreatorId == null && v.Type == VoucherType.Promotion))
                         throw new Exception("You can only apply ONE System Promotion voucher per order.");
                 }
                 else if (isIncomingShopVoucher)
@@ -318,7 +318,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 decimal baseCalculationAmount = order.SubTotal;
 
                 // KIỂM TRA NẾU ĐÂY LÀ MÃ CỦA SHOP
-                if (currentVoucher.CreatorId != Guid.Empty &&
+                if (currentVoucher.CreatorId != null &&
                     (currentVoucher.Type == VoucherType.Promotion || currentVoucher.Type == VoucherType.Negotiation))
                 {
                     // Lấy ngay tổng tiền đã tính sẵn từ Dictionary ra
@@ -483,7 +483,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 {
                     decimal baseCalculationAmount = order.SubTotal;
 
-                    if (underlyingVoucher.CreatorId != Guid.Empty &&
+                    if (underlyingVoucher.CreatorId != null &&
                        (underlyingVoucher.Type == VoucherType.Promotion || underlyingVoucher.Type == VoucherType.Negotiation))
                     {
                         // Lấy tổng tiền đã tính sẵn cho chủ Shop này
@@ -494,7 +494,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                     decimal stepDiscount = CalculateVoucherDiscount(underlyingVoucher, baseCalculationAmount);
 
-                    if (underlyingVoucher.Type == VoucherType.Promotion || underlyingVoucher.Type == VoucherType.Negotiation)
+                    if (underlyingVoucher.CreatorId != null &&
+                       (underlyingVoucher.Type == VoucherType.Promotion || underlyingVoucher.Type == VoucherType.Negotiation))
                     {
                         if (stepDiscount > baseCalculationAmount) stepDiscount = baseCalculationAmount;
                     }
@@ -618,8 +619,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // 4. Categorize and Check MinOrderValue
             var systemVouchers = new List<Domain.Entities.Voucher>();
-
-            // shopVouchersDict vẫn dùng Key là ShopId để trả về response cho chuẩn
             var shopVouchersDict = new Dictionary<Guid, List<Domain.Entities.Voucher>>();
 
             foreach (var v in validVouchers)
@@ -628,7 +627,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 if (v.UsedCount >= v.UsageLimit) continue;
 
                 // A. System/Platform Vouchers (Admin created OR Compensation)
-                if (v.CreatorId == Guid.Empty || v.Type == VoucherType.Compensation)
+                if (v.CreatorId == null || v.Type == VoucherType.Compensation)
                 {
                     // Check against TOTAL Cart value
                     if (cartSubTotal >= v.MinOrderValue)
@@ -637,8 +636,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     }
                 }
                 // B. Shop Specific Vouchers
-                // Kiểm tra xem CreatorId (UserId) của voucher có khớp với Shop nào trong giỏ hàng không
-                else if (v.CreatorId != Guid.Empty && userToShopMap.TryGetValue(v.CreatorId.Value, out var mappedShopId))
+                else if (v.CreatorId.HasValue && userToShopMap.TryGetValue(v.CreatorId.Value, out var mappedShopId))
                 {
                     // Check against SPECIFIC Shop SubTotal (sử dụng mappedShopId)
                     if (shopSubTotals[mappedShopId] >= v.MinOrderValue)
@@ -735,6 +733,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         private async Task ValidateVoucherScopeAsync(Voucher voucher, Order order)
         {
+            if (voucher.CreatorId == null) return;
             if (!order.ShopId.HasValue) return;
 
             if (order.Shop == null)
@@ -816,8 +815,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (voucher == null) throw new KeyNotFoundException("Voucher not found.");
 
             // Check permission: Only owner can edit
-            if (voucher.CreatorId != userId) throw new UnauthorizedAccessException("You are not the owner of this voucher.");
+            var currentUser = await _unitOfWork.Users.GetByIdAsync(userId);
+            bool isAdmin = currentUser?.Role?.Name == RoleType.Admin;
 
+            if (!isAdmin && voucher.CreatorId != userId)
+                throw new UnauthorizedAccessException("You are not authorized to modify this voucher.");
             // Update fields (only allow certain fields to be edited)
             if (!string.IsNullOrEmpty(request.Name)) voucher.Name = request.Name;
             if (!string.IsNullOrEmpty(request.Description)) voucher.Description = request.Description;
@@ -835,7 +837,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var voucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId);
             if (voucher == null) throw new KeyNotFoundException("Voucher not found.");
-            if (voucher.CreatorId != userId) throw new UnauthorizedAccessException("You are not the owner of this voucher.");
+            // Check permission: Owner or Admin
+            var currentUser = await _unitOfWork.Users.GetByIdAsync(userId);
+            bool isAdmin = currentUser?.Role?.Name == RoleType.Admin;
+
+            if (!isAdmin && voucher.CreatorId != userId)
+                throw new UnauthorizedAccessException("You are not authorized to modify this voucher.");
 
             // SAFETY CHECK: If voucher already used by customers, cannot delete - must deactivate instead
             bool isUsed = await _unitOfWork.Vouchers.IsVoucherUsedAsync(voucherId);
@@ -851,7 +858,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var voucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId);
             if (voucher == null) throw new KeyNotFoundException("Voucher not found.");
-            if (voucher.CreatorId != userId) throw new UnauthorizedAccessException("Unauthorized.");
+            // Check permission: Owner or Admin
+            var currentUser = await _unitOfWork.Users.GetByIdAsync(userId);
+            bool isAdmin = currentUser?.Role?.Name == RoleType.Admin;
+
+            if (!isAdmin && voucher.CreatorId != userId)
+                throw new UnauthorizedAccessException("You are not authorized to modify this voucher.");
 
             // Đảo trạng thái Active <-> Inactive
             voucher.Status = voucher.Status == VoucherStatus.Active ? VoucherStatus.Disabled : VoucherStatus.Active;
