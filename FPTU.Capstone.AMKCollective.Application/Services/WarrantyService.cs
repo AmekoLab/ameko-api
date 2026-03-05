@@ -127,16 +127,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     if (string.IsNullOrEmpty(active.Description)) continue;
                     
                     if (active.Description.StartsWith("[OrderLevel]"))
-                        throw new InvalidOperationException($"An active order-level issue already exists for Order {orderId}.");
+                        throw new InvalidOperationException($"An active order-level issue already exists for Order {orderId} (Issue ID: {active.Id}, Status: {active.Status}).");
                     
                     if (searchTag == "[OrderLevel]")
-                        throw new InvalidOperationException($"Order {orderId} already has active item-level issues.");
+                        throw new InvalidOperationException($"Order {orderId} already has active item-level issues (e.g., Issue ID: {active.Id}, Status: {active.Status}).");
 
                     if (active.Description.StartsWith("[Items:") && searchTag.StartsWith("[Items:"))
                     {
                         var existingIds = active.Description.Split(']')[0].Substring(7).Split(',');
                         if (existingIds.Intersect(currentOrderItems.Select(x => x.ToString())).Any())
-                            throw new InvalidOperationException($"One or more items in Order {orderId} are already in an active request.");
+                            throw new InvalidOperationException($"One or more items in Order {orderId} are already in an active request (Issue ID: {active.Id}, Status: {active.Status}).");
                     }
                 }
 
@@ -718,9 +718,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 Id = l.Id,
                 OrderIssueId = l.OrderIssueId,
-                ActionById = l.ActionById,
-                ActionByRole = l.ActionByRole,
-                Action = l.Action,
+                ActorId = l.ActionById,
+                ActorRole = l.ActionByRole,
+                ActorRoleName = l.ActionByRole.ToString(),
+                ActionType = l.Action,
+                ActionName = l.Action.ToString(),
                 Comment = l.Comment ?? string.Empty,
                 CreatedAt = l.CreatedAt
             }).OrderByDescending(l => l.CreatedAt);
