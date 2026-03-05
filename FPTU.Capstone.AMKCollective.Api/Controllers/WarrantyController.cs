@@ -434,5 +434,31 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         }
 
         #endregion
+
+        /// <summary>
+        /// Retrieves the audit trail/history for a specific warranty request.
+        /// </summary>
+        /// <param name="issueId">The ID of the warranty issue.</param>
+        /// <returns>A list of logs for the request.</returns>
+        [Authorize]
+        [HttpGet("{issueId}/history")]
+        [SwaggerOperation(
+            Summary = "Get warranty request history",
+            Description = "Returns all actions and logs associated with a specific warranty/return request."
+        )]
+        [SwaggerResponse(200, "Successfully retrieved history", typeof(IEnumerable<OrderIssueLogResponse>))]
+        [SwaggerResponse(404, "Warranty issue not found")]
+        public async Task<IActionResult> GetHistory(Guid issueId)
+        {
+            try
+            {
+                var history = await _warrantyService.GetWarrantyIssueHistoryAsync(issueId);
+                return SuccessResponse(history, "Successfully retrieved warranty request history.");
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
     }
 }

@@ -70,5 +70,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         /// Customer: withdraws an active warranty request. Limited to a configured number of times.
         /// </summary>
         Task WithdrawWarrantyAsync(Guid userId, Guid issueId, CancellationToken ct = default);
+
+        /// <summary>
+        /// Get all logs/history for a specific warranty issue.
+        /// </summary>
+        Task<IEnumerable<OrderIssueLogResponse>> GetWarrantyIssueHistoryAsync(Guid issueId, CancellationToken ct = default);
     }
 }

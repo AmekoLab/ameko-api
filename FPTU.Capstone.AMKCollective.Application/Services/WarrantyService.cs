@@ -72,7 +72,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 if (nonCompletedOrders.Any())
                 {
                     var ids = string.Join(", ", nonCompletedOrders.Select(o => o.Id));
-                    throw new InvalidOperationException($"Bạn chỉ có thể tạo yêu cầu Bảo hành/Trả hàng sau khi đơn hàng đã giao thành công (Completed). Các đơn hàng chưa hoàn tất: {ids}");
+                    throw new InvalidOperationException($"You can only create a Warranty/Return request after the order has been successfully delivered (Completed). Non-completed orders: {ids}");
                 }
             }
 
@@ -120,7 +120,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 var existingIssues = await _unitOfWork.OrderIssues.GetByOrderIdAsync(orderId);
                 var activeIssues = existingIssues.Where(i =>
                     i.Status != OrderIssueStatus.Rejected &&
-                    i.Status != OrderIssueStatus.Completed &&
                     i.Status != OrderIssueStatus.AutoCancelled).ToList();
 
                 foreach (var active in activeIssues)
@@ -456,6 +455,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 issue.AdminNote = dto.AdminNote;
                 issue.UpdatedAt = DateTime.UtcNow;
 
+                // Update OrderStatus to Refunded if it's a full order refund
+                if (issue.Description != null && issue.Description.StartsWith("[OrderLevel]"))
+                {
+                    order.OrderStatus = OrderStatus.Refunded;
+                    await _unitOfWork.Orders.UpdateOrderAsync(order, ct);
+                }
+
                 await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
                 {
                     OrderIssueId = issue.Id,
@@ -544,6 +550,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // ── Transition: Returning → Returned → Completed ──
             issue.Status = OrderIssueStatus.Completed;
             issue.UpdatedAt = DateTime.UtcNow;
+
+            // Update OrderStatus to Refunded if it's a full order refund
+            if (issue.Description != null && issue.Description.StartsWith("[OrderLevel]"))
+            {
+                order.OrderStatus = OrderStatus.Refunded;
+                await _unitOfWork.Orders.UpdateOrderAsync(order, ct);
+            }
 
             // ── Stock Reintegration (Returned Case) ──
             await ReintegrateStockForIssueAsync(issue);
@@ -698,6 +711,21 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
         }
 
+        public async Task<IEnumerable<OrderIssueLogResponse>> GetWarrantyIssueHistoryAsync(Guid issueId, CancellationToken ct = default)
+        {
+            var logs = await _unitOfWork.OrderIssueLogs.GetByOrderIssueIdAsync(issueId);
+            return logs.Select(l => new OrderIssueLogResponse
+            {
+                Id = l.Id,
+                OrderIssueId = l.OrderIssueId,
+                ActionById = l.ActionById,
+                ActionByRole = l.ActionByRole,
+                Action = l.Action,
+                Comment = l.Comment ?? string.Empty,
+                CreatedAt = l.CreatedAt
+            }).OrderByDescending(l => l.CreatedAt);
+        }
+
         // =================================================================
         // PRIVATE HELPERS
         // =================================================================
@@ -846,8 +874,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                                  (issue.Order != null && (issue.Order.OrderStatus == OrderStatus.Completed || issue.Order.OrderStatus == OrderStatus.Shipped)),
                 ExpectedAction = (issue.Type == OrderIssueType.ReturnRequest && 
                                  (issue.Order != null && (issue.Order.OrderStatus == OrderStatus.Completed || issue.Order.OrderStatus == OrderStatus.Shipped)))
-                                 ? "Loại Trả hàng: Duyệt đơn sẽ đi vào luồng Trả hàng (Return then Refund)" 
-                                 : (issue.Type == OrderIssueType.WarrantyClaim ? "Loại Bảo hành: Duyệt đơn sẽ Hoàn tiền ngay (Immediate Refund)" : "Loại Hủy đơn: Duyệt đơn sẽ Hoàn tiền ngay (Immediate Refund)"),
+                                 ? "Return Request: Approval will proceed with the Return then Refund flow" 
+                                 : (issue.Type == OrderIssueType.WarrantyClaim ? "Warranty Claim: Approval will process an Immediate Refund" : "Cancellation Request: Approval will process an Immediate Refund"),
                 IsSystemValid = issue.IsSystemValid,
                 ShopResponse = issue.ShopResponse,
                 AdminNote = issue.AdminNote,
