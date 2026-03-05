@@ -47,5 +47,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 
         // BACKGROUND WORKER - Release held funds after warranty period
         Task ReleaseFundsForEligibleOrdersAsync(CancellationToken token = default);
-    }
+        Task CancelAbandonedOrdersAsync(CancellationToken token = default);
+        
+
+        }
 }

@@ -77,7 +77,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .ToListAsync();
         }
 
-        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetAllPagedAsync(OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default)
+        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetAllPagedAsync(int pageNumber, int pageSize, CancellationToken token = default)
+
         {
             var query = _context.OrderIssues
                 .Include(oi => oi.Logs)
@@ -99,10 +100,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Take(pageSize)
                 .ToListAsync(token);
 
+
             return (items, totalCount);
         }
 
-        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetByUserIdPagedAsync(Guid userId, OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default)
+
+
+        public async Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetByUserIdPagedAsync(Guid userId, int pageNumber, int pageSize, CancellationToken token = default)
+
         {
             var query = _context.OrderIssues
                 .Include(oi => oi.Logs)

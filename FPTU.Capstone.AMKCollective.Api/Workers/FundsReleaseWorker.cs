@@ -1,4 +1,6 @@
-﻿using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
+﻿using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
+using Microsoft.Extensions.Options;
 
 namespace FPTU.Capstone.AMKCollective.API.Workers
 {
@@ -9,14 +11,16 @@ namespace FPTU.Capstone.AMKCollective.API.Workers
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<FundsReleaseWorker> _logger;
+        private readonly WorkerIntervals _workerIntervals;
 
         /// <summary>
         /// Initializes a new instance of the FundsReleaseWorker
         /// </summary>
-        public FundsReleaseWorker(IServiceProvider serviceProvider, ILogger<FundsReleaseWorker> logger)
+        public FundsReleaseWorker(IServiceProvider serviceProvider, ILogger<FundsReleaseWorker> logger, IOptions<WorkerIntervals> intervalOptions)
         {
             _serviceProvider = serviceProvider;
             _logger = logger;
+            _workerIntervals = intervalOptions.Value;
         }
 
         /// <summary>
@@ -45,7 +49,7 @@ namespace FPTU.Capstone.AMKCollective.API.Workers
                 }
 
                 // Chạy 1 lần mỗi giờ (hoặc mỗi ngày tùy nhu cầu)
-                await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
+                await Task.Delay(TimeSpan.FromHours(_workerIntervals.FundsReleaseHours), stoppingToken);
             }
         }
     }

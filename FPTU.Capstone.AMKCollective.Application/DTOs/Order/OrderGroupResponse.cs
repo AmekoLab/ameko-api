@@ -8,7 +8,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
 {
     public class OrderGroupResponse
     {
-        public Guid Id { get; set; }
+        public Guid OrderGroupId { get; set; }
         public decimal TotalGroupAmount { get; set; }
         public string PaymentStatus { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
