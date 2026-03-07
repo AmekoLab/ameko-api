@@ -93,6 +93,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             var request = await _unitOfWork.CommissionRequests.GetByIdAsync(requestId);
             if (request == null) return (false, "The request does not exist.");
+            if (request.UserId == shopUserId)
+            {
+                return (false, "You cannot submit a quotation for your own commission request.");
+            }
 
             if (request.Status == CommissionStatus.Completed || request.Status == CommissionStatus.Canceled)
             {
