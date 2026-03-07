@@ -5,6 +5,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs.Order;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Application.Services;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -280,6 +281,97 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             catch (Exception ex)
             {
                 return ServerErrorResponse<string>(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// [Shop Owner] Lấy danh sách đơn hàng của Shop (Có phân trang và lọc theo trạng thái)
+        /// </summary>
+        [HttpGet("shop")]
+        [Authorize]
+        [SwaggerOperation(Summary = "[Shop] Get shop orders", Description = "Retrieves a paginated list of orders for the logged-in shop owner.")]
+        public async Task<IActionResult> GetShopOrders([FromQuery] OrderStatus? status, [FromQuery] int page = 1, [FromQuery] int size = 10)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var shop = await _shopService.GetMyShopAsync(userId);
+
+                if (shop == null)
+                    return ErrorResponse<object>("This account does not own a shop.");
+
+                var orders = await _orderService.GetShopOrdersAsync(shop.Id, status, page, size);
+                return SuccessResponse(orders, "Shop orders retrieved successfully.");
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// [Shop Owner] Xem chi tiết một đơn hàng cụ thể của Shop
+        /// </summary>
+        [HttpGet("shop/{orderId}")]
+        [Authorize]
+        [SwaggerOperation(Summary = "[Shop] Get shop order details", Description = "Retrieves details of a specific order for the shop.")]
+        public async Task<IActionResult> GetShopOrderDetail(Guid orderId)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var shop = await _shopService.GetMyShopAsync(userId);
+
+                if (shop == null)
+                    return ErrorResponse<object>("This account does not own a shop.");
+
+                var order = await _orderService.GetShopOrderDetailAsync(shop.Id, orderId);
+                return SuccessResponse(order, "Order details retrieved successfully.");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<object>(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<object>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// [Shop Owner] Cập nhật trạng thái đơn hàng (Ví dụ: Từ Pending sang Processing, Shipped...)
+        /// </summary>
+        [HttpPut("shop/{orderId}/status")]
+        [Authorize]
+        [SwaggerOperation(Summary = "[Shop] Update order status", Description = "Updates the status of an order.")]
+        public async Task<IActionResult> UpdateOrderStatus(Guid orderId, [FromBody] OrderStatus newStatus)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var shop = await _shopService.GetMyShopAsync(userId);
+
+                if (shop == null)
+                    return ErrorResponse<object>("This account does not own a shop.");
+
+                await _orderService.UpdateOrderStatusAsync(shop.Id, orderId, newStatus);
+                return SuccessResponse("Order status updated successfully.");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<object>(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<object>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
             }
         }
         // --- Helper: Get User ID ---

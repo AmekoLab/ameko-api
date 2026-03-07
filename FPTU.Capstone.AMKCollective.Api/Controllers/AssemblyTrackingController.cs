@@ -1,6 +1,9 @@
 ﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
 using FPTU.Capstone.AMKCollective.Application.DTOs.AssemblyTracking;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
+using FPTU.Capstone.AMKCollective.Application.Services;
+using FPTU.Capstone.AMKCollective.Domain.Entities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -11,10 +14,40 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
     public class AssemblyTrackingController : BaseApiController
     {
         private readonly IAssemblyTrackingService _trackingService;
+        private readonly IShopService _shopService;
 
-        public AssemblyTrackingController(IAssemblyTrackingService trackingService)
+        public AssemblyTrackingController(IAssemblyTrackingService trackingService, IShopService shopService)
         {
             _trackingService = trackingService;
+            _shopService = shopService;
+        }
+        /// <summary>
+        /// [Shop Owner] Khởi tạo quy trình lắp ráp cho một sản phẩm Custom
+        /// </summary>
+        /// <remarks>
+        /// Gọi API này khi Shop bắt đầu xử lý đơn hàng (VD: Chuyển Order sang Processing).
+        /// Hệ thống sẽ copy các bước từ Template mặc định của Shop sang đơn hàng này để khách bắt đầu theo dõi.
+        /// </remarks>
+        [HttpPost("logs/order-item/{orderItemId}/initialize")]
+        [Authorize]
+        public async Task<IActionResult> InitializeTracking(Guid orderItemId)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var shop = await _shopService.GetMyShopAsync(userId);
+
+                if (shop == null)
+                    return ErrorResponse<object>("This account does not own a shop.");
+
+                await _trackingService.GenerateTrackingLogsForOrderItemAsync(orderItemId, shop.Id);
+
+                return SuccessResponse("Tracking timeline initialized successfully.");
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
         }
 
         #region Template Management (For Shop Owners)
@@ -22,12 +55,16 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// <summary>
         /// Retrieves all predefined assembly step templates for a specific shop.
         /// </summary>
-        [HttpGet("templates/shop/{shopId}")]
-        public async Task<IActionResult> GetTemplatesByShop(Guid shopId)
+        [HttpGet("templates/shop")]
+        public async Task<IActionResult> GetTemplatesByShop()
         {
             try
             {
-                var templates = await _trackingService.GetTemplatesByShopIdAsync(shopId);
+                var userId = GetCurrentUserId();
+
+                var shop = await _shopService.GetMyShopAsync(userId);
+
+                var templates = await _trackingService.GetTemplatesByShopIdAsync(shop.Id);
                 return SuccessResponse(templates, "Get templates successfully.");
             }
             catch (Exception ex)
@@ -39,15 +76,17 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// <summary>
         /// Creates a new default assembly step template for a shop.
         /// </summary>
-        [HttpPost("templates/shop/{shopId}")]
-        public async Task<IActionResult> CreateTemplate(Guid shopId, [FromBody] SaveAssemblyStepTemplateRequest request)
+        [HttpPost("templates/shop")]
+        public async Task<IActionResult> CreateTemplate([FromBody] SaveAssemblyStepTemplateRequest request)
         {
             if (!ModelState.IsValid)
                 return ErrorResponse<object>("Validation failed", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList());
 
             try
             {
-                var template = await _trackingService.CreateTemplateAsync(shopId, request);
+                var userId = GetCurrentUserId();
+                var shop = await _shopService.GetMyShopAsync(userId);
+                var template = await _trackingService.CreateTemplateAsync(shop.Id, request);
                 return SuccessResponse(template, "Template created successfully.");
             }
             catch (Exception ex)

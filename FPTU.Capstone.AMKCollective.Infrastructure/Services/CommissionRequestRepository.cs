@@ -21,6 +21,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<CommissionRequest?> GetByIdAsync(Guid id)
         {
             return await _context.CommissionRequests
+                .Include(r => r.TargetedShop)
                 .Include(r => r.Quotes)
                     .ThenInclude(q => q.Shop)
                 .Include(r => r.User)
@@ -30,6 +31,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<IEnumerable<CommissionRequest>> GetByUserIdAsync(Guid userId)
         {
             return await _context.CommissionRequests
+                .Include(r => r.TargetedShop)
                 .Where(r => r.UserId == userId)
                 .OrderByDescending(r => r.CreatedAt)
                 .ToListAsync();
