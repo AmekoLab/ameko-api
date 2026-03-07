@@ -441,7 +441,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                 // CASE 1: No return — refund immediately to Wallet (internal only)
                 await _walletService.RefundToWalletAsync(order.CustomerId, refundAmount, $"Refund for warranty/return (Order #{order.Id}, Issue #{issue.Id})");
-                await _walletService.DeductFundsForRefundAsync(order.ShopId!.Value, order.Id, refundAmount, false); // From Shop HeldBalance
+                bool isReleased = order.PaymentStatus == PaymentStatus.Released;
+                await _walletService.DeductFundsForRefundAsync(order.ShopId!.Value, order.Id, refundAmount, isReleased);
 
                 await _notificationService.SendNotificationAsync(order.CustomerId, 
                     "Refund Successful", 
@@ -566,7 +567,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // ── Internal Refund to Wallet ──
             await _walletService.RefundToWalletAsync(issue.UserId, refundAmount, $"Refund for warranty/return (Order #{order.Id}, Issue #{issue.Id})");
-            await _walletService.DeductFundsForRefundAsync(order.ShopId!.Value, order.Id, refundAmount, false); // From Shop HeldBalance
+            bool isReleasedNow = order.PaymentStatus == PaymentStatus.Released;
+            await _walletService.DeductFundsForRefundAsync(order.ShopId!.Value, order.Id, refundAmount, isReleasedNow);
 
             // ── Notification ──
             await _notificationService.SendNotificationAsync(issue.UserId, 
@@ -834,25 +836,36 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private static WarrantyIssueResponse MapToResponse(OrderIssue issue)
         {
             decimal refund = 0;
+            List<Guid>? itemIdsInResponse = null;
+
             if (!string.IsNullOrEmpty(issue.Description))
             {
                 if (issue.Description.StartsWith("[OrderLevel]"))
                 {
-                    refund = issue.Order?.TotalAmount ?? 0;
+                    if (issue.Order != null) refund = issue.Order.TotalAmount;
                 }
                 else if (issue.Description.StartsWith("[Items:"))
                 {
                     int endIdx = issue.Description.IndexOf("]");
                     if (endIdx > 7)
                     {
-                        var idsStr = issue.Description.Substring(7, endIdx - 7);
-                        var itemIds = idsStr.Split(',').Select(id => Guid.Parse(id.Trim())).ToList();
-                        if (issue.Order?.OrderItems != null)
+                        try
                         {
-                            refund = issue.Order.OrderItems
-                                .Where(oi => itemIds.Contains(oi.Id))
-                                .Sum(oi => oi.TotalPrice);
+                            var idsStr = issue.Description.Substring(7, endIdx - 7);
+                            var itemIds = idsStr.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                               .Select(id => Guid.Parse(id.Trim()))
+                                               .ToList();
+
+                            itemIdsInResponse = itemIds;
+
+                            if (issue.Order?.OrderItems != null)
+                            {
+                                refund = issue.Order.OrderItems
+                                    .Where(oi => itemIds.Contains(oi.Id))
+                                    .Sum(oi => oi.TotalPrice);
+                            }
                         }
+                        catch { /* Fallback to 0 if tag is corrupted */ }
                     }
                 }
             }
@@ -882,7 +895,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 ShopResponse = issue.ShopResponse,
                 AdminNote = issue.AdminNote,
                 CreatedAt = issue.CreatedAt,
-                UpdatedAt = issue.UpdatedAt
+                UpdatedAt = issue.UpdatedAt,
+                OrderItemIds = itemIdsInResponse
             };
         }
     }
