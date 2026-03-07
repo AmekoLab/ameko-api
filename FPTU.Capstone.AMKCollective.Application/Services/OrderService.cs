@@ -217,16 +217,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 decimal cartTotal = cartOrder.OrderItems.Where(i => !i.IsDeleted).Sum(i => i.TotalPrice);
                 _unitOfWork.Orders.UpdateCartTotal(cartOrder.Id, cartTotal);
 
+                // 1. Commit ngay lập tức để lưu item mới và stub update xuống Database
+                await _unitOfWork.CommitAsync();
+
+                // 2. Clear cái Stub rỗng (đang bị lỗi CustomerId = Guid.Empty) ra khỏi bộ nhớ EF Core
+                _unitOfWork.ClearChangeTracker();
+
                 // Kiểm tra xem đơn hàng (giỏ hàng) này có đang áp dụng voucher nào không
-                var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(cartOrder.Id); // cartOrder là biến lưu order giỏ hàng hiện tại của bạn
+                var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(cartOrder.Id);
 
                 if (appliedVouchers != null && appliedVouchers.Any())
                 {
-                    // Nếu có, lập tức gỡ bỏ toàn bộ voucher để tránh sai lệch tính toán.
-                    // Hàm này bên VoucherService đã có sẵn logic trả lại UsedCount, xóa OrderVoucher và cập nhật TotalAmount.
+                    // 3. Lúc này GetByIdAsync bên VoucherService sẽ bắt buộc lấy data chuẩn từ DB
                     await _voucherService.RemoveAllVouchersAsync(userId, cartOrder.Id);
                 }
-                await _unitOfWork.CommitAsync(); // Chỉ có stub UPDATE + optional INSERT, 0 phantom
             }
         }
 
