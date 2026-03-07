@@ -1,4 +1,4 @@
-﻿namespace Chillde.API.Middlewares;
+﻿namespace FPTU.Capstone.AMKCollective.Api.Middlewares;
 
 public class GlobalExceptionMiddleware : IMiddleware
 {

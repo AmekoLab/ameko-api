@@ -1,6 +1,6 @@
 ﻿using System.Diagnostics;
 
-namespace Chillde.API.Middlewares;
+namespace FPTU.Capstone.AMKCollective.Api.Middlewares;
 
 public class PerformanceMiddleware : IMiddleware
 {
