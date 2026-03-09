@@ -455,6 +455,189 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
         }
 
+        public async Task<CalculateCartResponse> CalculateCartPreviewAsync(Guid userId, CalculateCartRequest request)
+        {
+            var response = new CalculateCartResponse();
+
+            // 1. Get current cart
+            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
+            if (cartOrder == null || !cartOrder.OrderItems.Any())
+                return response;
+
+            // 2. FILTER ONLY TICKED ITEMS FROM FRONTEND
+            var selectedItems = cartOrder.OrderItems
+                .Where(i => !i.IsDeleted && request.SelectedOrderItemIds.Contains(i.Id))
+                .ToList();
+
+            if (!selectedItems.Any())
+                return response;
+
+            // 3. Group items by Shop
+            var shopItemsDict = new Dictionary<Guid, List<OrderItem>>();
+            foreach (var item in selectedItems)
+            {
+                Guid shopId = Guid.Empty;
+                if (item.ProductId.HasValue)
+                {
+                    var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId.Value);
+                    if (product != null) shopId = product.ShopId;
+                }
+                else if (!string.IsNullOrEmpty(item.DesignConfig))
+                {
+                    try
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(item.DesignConfig);
+                        if (doc.RootElement.TryGetProperty("ShopId", out var shopIdProp) && shopIdProp.TryGetGuid(out var parsedShopId))
+                            shopId = parsedShopId;
+                    }
+                    catch { }
+                }
+
+                if (shopId != Guid.Empty)
+                {
+                    if (!shopItemsDict.ContainsKey(shopId))
+                        shopItemsDict[shopId] = new List<OrderItem>();
+                    shopItemsDict[shopId].Add(item);
+                }
+            }
+
+            // 4. Calculate per Shop
+            decimal totalCartSubTotal = 0;
+            decimal totalShippingFee = 0;
+            decimal totalShopDiscount = 0;
+
+            foreach (var kvp in shopItemsDict)
+            {
+                var shopId = kvp.Key;
+                var items = kvp.Value;
+                var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
+
+                // Calculate subtotal only for TICKED items
+                decimal shopSubTotal = items.Sum(i => i.TotalPrice);
+
+                // Lấy phí ship từ appsettings.json 
+                decimal shopShippingFee = _orderSettings.DefaultShippingFee;
+
+                decimal shopDiscount = 0;
+                string? shopVoucherError = null;
+
+                // Validate Shop Voucher if provided
+                if (request.AppliedShopVoucherCodes.TryGetValue(shopId, out var shopVoucherCode) && !string.IsNullOrEmpty(shopVoucherCode))
+                {
+                    var shopVoucher = await _unitOfWork.Vouchers.GetByCodeAsync(shopVoucherCode);
+                    if (shopVoucher == null)
+                    {
+                        shopVoucherError = "Voucher does not exist.";
+                    }
+                    else if (shopVoucher.Status != VoucherStatus.Active || shopVoucher.StartDate > DateTime.Now || shopVoucher.EndDate < DateTime.Now)
+                    {
+                        shopVoucherError = "Voucher is expired or not yet active.";
+                    }
+                    else if (shopVoucher.UsedCount >= shopVoucher.UsageLimit)
+                    {
+                        shopVoucherError = "Voucher usage limit reached.";
+                    }
+                    else if (shopVoucher.CreatorId != shop?.UserId && shopVoucher.Type != VoucherType.Compensation)
+                    {
+                        shopVoucherError = "Voucher is not applicable for this shop.";
+                    }
+                    else if (shopSubTotal < shopVoucher.MinOrderValue)
+                    {
+                        shopVoucherError = $"Minimum order value of {shopVoucher.MinOrderValue:N0} VND not met.";
+                    }
+                    else
+                    {
+                        // Valid voucher -> Calculate discount
+                        if (shopVoucher.DiscountType == DiscountType.FixedAmount)
+                        {
+                            shopDiscount = shopVoucher.Value;
+                        }
+                        else // Percentage
+                        {
+                            shopDiscount = shopSubTotal * (shopVoucher.Value / 100);
+                            if (shopVoucher.MaxDiscountAmount.HasValue && shopDiscount > shopVoucher.MaxDiscountAmount.Value)
+                                shopDiscount = shopVoucher.MaxDiscountAmount.Value;
+                        }
+                        // Cap: Discount cannot exceed shop subtotal
+                        if (shopDiscount > shopSubTotal) shopDiscount = shopSubTotal;
+                    }
+                }
+
+                var preview = new ShopCartPreviewDto
+                {
+                    ShopId = shopId,
+                    ShopName = shop?.ShopName ?? "Shop",
+                    SubTotal = shopSubTotal,
+                    ShippingFee = shopShippingFee,
+                    ShopDiscountAmount = shopDiscount,
+                    TotalAmount = Math.Max(0, shopSubTotal + shopShippingFee - shopDiscount),
+                    IncludedOrderItemIds = items.Select(i => i.Id).ToList(),
+                    ShopVoucherError = shopVoucherError
+                };
+
+                response.ShopPreviews.Add(preview);
+
+                totalCartSubTotal += shopSubTotal;
+                totalShippingFee += shopShippingFee;
+                totalShopDiscount += shopDiscount;
+            }
+
+            // 5. Calculate System Voucher if provided
+            decimal systemDiscount = 0;
+            string? systemVoucherError = null;
+
+            if (!string.IsNullOrEmpty(request.AppliedSystemVoucherCode))
+            {
+                var sysVoucher = await _unitOfWork.Vouchers.GetByCodeAsync(request.AppliedSystemVoucherCode);
+                if (sysVoucher == null)
+                {
+                    systemVoucherError = "System voucher does not exist.";
+                }
+                else if (sysVoucher.CreatorId != null && sysVoucher.Type != VoucherType.Compensation)
+                {
+                    systemVoucherError = "This is not a system voucher.";
+                }
+                else if (sysVoucher.Status != VoucherStatus.Active || sysVoucher.StartDate > DateTime.Now || sysVoucher.EndDate < DateTime.Now)
+                {
+                    systemVoucherError = "System voucher is expired or not yet active.";
+                }
+                else if (sysVoucher.UsedCount >= sysVoucher.UsageLimit)
+                {
+                    systemVoucherError = "System voucher usage limit reached.";
+                }
+                else if (totalCartSubTotal < sysVoucher.MinOrderValue)
+                {
+                    systemVoucherError = $"Minimum order value of {sysVoucher.MinOrderValue:N0} VND not met.";
+                }
+                else
+                {
+                    if (sysVoucher.DiscountType == DiscountType.FixedAmount)
+                    {
+                        systemDiscount = sysVoucher.Value;
+                    }
+                    else
+                    {
+                        systemDiscount = totalCartSubTotal * (sysVoucher.Value / 100);
+                        if (sysVoucher.MaxDiscountAmount.HasValue && systemDiscount > sysVoucher.MaxDiscountAmount.Value)
+                            systemDiscount = sysVoucher.MaxDiscountAmount.Value;
+                    }
+                }
+            }
+
+            // Cap: System discount cannot exceed the remaining subtotal after shop discounts
+            decimal remainingSubTotal = totalCartSubTotal - totalShopDiscount;
+            if (systemDiscount > remainingSubTotal) systemDiscount = remainingSubTotal;
+
+            // 6. Assemble final response
+            response.TotalCartSubTotal = totalCartSubTotal;
+            response.TotalShippingFee = totalShippingFee;
+            response.TotalDiscountAmount = totalShopDiscount + systemDiscount;
+            response.FinalTotalAmount = Math.Max(0, totalCartSubTotal + totalShippingFee - response.TotalDiscountAmount);
+            response.SystemVoucherError = systemVoucherError;
+
+            return response;
+        }
+
         // =================================================================
         // 2. CHECKOUT & CUSTOMER ORDERS
         // =================================================================
