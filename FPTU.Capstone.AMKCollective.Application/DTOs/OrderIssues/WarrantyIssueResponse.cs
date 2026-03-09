@@ -19,6 +19,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues
         public bool RequiresReturn { get; set; }
         public string? ExpectedAction { get; set; }
         public decimal RefundAmount { get; set; }
+        public List<Guid>? OrderItemIds { get; set; }
         public bool IsSystemValid { get; set; }
         public string? ShopResponse { get; set; }
         public string? AdminNote { get; set; }
