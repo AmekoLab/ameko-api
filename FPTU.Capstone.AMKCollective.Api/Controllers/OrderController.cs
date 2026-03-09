@@ -374,6 +374,47 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return ServerErrorResponse<object>(ex.Message);
             }
         }
+
+        /// <summary>
+        /// Calculate Cart Preview (Quotation)
+        /// </summary>
+        /// <remarks>
+        /// **Description:** Calculates the total amount, shipping fee, and voucher discounts for the selected items in the cart WITHOUT saving to the database.
+        /// 
+        /// **Frontend usage:** /// Call this API dynamically every time the user checks/unchecks an item in the cart, or applies/removes a voucher.
+        /// 
+        /// **Payload details:**
+        /// - `selectedOrderItemIds`: List of OrderItem IDs that the user is currently checking/ticking for checkout.
+        /// - `appliedSystemVoucherCode`: The system/platform voucher code the user wants to apply (Optional).
+        /// - `appliedShopVoucherCodes`: A dictionary mapping Shop ID to the specific Shop Voucher code (Optional).
+        /// 
+        /// **Response handling:** /// - Always returns 200 OK with a calculated result even if a voucher is invalid. 
+        /// - FE should check `systemVoucherError` and `shopVoucherError` inside the response data to display red warning messages to the user if their selected vouchers do not meet the condition (e.g., "Minimum order value not met").
+        /// </remarks>
+        [HttpPost("calculate-preview")]
+        [Authorize]
+        [SwaggerOperation(
+            Summary = "Calculate Cart Preview",
+            Description = "Calculates the order total and discounts for selected cart items in real-time."
+        )]
+        [SwaggerResponse(200, "Calculation successful")]
+        [SwaggerResponse(401, "Unauthorized")]
+        public async Task<IActionResult> CalculateCartPreview([FromBody] CalculateCartRequest request)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+
+                var result = await _orderService.CalculateCartPreviewAsync(userId, request);
+
+                return SuccessResponse(result, "Cart preview calculated successfully.");
+            }
+            catch (Exception ex)
+            {
+                // Bắt lỗi hệ thống ngoài ý muốn
+                return ErrorResponse<object>(ex.Message);
+            }
+        }
         // --- Helper: Get User ID ---
         //private Guid GetCurrentUserId()
         //{

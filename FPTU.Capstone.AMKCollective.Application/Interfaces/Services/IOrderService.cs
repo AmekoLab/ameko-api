@@ -22,6 +22,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task UpdateCartItemQuantityAsync(Guid userId, Guid orderItemId, int newQuantity, CancellationToken token = default);
 
         Task<CheckoutResponse> CheckoutAsync(Guid userId, CheckoutRequest request, CancellationToken token = default);
+        Task<CalculateCartResponse> CalculateCartPreviewAsync(Guid userId, CalculateCartRequest request);
 
         //CUSTOMER HISTORY
         Task<List<OrderResponse>> GetMyOrdersAsync(Guid userId, CancellationToken token = default);
