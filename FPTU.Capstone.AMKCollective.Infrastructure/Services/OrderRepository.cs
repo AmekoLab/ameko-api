@@ -129,6 +129,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             stub.SubTotal = newTotalAmount;
             stub.UpdatedAt = DateTime.UtcNow;
             _context.Entry(stub).Property(x => x.TotalAmount).IsModified = true;
+            _context.Entry(stub).Property(x => x.SubTotal).IsModified = true;
             _context.Entry(stub).Property(x => x.UpdatedAt).IsModified = true;
         }
 

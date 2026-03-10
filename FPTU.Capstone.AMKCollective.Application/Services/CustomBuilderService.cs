@@ -4,8 +4,9 @@ using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
-using Microsoft.Extensions.Options;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -573,6 +574,60 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return newSession.Id;
         }
 
+        public async Task<(bool Success, Guid? CommissionRequestId, string ErrorMessage)> ConvertSessionToCommissionAsync(Guid userId, BuilderToCommissionRequest request)
+        {
+            // 1. Lấy Builder Session lên để kiểm tra
+            var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.SessionId);
+            if (session == null || session.UserId != userId)
+                return (false, null, "Builder session not found or access denied.");
+
+            // Lấy danh sách linh kiện khách đã chọn từ chuỗi JSON
+            var selectedParts = JsonSerializer.Deserialize<List<SelectedPartDto>>(session.SelectedItemsJson);
+            if (selectedParts == null || !selectedParts.Any())
+                return (false, null, "No parts have been selected in this session.");
+
+            // 2. Tìm Base Kit để xác định Shop nhận Commission
+            // Khách bắt buộc phải chọn Case/Kit đầu tiên, lấy ShopId của cái Kit đó
+            var baseKit = selectedParts.FirstOrDefault(p => p.Step == "case" || p.Step == "kit");
+            if (baseKit == null)
+                return (false, null, "Could not find a base kit to determine the target shop.");
+
+            // Sử dụng PartId để tra cứu Model trong DB
+            var kitModel = await _unitOfWork.Models.GetByIdAsync(baseKit.PartId);
+            if (kitModel == null)
+                return (false, null, "The selected kit model does not exist in the database.");
+
+            // Tính tổng tiền vật tư cơ bản
+            decimal baseMaterialPrice = selectedParts.Sum(p => p.Price * p.Quantity);
+
+            // 3. Nhào nặn ra cái Commission Request mới
+            var newCommission = new CommissionRequest
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                TargetedShopId = kitModel.ShopId, // Chỉ đích danh cái Shop bán Base Kit
+                Title = $"Custom Build: {kitModel.Name}",
+
+                // Đóng gói toàn bộ cấu hình vào Description kèm theo Note của khách (ghi bằng tiếng Anh cho chuyên nghiệp)
+                Description = $"Customer's Special Request:\n{request.CustomerNote}\n\n--- Base Material Configuration (Total: {baseMaterialPrice:N0} VND) ---\n"
+                              + JsonSerializer.Serialize(selectedParts, new JsonSerializerOptions { WriteIndented = true }),
+
+                MinBudget = baseMaterialPrice, // Giá thầu tối thiểu bằng giá vật tư
+                MaxBudget = 0, // Ước lượng ngân sách phụ phí tối đa khách chịu được
+                Status = CommissionStatus.PendingTarget, // Chờ Shop báo giá
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _unitOfWork.CommissionRequests.AddAsync(newCommission);
+
+            // 4. Xóa BuilderSession cũ bằng hàm Async vì đã chuyển hóa thành công
+            await _unitOfWork.BuilderSessions.DeleteSessionAsync(session.Id);
+
+            // Lưu toàn bộ thay đổi xuống Database
+            await _unitOfWork.CommitAsync();
+
+            return (true, newCommission.Id, string.Empty);
+        }
 
         // --- HELPER FUNCTIONS ---
 

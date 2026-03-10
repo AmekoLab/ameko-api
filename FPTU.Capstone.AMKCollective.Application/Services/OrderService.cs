@@ -247,6 +247,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // Biến cờ để đánh dấu xem giỏ hàng có vấn đề gì không (nếu cần hiển thị alert tổng)
             bool hasStockIssue = false;
+            bool isPriceChanged = false;
 
             // 3. Duyệt qua từng sản phẩm trong giỏ để Validate Real-time
             foreach (var itemDto in result.OrderItems)
@@ -305,6 +306,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     // Cập nhật lại giá tổng của món Custom này theo thời giá hiện tại
                     itemDto.UnitPrice = currentCustomTotal;
                     itemDto.TotalPrice = itemDto.UnitPrice * itemDto.Quantity;
+
+                    var entityItem = cartOrder.OrderItems.FirstOrDefault(x => x.Id == itemDto.OrderItemId);
+                    if (entityItem != null && entityItem.TotalPrice != itemDto.TotalPrice)
+                    {
+                        entityItem.UnitPrice = itemDto.UnitPrice;
+                        entityItem.TotalPrice = itemDto.TotalPrice;
+                        isPriceChanged = true;
+                    }
                 }
 
                 // ---------------------------------------------------------
@@ -313,16 +322,25 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 
 
             }
-               
+
 
             // 4. Tính lại tổng tiền giỏ hàng (Sau khi đã update giá các item)
-            result.TotalAmount = result.OrderItems.Sum(i => i.TotalPrice);
+            result.SubTotal = result.OrderItems.Sum(i => i.TotalPrice);
             result.DiscountAmount = cartOrder.DiscountAmount;
             result.TotalAmount = Math.Max(0, result.SubTotal - result.DiscountAmount);
-            // (Optional) Nếu logic Discount phức tạp thì gọi Service tính lại, tạm thời set 0 hoặc giữ nguyên
-            // result.DiscountAmount = ...; 
+
+            if (isPriceChanged || cartOrder.SubTotal != result.SubTotal)
+            {
+                cartOrder.SubTotal = result.SubTotal;
+                cartOrder.TotalAmount = result.TotalAmount;
+                cartOrder.UpdatedAt = DateTime.UtcNow;
+
+                await _unitOfWork.Orders.UpdateOrderAsync(cartOrder, token);
+                await _unitOfWork.CommitAsync();
+            }
 
             return result;
+            
         }
 
         public async Task RemoveItemFromCartAsync(Guid userId, Guid orderItemId, CancellationToken token = default)
