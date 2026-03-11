@@ -95,12 +95,17 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .ToListAsync(cancellationToken);
         }
 
-        public async Task<Dictionary<Guid, int>> CheckStockBatchAsync(IEnumerable<Guid> ids, CancellationToken cancellationToken = default)
+        public async Task<Dictionary<Guid, int>> CheckStockBatchAsync(IEnumerable<Guid> ids, bool includeDeleted = false, CancellationToken cancellationToken = default)
         {
-            return await _context.Models
-                .AsNoTracking()
-                .Where(x => ids.Contains(x.Id))
-                .ToDictionaryAsync(x => x.Id, x => x.StockQuantity, cancellationToken);
+            var query = _context.Models
+        .AsNoTracking()
+        .Where(x => ids.Contains(x.Id));
+            if (!includeDeleted)
+            {
+                query = query.Where(x => !x.IsDeleted);
+            }
+
+            return await query.ToDictionaryAsync(x => x.Id, x => x.StockQuantity, cancellationToken);
         }
 
         public async Task CreateAsync(Model part, CancellationToken cancellationToken = default)
@@ -130,10 +135,16 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return await _context.Models.AnyAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
         }
 
-        public async Task<bool> UpdateStockAsync(Guid id, int quantityChange, CancellationToken cancellationToken = default)
+        public async Task<bool> UpdateStockAsync(Guid id, int quantityChange, bool includeDeleted = false,CancellationToken cancellationToken = default)
         {
-            int rowsAffected = await _context.Models
-                .Where(x => x.Id == id && x.StockQuantity + quantityChange >= 0) // Chặn âm kho
+            var query = _context.Models
+        .Where(x => x.Id == id && x.StockQuantity + quantityChange >= 0); // Chặn âm kho
+            if (!includeDeleted)
+            {
+                query = query.Where(x => !x.IsDeleted);
+            }
+
+            int rowsAffected = await query
                 .ExecuteUpdateAsync(s => s.SetProperty(
                     x => x.StockQuantity,
                     x => x.StockQuantity + quantityChange), cancellationToken);

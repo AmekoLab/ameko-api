@@ -69,9 +69,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<(IEnumerable<Category> Items, int TotalCount)> GetPagedAsync(
                 int pageNumber, int pageSize, bool? isActive, Guid? parentId, bool  includeSubCategories,
                 Guid? shopId, // Tham số này là "Context Shop"
+                bool includeDeleted = false,
                 CancellationToken cancellationToken = default)
         {
             var query = _context.Categories.AsQueryable();
+            if (!includeDeleted)
+            {
+                query = query.Where(c => !c.IsDeleted);
+            }
             if (isActive.HasValue)
                 query = query.Where(c => c.IsActive == isActive.Value);
 
@@ -157,10 +162,17 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .AnyAsync(c => c.ParentId == categoryId && !c.IsDeleted, cancellationToken);
         }
 
-        public async Task<bool> HasPartsAsync(Guid categoryId, CancellationToken cancellationToken = default)
+        public async Task<bool> HasPartsAsync(Guid categoryId, bool includeDeleted = false,CancellationToken cancellationToken = default)
         {
-            return await _context.Models
-                .AnyAsync(m => m.CategoryId == categoryId, cancellationToken);
+            var query = _context.Models.AsQueryable();
+
+            // [BỔ SUNG] Chỉ đếm những part chưa bị xóa
+            if (!includeDeleted)
+            {
+                query = query.Where(m => !m.IsDeleted);
+            }
+
+            return await query.AnyAsync(m => m.CategoryId == categoryId, cancellationToken);
         }
 
         public async Task<IEnumerable<Category>> GetSubCategoriesAsync(Guid parentId, bool includeInactive = false, CancellationToken cancellationToken = default)
@@ -192,11 +204,15 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .ToListAsync(cancellationToken);
         }
 
-        public async Task<(IEnumerable<Model> Items, int TotalCount)> GetPartsInCategoryAsync(Guid categoryId, int pageNumber, int pageSize, bool? isActive = null, string? partType = null, Guid? shopId = null, CancellationToken cancellationToken = default)
+        public async Task<(IEnumerable<Model> Items, int TotalCount)> GetPartsInCategoryAsync(Guid categoryId, int pageNumber, int pageSize, bool? isActive = null, string? partType = null, Guid? shopId = null, bool includeDeleted = false, CancellationToken cancellationToken = default)
         {
             var query = _context.Models
                 .Include(m => m.Shop)
                 .Where(m => m.CategoryId == categoryId);
+            if (!includeDeleted)
+            {
+                query = query.Where(m => !m.IsDeleted);
+            }
 
             if (isActive.HasValue)
             {
@@ -297,10 +313,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return await _context.Categories
                 .AnyAsync(c => c.Id == categoryId && c.ShopId == null && !c.IsDeleted, cancellationToken);
         }
-        public async Task<bool> IsSlugDuplicateAsync(string slug, Guid? excludeId = null, CancellationToken cancellationToken = default)
+        public async Task<bool> IsSlugDuplicateAsync(string slug, Guid? excludeId = null, bool includeDeleted = false, CancellationToken cancellationToken = default)
         {
             var query = _context.Categories.AsQueryable();
-
+            if (!includeDeleted)
+            {
+                query = query.Where(c => !c.IsDeleted);
+            }
             if (excludeId.HasValue)
             {
                 return await query.AnyAsync(c => c.Slug == slug && c.Id != excludeId.Value, cancellationToken);

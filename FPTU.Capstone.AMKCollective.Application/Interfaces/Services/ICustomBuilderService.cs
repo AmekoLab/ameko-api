@@ -21,6 +21,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<bool> IsMatchAsync(Guid baseKitId, Guid componentId);
 
         Task<BuilderStepResponse> RemovePartFromSessionAsync(Guid sessionId, string stepName);
+        Task<(bool Success, Guid? CommissionRequestId, string ErrorMessage)> ConvertSessionToCommissionAsync(Guid userId, BuilderToCommissionRequest request);
         //SERVER-DRIVEN FLOW
         // 1. Bắt đầu phiên Build
         Task<BuilderStepResponse> StartBuilderSessionAsync(BuilderStartRequest request, Guid? userId);

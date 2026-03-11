@@ -204,12 +204,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     }
 
                     // (Tùy chọn) Kiểm tra xem Shop đó có hàng trong giỏ không
-                    bool hasItemFromThisShop = order.OrderItems.Any(i =>
+                    bool hasItemFromThisShop = false;
+                    foreach (var i in order.OrderItems)
                     {
                         Guid sId = Guid.Empty;
                         if (i.ProductId.HasValue)
                         {
-                            var productTask = _unitOfWork.Models.GetByIdAsync(i.ProductId.Value).Result;
+                            var productTask = await _unitOfWork.Models.GetByIdAsync(i.ProductId.Value);
                             if (productTask != null) sId = productTask.ShopId;
                         }
                         else if (!string.IsNullOrEmpty(i.DesignConfig))
@@ -225,11 +226,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                         if (sId != Guid.Empty)
                         {
-                            var shopTask = _unitOfWork.Shops.GetByIdAsync(sId).Result;
-                            return shopTask != null && shopTask.UserId == incomingVoucher.CreatorId;
+                            // DÙNG AWAIT thay vì .Result
+                            var shopTask = await _unitOfWork.Shops.GetByIdAsync(sId);
+                            if (shopTask != null && shopTask.UserId == incomingVoucher.CreatorId)
+                            {
+                                hasItemFromThisShop = true;
+                                break; // Đã tìm thấy ít nhất 1 món của shop này thì dừng vòng lặp ngay
+                            }
                         }
-                        return false;
-                    });
+                    }
 
                     if (!hasItemFromThisShop)
                         throw new Exception("You do not have any items from this shop in your cart to apply this voucher.");
@@ -373,10 +378,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 totalDiscountAmount += stepDiscount;
 
                 // Chỉ tăng UsedCount cho mã vừa nhập
+                //if (currentVoucher.Id == incomingVoucher.Id)
+                //{
+                //    currentVoucher.UsedCount++;
+                //    _unitOfWork.Vouchers.Update(currentVoucher);
+                //}
                 if (currentVoucher.Id == incomingVoucher.Id)
                 {
-                    currentVoucher.UsedCount++;
-                    _unitOfWork.Vouchers.Update(currentVoucher);
+                    // Gọi update nguyên tử trực tiếp xuống DB
+                    bool success = await _unitOfWork.Vouchers.TryIncrementVoucherUsageAsync(currentVoucher.Id);
+                    if (!success)
+                    {
+                        // Rollback giao dịch nếu có ai đó vừa nhanh tay cướp lượt cuối cùng
+                        throw new Exception($"Voucher '{currentVoucher.Code}' has just reached its usage limit by another user.");
+                    }
                 }
             }
 

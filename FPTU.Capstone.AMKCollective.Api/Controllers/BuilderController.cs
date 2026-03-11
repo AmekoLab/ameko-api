@@ -3,6 +3,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Builder;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
+using FPTU.Capstone.AMKCollective.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -482,6 +483,40 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 _logger.LogError(ex, "Error re-creating session from OrderItem {Id}", orderItemId);
                 return ServerErrorResponse<string>("An error occurred while re-creating the session.");
             }
+        }
+
+        /// <summary>
+        /// Converts an existing Builder Session into a Custom Commission Request directed to the Shop.
+        /// This is used when a customer requires advanced customization (e.g., mix switches, lube, modding) 
+        /// that goes beyond standard builder options.
+        /// </summary>
+        /// <param name="request">Contains the SessionId and the customer's special notes.</param>
+        /// <returns>Returns the ID of the newly created Commission Request if successful.</returns>
+        /// <response code="200">Successfully converted the session to a commission request.</response>
+        /// <response code="400">If the session is invalid, empty, or missing a base kit.</response>
+        [Authorize(Roles = "Customer")]
+        [HttpPost("to-commission")]
+        [ProducesResponseType(typeof(ApiResponse<Guid>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> ConvertToCommission([FromBody] BuilderToCommissionRequest request)
+        {
+            var userId = GetCurrentUserId();
+
+            var result = await _service.ConvertSessionToCommissionAsync(userId, request);
+
+            if (!result.Success)
+                return BadRequest(new ApiResponse<string>
+                {
+                    Success = false,
+                    Message = result.ErrorMessage
+                });
+
+            return Ok(new ApiResponse<Guid>
+            {
+                Success = true,
+                Message = "Your custom request has been successfully submitted to the shop for quotation.",
+                Data = result.CommissionRequestId.Value
+            });
         }
     }
 }

@@ -11,7 +11,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
     public interface IOrderRepository
     {
         Task<Order?> GetByIdAsync(Guid id, CancellationToken token = default);
-        Task<IEnumerable<Order>> GetOrdersByUserIdAsync(Guid userId, CancellationToken token = default);
+        Task<IEnumerable<Order>> GetOrdersByUserIdAsync(Guid userId, bool includeDeleted = false, CancellationToken token = default);
         Task<IEnumerable<Order>> GetOrdersByShopIdAsync(Guid shopId, CancellationToken token = default);
         Task<Order?> GetOrderByStatusAsync(Guid userId, OrderStatus status);
         /// <summary>

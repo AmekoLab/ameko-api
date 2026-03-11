@@ -135,11 +135,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             };
 
             // 6. Trừ tiền trong ví ngay lập tức (Chuyển sang trạng thái chờ)
-            wallet.Balance -= totalDeduct;           
+            //wallet.Balance -= totalDeduct;           
 
             await _unitOfWork.Payments.AddAsync(payment);
-            _unitOfWork.Wallets.Update(wallet);
-
+            //_unitOfWork.Wallets.Update(wallet);
+            bool success = await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, -totalDeduct, 0);
+            if (!success) throw new InvalidOperationException("Transaction failed. Wallet balance changed concurrently.");
             await _unitOfWork.CommitAsync();
 
             // TODO: gửi thông báo cho admin khi có đơn rút mới.
@@ -153,9 +154,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (wallet.Balance < amount)
                 throw new Exception("Wallet balance is insufficient for payment.");
 
-            wallet.Balance -= amount;
-            _unitOfWork.Wallets.Update(wallet);
-
+            //wallet.Balance -= amount;
+            //_unitOfWork.Wallets.Update(wallet);
+            bool success = await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, -amount, 0);
+            if (!success) throw new Exception("Transaction failed. Wallet balance changed concurrently.");
             var transaction = new Payment
             {
                 UserId = userId,
@@ -181,9 +183,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(shopId);
             if (wallet == null) return;
 
-            wallet.HeldBalance += amount;
-            _unitOfWork.Wallets.Update(wallet);
-
+            //wallet.HeldBalance += amount;
+            //_unitOfWork.Wallets.Update(wallet);
+            await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, 0, amount);
             var log = new Payment
             {
                 UserId = shopId,
@@ -207,10 +209,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (wallet.HeldBalance >= amount)
             {
-                wallet.HeldBalance -= amount;
-                wallet.Balance += amount;
-                _unitOfWork.Wallets.Update(wallet);
-
+                //wallet.HeldBalance -= amount;
+                //wallet.Balance += amount;
+                //_unitOfWork.Wallets.Update(wallet);
+                bool success = await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, amount, -amount);
+                if (!success) return;
                 var log = new Payment
                 {
                     UserId = shopId,
@@ -238,9 +241,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 if (wallet == null) return;
             }
 
-            wallet.Balance += amount;
-            _unitOfWork.Wallets.Update(wallet);
-
+            //wallet.Balance += amount;
+            //_unitOfWork.Wallets.Update(wallet);
+            await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, amount, 0);
             var log = new Payment
             {
                 UserId = userId,
@@ -259,24 +262,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task DeductFundsForRefundAsync(Guid shopId, Guid orderId, decimal amount, bool isOrderCompleted)
         {
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(shopId);
-            if (wallet == null) return; 
+            if (wallet == null) return;
 
             if (isOrderCompleted)
             {
-                // Nếu đơn đã hoàn thành -> Tiền đã về Balance -> Trừ Balance
-                // Cho phép âm nếu shop rút hết tiền rồi (shop nợ sàn)
-                wallet.Balance -= amount;
+                // Trừ Balance, cho phép âm (allowNegative: true)
+                await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, -amount, 0, true);
             }
             else
             {
-                // Nếu đơn chưa hoàn thành -> Tiền còn treo ở Held -> Trừ Held
-                wallet.HeldBalance -= amount;
-
-                // Safety check: Không để HeldBalance âm (nếu logic sai đâu đó)
-                // if (wallet.HeldBalance < 0) wallet.HeldBalance = 0; 
+                // Trừ tiền treo (HeldBalance)
+                await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, 0, -amount, true);
             }
 
-            _unitOfWork.Wallets.Update(wallet);
+            //_unitOfWork.Wallets.Update(wallet);
 
             // Ghi log giao dịch
             var log = new Payment
@@ -367,10 +366,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (wallet != null)
             {
                 // Hoàn lại tiền gốc + phí rút (vì giao dịch hủy thì không thu phí)
-                wallet.Balance += (payment.Amount + payment.FeeAmount);
+                //wallet.Balance += (payment.Amount + payment.FeeAmount);
                 // Lưu ý: FeeAmount nên để nullable trong Entity hoặc check null như trên
 
-                _unitOfWork.Wallets.Update(wallet);
+                //_unitOfWork.Wallets.Update(wallet);
+                await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, (payment.Amount + payment.FeeAmount), 0);
             }
             else
             {
@@ -409,9 +409,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             // 3. Cập nhật số dư
-            wallet.Balance += request.Amount;
-            _unitOfWork.Wallets.Update(wallet);
-
+            //wallet.Balance += request.Amount;
+            //_unitOfWork.Wallets.Update(wallet);
+            await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, request.Amount, 0, true);
             // 4. Tạo Transaction Log
             var transaction = _mapper.Map<Payment>(request);
             transaction.Id = Guid.NewGuid();

@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
 
 namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 {
@@ -31,14 +32,21 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .FirstOrDefaultAsync(o => o.Id == id && !o.IsDeleted, token);
         }
 
-        public async Task<IEnumerable<Order>> GetOrdersByUserIdAsync(Guid userId, CancellationToken token = default)
+        public async Task<IEnumerable<Order>> GetOrdersByUserIdAsync(Guid userId, bool includeDeleted = false,CancellationToken token = default)
         {
-            return await _context.Orders
-                .AsNoTracking()
-                .Include(o => o.Shop)
-                .Include(o => o.OrderItems)
-                    .ThenInclude(oi => oi.Product)
-                .Where(o => o.CustomerId == userId && !o.IsDeleted)
+            var query = _context.Orders
+                        .AsNoTracking()
+                        .Include(o => o.Shop)
+                        .Include(o => o.OrderItems)
+                        .ThenInclude(oi => oi.Product)
+                        .Where(o => o.CustomerId == userId);
+
+            if (!includeDeleted)
+            {
+                query = query.Where(o => !o.IsDeleted);
+            }
+
+            return await query
                 .OrderByDescending(o => o.CreatedAt)
                 .AsSplitQuery()
                 .ToListAsync(token);
@@ -129,6 +137,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             stub.SubTotal = newTotalAmount;
             stub.UpdatedAt = DateTime.UtcNow;
             _context.Entry(stub).Property(x => x.TotalAmount).IsModified = true;
+            _context.Entry(stub).Property(x => x.SubTotal).IsModified = true;
             _context.Entry(stub).Property(x => x.UpdatedAt).IsModified = true;
         }
 
