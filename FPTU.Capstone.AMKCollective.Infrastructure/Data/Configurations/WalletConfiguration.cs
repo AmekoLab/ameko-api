@@ -13,10 +13,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
 
             builder.Property(w => w.Balance)
                 .HasPrecision(18, 2)
+                .IsConcurrencyToken()
                 .IsRequired();
 
             builder.Property(w => w.HeldBalance)
                 .HasPrecision(18, 2)
+                .IsConcurrencyToken()
                 .IsRequired();
 
             builder.Property(w => w.Currency)

@@ -25,6 +25,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         IAssemblyProgressLogRepository AssemblyProgressLogs { get; }
         IAssemblyStepTemplateRepository AssemblyStepTemplates { get; }
         Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> action);
+        IWithdrawalRequestRepository WithdrawalRequests { get; }
         Task CommitAsync();
         void Rollback();
         /// <summary>
@@ -32,5 +33,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         /// Use when you need a clean tracking state (e.g., after read-only validation queries).
         /// </summary>
         void ClearChangeTracker();
+
+        /// <summary>
+        /// Execute a block of code within a database transaction and an execution strategy.
+        /// </summary>
+        Task ExecuteTransactionAsync(System.Func<Task> action);
     }
 }

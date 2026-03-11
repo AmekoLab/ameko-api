@@ -2,6 +2,7 @@ using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using System.Threading.Tasks;
 
 namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 {
@@ -30,6 +31,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         private IAssemblyProgressLogRepository _assemblyProgressLogs;
         private IAssemblyStepTemplateRepository _assemblyStepTemplates;
         private IDbContextTransaction? _currentTransaction;
+        private IWithdrawalRequestRepository? _withdrawalRequests;
         public UnitOfWork(ApplicationDbContext context)
         {
             _context = context;
@@ -60,6 +62,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public IAssemblyProgressLogRepository AssemblyProgressLogs => _assemblyProgressLogs ??= new AssemblyProgressLogRepository(_context);
 
         public IAssemblyStepTemplateRepository AssemblyStepTemplates => _assemblyStepTemplates ??= new AssemblyStepTemplateRepository(_context);
+        public IWithdrawalRequestRepository WithdrawalRequests => _withdrawalRequests ??= new WithdrawalRequestRepository(_context);
 
         public async Task CommitAsync()
         {
@@ -100,6 +103,19 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                     await transaction.RollbackAsync();
                     throw;
                 }
+            });
+        }
+        public async Task ExecuteTransactionAsync(System.Func<Task> action)
+        {
+            var strategy = _context.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
+            {
+                using var transaction = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead);
+                await action();
+                // The transaction will be committed in the action loop or here, depending on how it's used.
+                // It is safer to commit it here dynamically. But _unitOfWork.CommitAsync is called inside the action.
+                // Either way is fine, we just commit the transaction directly here to be consistent.
+                await transaction.CommitAsync();
             });
         }
     }

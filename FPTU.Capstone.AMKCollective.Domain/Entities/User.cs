@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Domain.Enums;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
 using System.Reflection;
 
@@ -71,5 +71,9 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
 
         // CommissionRequest
         public virtual ICollection<CommissionRequest> CommissionRequests { get; set; } = new List<CommissionRequest>();
+
+        // WithdrawalRequests
+        public virtual ICollection<WithdrawalRequest> WithdrawalRequests { get; set; } = new List<WithdrawalRequest>();
+        public virtual ICollection<WithdrawalRequest> ApprovedWithdrawalRequests { get; set; } = new List<WithdrawalRequest>();
     }
 }

@@ -596,8 +596,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task AutoCancelExpiredIssuesAsync(CancellationToken ct = default)
         {
-            // Issues in AwaitingReturn for more than 3 days (based on UpdatedAt)
-            var threshold = DateTime.UtcNow.AddDays(-3);
+            // Issues in AwaitingReturn for more than X days (based on UpdatedAt)
+            int timeoutDays = _configuration.GetValue<int>("WarrantySettings:ReturnShippingTimeoutDays", 3);
+            var threshold = DateTime.UtcNow.AddDays(-timeoutDays);
             var expiredIssues = await _unitOfWork.OrderIssues.GetExpiredIssuesAsync(threshold);
 
             foreach (var issue in expiredIssues)
@@ -608,10 +609,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
                 {
                     OrderIssueId = issue.Id,
-                    ActionById = Guid.Empty,
+                    ActionById = Guid.Empty, // System
                     ActionByRole = RoleType.Admin,
                     Action = OrderIssueAction.SystemCancel,
-                    Comment = "Auto-cancelled: customer did not ship return within 3 days.",
+                    Comment = $"Auto-cancelled: customer did not ship return within {timeoutDays} days.",
                     CreatedAt = DateTime.UtcNow
                 });
 
@@ -748,20 +749,27 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 int endIdx = issue.Description.IndexOf("]");
                 if (endIdx > 7)
                 {
-                    var idsStr = issue.Description.Substring(7, endIdx - 7);
-                    var itemIds = idsStr.Split(',').Select(id => Guid.Parse(id.Trim())).ToList();
-
-                    // Re-calculate based on OrderItems
-                    // Ensure items are loaded
-                    if (order.OrderItems == null || !order.OrderItems.Any())
+                    try
                     {
-                        var fullOrder = await _unitOfWork.Orders.GetByIdAsync(order.Id);
-                        order = fullOrder!;
-                    }
+                        var idsStr = issue.Description.Substring(7, endIdx - 7);
+                        var itemIds = idsStr.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                           .Select(id => Guid.Parse(id.Trim()))
+                                           .ToList();
 
-                    return order.OrderItems
-                        .Where(oi => itemIds.Contains(oi.Id))
-                        .Sum(oi => oi.TotalPrice);
+                        // Ensure items are loaded
+                        if (order.OrderItems == null || !order.OrderItems.Any())
+                        {
+                            var fullOrder = await _unitOfWork.Orders.GetByIdAsync(order.Id);
+                            if (fullOrder != null) order = fullOrder;
+                        }
+
+                        if (order.OrderItems == null) return 0;
+
+                        return order.OrderItems
+                            .Where(oi => itemIds.Contains(oi.Id))
+                            .Sum(oi => oi.TotalPrice);
+                    }
+                    catch { return 0; }
                 }
             }
 

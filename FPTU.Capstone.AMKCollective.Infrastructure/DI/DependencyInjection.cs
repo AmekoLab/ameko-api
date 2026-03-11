@@ -10,6 +10,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
         public static IServiceCollection AddInfrastructureServices(this IServiceCollection services)
         {
             services.AddScoped<IUserRepository, UserRepository>();
+            services.AddScoped<IWithdrawalRequestRepository, WithdrawalRequestRepository>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<ITokenService, TokenService>();
 
