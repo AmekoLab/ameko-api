@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Wallet;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
@@ -231,7 +231,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task RefundToWalletAsync(Guid userId, decimal amount, string reason)
         {
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
-            if (wallet == null) return;
+            if (wallet == null)
+            {
+                await CreateWalletAsync(userId);
+                wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+                if (wallet == null) return;
+            }
 
             wallet.Balance += amount;
             _unitOfWork.Wallets.Update(wallet);
