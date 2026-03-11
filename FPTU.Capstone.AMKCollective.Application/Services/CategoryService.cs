@@ -33,6 +33,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 queryParams.ParentId,
                 queryParams.IncludeSubCategories,
                 queryParams.ShopId, // Pass shopId filter
+                false,
                 cancellationToken);
 
             // Manual mapping để kiểm soát dữ liệu tốt hơn
@@ -176,7 +177,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var hasSubCategories = await _unitOfWork.Categories.HasSubCategoriesAsync(id, cancellationToken);
             if (hasSubCategories) throw new InvalidOperationException("Cannot delete category with subcategories.");
 
-            var hasParts = await _unitOfWork.Categories.HasPartsAsync(id, cancellationToken);
+            var hasParts = await _unitOfWork.Categories.HasPartsAsync(id, false, cancellationToken);
             if (hasParts) throw new InvalidOperationException("Cannot delete category with parts.");
 
             var result = await _unitOfWork.Categories.DeleteAsync(id, cancellationToken);
@@ -196,6 +197,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 queryParams.IsActive,
                 queryParams.PartType,
                 queryParams.ShopId,
+                false,
                 cancellationToken);
 
             var partDtos = parts.Select(p => new PartSummaryResponse
@@ -292,7 +294,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             while (true)
             {
                 // Gọi Repository check trùng toàn hệ thống
-                var isDuplicate = await _unitOfWork.Categories.IsSlugDuplicateAsync(finalSlug, excludeId, cancellationToken);
+                var isDuplicate = await _unitOfWork.Categories.IsSlugDuplicateAsync(finalSlug, excludeId, false, cancellationToken);
 
                 if (!isDuplicate)
                 {

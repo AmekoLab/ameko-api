@@ -41,5 +41,19 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             wallet.IsDeleted = true;
             _context.Wallets.Update(wallet);
         }
+        public async Task<bool> UpdateBalancesAsync(Guid walletId, decimal balanceChange, decimal heldBalanceChange = 0, bool allowNegative = false)
+        {
+            var query = _context.Wallets.Where(w => w.Id == walletId);
+
+            if (!allowNegative)
+            {
+                query = query.Where(w => w.Balance + balanceChange >= 0 && w.HeldBalance + heldBalanceChange >= 0);
+            }
+            int rowsAffected = await query.ExecuteUpdateAsync(s => s
+                .SetProperty(w => w.Balance, w => w.Balance + balanceChange)
+                .SetProperty(w => w.HeldBalance, w => w.HeldBalance + heldBalanceChange));
+
+            return rowsAffected > 0;
+        }
     }
 }

@@ -1,5 +1,4 @@
 using System.Threading.Tasks;
-
 namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
 {
     public interface IUnitOfWork
@@ -25,6 +24,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         ICommissionQuoteRepository CommissionQuotes { get; }
         IAssemblyProgressLogRepository AssemblyProgressLogs { get; }
         IAssemblyStepTemplateRepository AssemblyStepTemplates { get; }
+        Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> action);
         Task CommitAsync();
         void Rollback();
         /// <summary>

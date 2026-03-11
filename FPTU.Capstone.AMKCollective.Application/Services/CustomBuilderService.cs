@@ -242,6 +242,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 throw new KeyNotFoundException("Selected part is not valid for this kit or current branch.");
             }
+            // Check tồn kho
+            int qtyNeeded = workflow[currentStepIndex].Quantity; // Lấy số lượng cần thiết từ cấu hình workflow
+
+            if (selectedOption.Component.StockQuantity < qtyNeeded)
+            {
+                throw new InvalidOperationException($"Linh kiện '{selectedOption.Component.Name}' hiện đã hết hàng (Còn lại: {selectedOption.Component.StockQuantity}, Cần: {qtyNeeded}). Vui lòng chọn linh kiện khác.");
+            }
 
             // 6. Xóa các bước phía sau (Nếu user quay lại sửa bước cũ -> clear các bước sau để chọn lại)
             // Logic: Duyệt từ index hiện tại + 1 đến hết list và xóa khỏi session
@@ -257,7 +264,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 : selectedOption.Component.DefaultLayerImageUrl ?? "";
 
             // Lấy số lượng từ cấu hình Workflow
-            int qtyNeeded = workflow[currentStepIndex].Quantity;
+             qtyNeeded = workflow[currentStepIndex].Quantity;
 
             currentSelection[request.StepName] = new SelectedPartResponse
             {

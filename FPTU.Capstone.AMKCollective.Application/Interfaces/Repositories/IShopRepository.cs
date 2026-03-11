@@ -39,7 +39,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task CreateAsync(ShopProfile shop, CancellationToken token = default);
 
         Task UpdateAsync(ShopProfile shop, CancellationToken token = default);
-        Task UpdateShopMetricsAsync(Guid shopId, int quantitySold, decimal revenueAmount, CancellationToken token = default);
+        Task UpdateShopMetricsAsync(Guid shopId, int quantitySold, decimal revenueAmount, bool includeDeleted = false, CancellationToken token = default);
 
         // --- TRANSACTION ---
         Task<int> SaveChangesAsync(CancellationToken token = default);

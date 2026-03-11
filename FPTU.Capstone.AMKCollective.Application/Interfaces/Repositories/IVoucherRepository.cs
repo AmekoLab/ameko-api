@@ -22,5 +22,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<bool> IsVoucherUsedAsync(Guid voucherId);
         Task<(IEnumerable<Voucher> Items, int TotalCount)> GetVouchersByFilterAsync(Guid? creatorId, VoucherFilterRequest filter);
         Task<IEnumerable<Voucher>> GetPublicVouchersByShopAsync(Guid shopUserId);
+
+        Task<bool> TryIncrementVoucherUsageAsync(Guid voucherId);
     }
 }

@@ -148,6 +148,15 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .OrderByDescending(v => v.CreatedAt)
                 .ToListAsync();
         }
+
+        public async Task<bool> TryIncrementVoucherUsageAsync(Guid voucherId)
+        {
+            var rowsAffected = await _context.Vouchers
+                .Where(v => v.Id == voucherId && v.UsedCount < v.UsageLimit)
+                .ExecuteUpdateAsync(s => s.SetProperty(v => v.UsedCount, v => v.UsedCount + 1));
+
+            return rowsAffected > 0;
+        }
     }
 }
     

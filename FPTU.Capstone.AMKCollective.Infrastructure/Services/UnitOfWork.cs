@@ -1,5 +1,7 @@
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 {
@@ -27,6 +29,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         private ICommissionQuoteRepository? _commissionQuotes;
         private IAssemblyProgressLogRepository _assemblyProgressLogs;
         private IAssemblyStepTemplateRepository _assemblyStepTemplates;
+        private IDbContextTransaction? _currentTransaction;
         public UnitOfWork(ApplicationDbContext context)
         {
             _context = context;
@@ -71,6 +74,33 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public void ClearChangeTracker()
         {
             _context.ChangeTracker.Clear();
+        }
+
+        public async Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> action)
+        {
+            // Tạo ra một Execution Strategy, Retry tự động nếu đứt mạng
+            var strategy = _context.Database.CreateExecutionStrategy();
+
+            return await strategy.ExecuteAsync(async () =>
+            {
+                // Khởi tạo Transaction NẰM TRONG Strategy
+                await using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    // Chạy toàn bộ logic được truyền vào
+                    var result = await action();
+
+                    // Nếu không có lỗi gì ném ra, xác nhận Transaction
+                    await transaction.CommitAsync();
+                    return result;
+                }
+                catch
+                {
+                    // Bất cứ lỗi gì xảy ra, lập tức Rollback trả lại kho
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            });
         }
     }
 }

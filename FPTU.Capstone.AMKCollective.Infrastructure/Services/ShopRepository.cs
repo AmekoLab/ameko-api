@@ -151,14 +151,19 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return (items, totalCount);
         }
 
-        public async Task UpdateShopMetricsAsync(Guid shopId, int quantitySold, decimal revenueAmount, CancellationToken token = default)
+        public async Task UpdateShopMetricsAsync(Guid shopId, int quantitySold, decimal revenueAmount, bool includeDeleted = false, CancellationToken token = default)
         {
-            var shop = await _context.ShopProfiles.FindAsync(new object[] { shopId }, token);
+            var query = _context.ShopProfiles.AsQueryable();
+            if (!includeDeleted)
+            {
+                query = query.Where(s => !s.IsDeleted);
+            }
+            var shop = await query.FirstOrDefaultAsync(s => s.Id == shopId, token);
+
             if (shop != null)
             {
                 shop.TotalSales += quantitySold;
                 shop.TotalRevenue += revenueAmount;
-
             }
         }
 
