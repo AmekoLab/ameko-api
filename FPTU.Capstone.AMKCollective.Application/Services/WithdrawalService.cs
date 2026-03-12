@@ -4,6 +4,7 @@ using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
@@ -181,16 +182,34 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
         }
 
-        public async Task<List<WithdrawalRequestResponseDto>> GetUserWithdrawalsAsync(Guid userId)
+        public async Task<WithdrawalRequestResponseDto> GetWithdrawalByIdAsync(Guid id)
         {
-            var requests = await _unitOfWork.WithdrawalRequests.GetByUserIdAsync(userId);
-            return requests.Select(MapToResponse).ToList();
+            var request = await _unitOfWork.WithdrawalRequests.GetByIdAsync(id);
+            if (request == null)
+                throw new KeyNotFoundException("Withdrawal request not found.");
+                
+            return MapToResponse(request);
         }
 
-        public async Task<List<WithdrawalRequestResponseDto>> GetPendingWithdrawalsAsync()
+        public async Task<PaginatedResult<WithdrawalRequestResponseDto>> GetUserWithdrawalsAsync(Guid userId, int pageIndex, int pageSize)
         {
-            var requests = await _unitOfWork.WithdrawalRequests.GetPendingAsync();
-            return requests.Select(MapToResponse).ToList();
+            var result = await _unitOfWork.WithdrawalRequests.GetByUserIdPagedAsync(userId, pageIndex, pageSize);
+            var mappedItems = result.Items.Select(MapToResponse).ToList();
+            return new PaginatedResult<WithdrawalRequestResponseDto>(mappedItems, result.TotalCount, pageIndex, pageSize);
+        }
+
+        public async Task<PaginatedResult<WithdrawalRequestResponseDto>> GetPendingWithdrawalsAsync(int pageIndex, int pageSize)
+        {
+            var result = await _unitOfWork.WithdrawalRequests.GetPendingPagedAsync(pageIndex, pageSize);
+            var mappedItems = result.Items.Select(MapToResponse).ToList();
+            return new PaginatedResult<WithdrawalRequestResponseDto>(mappedItems, result.TotalCount, pageIndex, pageSize);
+        }
+
+        public async Task<PaginatedResult<WithdrawalRequestResponseDto>> GetProcessedWithdrawalsAsync(int pageIndex, int pageSize)
+        {
+            var result = await _unitOfWork.WithdrawalRequests.GetProcessedPagedAsync(pageIndex, pageSize);
+            var mappedItems = result.Items.Select(MapToResponse).ToList();
+            return new PaginatedResult<WithdrawalRequestResponseDto>(mappedItems, result.TotalCount, pageIndex, pageSize);
         }
 
         // Helper Map Method

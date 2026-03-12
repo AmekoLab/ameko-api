@@ -48,6 +48,54 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .ToListAsync();
         }
 
+        public async Task<(List<WithdrawalRequest> Items, int TotalCount)> GetByUserIdPagedAsync(Guid userId, int pageIndex, int pageSize)
+        {
+            var query = _dbSet.Where(w => w.UserId == userId);
+            
+            var totalCount = await query.CountAsync();
+            var items = await query
+                .Include(w => w.User)
+                .OrderByDescending(w => w.RequestedAt)
+                .Skip((pageIndex - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+                
+            return (items, totalCount);
+        }
+
+        public async Task<(List<WithdrawalRequest> Items, int TotalCount)> GetPendingPagedAsync(int pageIndex, int pageSize)
+        {
+            var query = _dbSet.Where(w => w.Status == WithdrawalStatus.Pending);
+            
+            var totalCount = await query.CountAsync();
+            var items = await query
+                .Include(w => w.User)
+                .ThenInclude(u => u!.ShopProfile)
+                .OrderBy(w => w.RequestedAt)
+                .Skip((pageIndex - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+                
+            return (items, totalCount);
+        }
+
+        public async Task<(List<WithdrawalRequest> Items, int TotalCount)> GetProcessedPagedAsync(int pageIndex, int pageSize)
+        {
+            var query = _dbSet.Where(w => w.Status == WithdrawalStatus.Completed || w.Status == WithdrawalStatus.Rejected);
+            
+            var totalCount = await query.CountAsync();
+            var items = await query
+                .Include(w => w.User)
+                .ThenInclude(u => u!.ShopProfile)
+                .Include(w => w.Admin)
+                .OrderByDescending(w => w.ProcessedAt)
+                .Skip((pageIndex - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+                
+            return (items, totalCount);
+        }
+
         public async Task AddAsync(WithdrawalRequest request)
         {
             await _dbSet.AddAsync(request);
