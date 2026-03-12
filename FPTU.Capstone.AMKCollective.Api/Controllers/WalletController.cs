@@ -1,9 +1,10 @@
-﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
+using FPTU.Capstone.AMKCollective.Api.Controllers;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Payment;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Wallet;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Swashbuckle.AspNetCore.Annotations;
@@ -13,6 +14,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 {
     [Route("api/v1/[controller]")]
     [ApiController]
+    [Authorize] 
     public class WalletController : BaseApiController
     {
         private readonly IWalletService _walletService;
@@ -146,6 +148,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// [Admin] Retrieves all system transactions with advanced filtering and pagination options.
         /// </summary>
         [HttpGet("admin/transactions")]
+        // [Authorize(Roles = "Admin")] // TODO: Bỏ comment khi deploy production
         [SwaggerOperation(Summary = "Get All Transactions (Filter & Paging)")]
         public async Task<IActionResult> GetAllTransactions([FromQuery] PaymentFilterRequest filter)
         {
@@ -164,6 +167,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// [Admin] Retrieves a list of pending withdrawal requests that require approval.
         /// </summary>
         [HttpGet("admin/withdrawals/pending")]
+        // [Authorize(Roles = "Admin")] // TODO: Bỏ comment khi deploy production
         public async Task<IActionResult> GetPendingWithdrawals()
         {
             try
@@ -192,6 +196,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Description: Confirms that the fund transfer is successful externally and updates the transaction status to 'Paid'.
         /// </summary>
         [HttpPost("admin/withdrawals/{paymentId}/approve")]
+        // [Authorize(Roles = "Admin")] // TODO: Bỏ comment khi deploy production
         public async Task<IActionResult> ApproveWithdrawal(Guid paymentId, [FromBody] WithdrawalActionRequest request)
         {
             try
@@ -220,6 +225,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Description: Marks the request as rejected and refunds the amount back to the shop's wallet balance.
         /// </summary>
         [HttpPost("admin/withdrawals/{paymentId}/reject")]
+        // [Authorize(Roles = "Admin")] // TODO: Bỏ comment khi deploy production
         public async Task<IActionResult> RejectWithdrawal(Guid paymentId, [FromBody] WithdrawalActionRequest request)
         {
             //if (string.IsNullOrEmpty(request.Reason))
@@ -265,7 +271,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// </param>
         /// <returns>Success message upon completion.</returns>
         [HttpPost("admin/adjust-balance")]
-        // [Authorize(Roles = "Admin")] // Uncomment this in production
+        // [Authorize(Roles = "Admin")] // TODO: Bỏ comment khi deploy production
         public async Task<IActionResult> AdjustBalance([FromBody] AdjustBalanceRequest request)
         {
             if (!ModelState.IsValid)

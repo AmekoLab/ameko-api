@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Commission;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
@@ -38,19 +38,23 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (request == null) return null;
 
             var response = _mapper.Map<CommissionRequestResponse>(request);
+            // Chỉ chủ request hoặc Shop được target mới xem được nội dung đầy đủ đối với targeted request
             if (request.UserId != currentUserId)
             {
-
                 var shop = await _unitOfWork.Shops.GetByUserIdAsync(currentUserId);
 
                 if (shop != null)
                 {
+                    // Nếu là targeted request và shop này không phải target → block
+                    if (request.Status == CommissionStatus.PendingTarget && request.TargetedShopId != shop.Id)
+                        return null; // Trả 404 trín controller
+
                     response.Quotes = response.Quotes.Where(q => q.ShopId == shop.Id).ToList();
                 }
                 else
                 {
-
-                    response.Quotes.Clear();
+                    // User thường — không cho xem nếu không phải chủ request
+                    return null;
                 }
             }
 
@@ -90,6 +94,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // Lấy profile Shop của user đang đăng nhập
             var shop = await _unitOfWork.Shops.GetByUserIdAsync(shopUserId);
             if (shop == null) return (false, "Only shop accounts are allowed to submit quotations.");
+
+            // [Fix #2] Không cho Shop bị ban/inactive/pending submit báo giá
+            if (shop.Status == ShopStatus.Banned)
+                return (false, "Your shop has been banned and cannot submit quotations.");
+            if (shop.Status == ShopStatus.Inactive || !shop.IsActive)
+                return (false, "Your shop is currently inactive. Please reactivate before submitting quotations.");
+            if (shop.Status != ShopStatus.Active)
+                return (false, "Your shop must be Active to submit quotations.");
 
             var request = await _unitOfWork.CommissionRequests.GetByIdAsync(requestId);
             if (request == null) return (false, "The request does not exist.");
@@ -193,6 +205,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (request.Status == CommissionStatus.Completed)
                 return (false, null, "This request has already been finalized with another shop.");
 
+            // [Fix #1] Check quote phải đang ở trạng thái PendingUserDecision — tránh accept quote đã Revoked/Rejected
+            if (quote.Status != QuoteStatus.PendingUserDecision)
+                return (false, null, "This quotation is no longer available for acceptance.");
+
+            // [Fix #4] Transaction safety: tất cả entity changes (quote, request, otherQuotes, Order)
+            // đều nằm trong cùng 1 UnitOfWork. CommitAsync() là điểm commit DUY NHẤT.
+            // Nếu AddAsync(Order) throw exception trước khi CommitAsync() → không có gì được lưu.
             // 1. Cập nhật commission statuses — EF change tracking handles these automatically
             quote.Status = QuoteStatus.Accepted;
             request.Status = CommissionStatus.Completed;
@@ -363,6 +382,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             quote.QuotedPrice = updateDto.QuotedPrice;
             quote.EstimatedDays = updateDto.EstimatedDays;
             quote.ShopNotes = updateDto.ShopNotes;
+            // [Fix #5] Reset ExpiredAt — giá mới, thời hạn chấp nhận cũng phải tính lại
+            quote.ExpiredAt = DateTime.UtcNow.AddDays(_commissionSettings.QuoteValidityDays);
 
             await _unitOfWork.CommissionQuotes.UpdateAsync(quote);
             await _unitOfWork.CommitAsync();

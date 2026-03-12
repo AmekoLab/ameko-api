@@ -12,13 +12,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         // Quản lý Template của Shop
         Task<IEnumerable<AssemblyStepTemplateResponse>> GetTemplatesByShopIdAsync(Guid shopId);
         Task<AssemblyStepTemplateResponse> CreateTemplateAsync(Guid shopId, SaveAssemblyStepTemplateRequest request);
-        Task<AssemblyStepTemplateResponse> UpdateTemplateAsync(Guid templateId, SaveAssemblyStepTemplateRequest request);
-        Task DeleteTemplateAsync(Guid templateId); 
+        Task<AssemblyStepTemplateResponse> UpdateTemplateAsync(Guid templateId, Guid shopId, SaveAssemblyStepTemplateRequest request);
+        Task DeleteTemplateAsync(Guid templateId, Guid shopId);
 
         // Quản lý Tiến trình (Tracking Logs)
-        Task<IEnumerable<AssemblyProgressLogResponse>> GetTrackingLogsAsync(Guid orderItemId);
-        Task<AssemblyProgressLogResponse> UpdateProgressLogAsync(Guid progressLogId, UpdateAssemblyProgressRequest request);
-        Task<AssemblyProgressLogResponse> AddAdhocStepAsync(Guid orderItemId, AddAdhocStepRequest request);
+        Task<IEnumerable<AssemblyProgressLogResponse>> GetTrackingLogsAsync(Guid orderItemId, Guid requestingUserId);
+        Task<AssemblyProgressLogResponse> UpdateProgressLogAsync(Guid progressLogId, Guid shopId, UpdateAssemblyProgressRequest request);
+        Task<AssemblyProgressLogResponse> AddAdhocStepAsync(Guid orderItemId, Guid shopId, AddAdhocStepRequest request);
 
         // Hàm gọi nội bộ (Trigger)
         Task GenerateTrackingLogsForOrderItemAsync(Guid orderItemId, Guid shopId);

@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Part;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
@@ -97,22 +97,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // [FIX] Map response and manually assign Specifications to ensure it is returned
             var response = _mapper.Map<PartResponse>(entity);
             response.Specifications = entity.Specifications;
-            
-            // [DEBUG] Append debug info if spec is missing/present (Optional, remove later)
-            if (string.IsNullOrEmpty(response.Specifications))
-            {
-                // This means entity.Specifications was null/empty even after logic
-                // Implies request.Specifications was null/empty AND fallback logic didn't run or produced emptiness
-                // response.Description += " [DEBUG: Spec is NULL]";
-            }
 
             return response;
         }
 
-        public async Task UpdateAsync(Guid id, CreateUpdatePartRequest request)
+        public async Task UpdateAsync(Guid userId, Guid id, CreateUpdatePartRequest request)
         {
             var entity = await _unitOfWork.Models.GetByIdAsync(id);
             if (entity == null) throw new KeyNotFoundException("Product not found");
+
+            // [Fix #2] Ownership check — chỉ Shop chủ sở mới được sửa
+            var shopId = await GetShopIdFromUserId(userId);
+            if (entity.ShopId != shopId)
+                throw new UnauthorizedAccessException("You do not have permission to update this product.");
+
             if (!string.IsNullOrEmpty(request.Name) && request.Name != entity.Name)
             {
                 var newSlug = GenerateSlug(request.Name);
@@ -124,7 +122,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 entity.Slug = newSlug;
             }
 
+            // [Fix #4] Lưu slug đã generate trước khi mapper chạy để tránh bị ghi đè
+            var preservedSlug = entity.Slug;
             _mapper.Map(request, entity);
+            entity.Slug = preservedSlug; // Restore slug sau mapper
 
             // [FIX] Cập nhật thủ công để đảm bảo Specifications được lưu nếu người dùng có gửi lên
             if (!string.IsNullOrEmpty(request.Specifications))
@@ -133,31 +134,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
             
             // Logic Fallback: Chỉ tự động tạo Specifications từ số lượng nếu trong DB vẫn trống
-            // (Nghĩa là người dùng không gửi Specifications lên)
             if (string.IsNullOrEmpty(entity.Specifications) && 
                 ((request.RecipeSwitchCount.HasValue && request.RecipeSwitchCount > 0) ||
                 (request.RecipeStabilizerCount.HasValue && request.RecipeStabilizerCount > 0)))
             {
                 var recipeDict = new Dictionary<string, int>();
-
                 if (request.RecipeSwitchCount.HasValue && request.RecipeSwitchCount > 0)
-                {
                     recipeDict.Add("switch", request.RecipeSwitchCount.Value);
-                }
-
                 if (request.RecipeStabilizerCount.HasValue && request.RecipeStabilizerCount > 0)
-                {
                     recipeDict.Add("stabilizer", request.RecipeStabilizerCount.Value);
-                }
-
-                var specData = new
-                {
-                    recipe = recipeDict
-                };
-
-                entity.Specifications = JsonSerializer.Serialize(specData);
+                entity.Specifications = JsonSerializer.Serialize(new { recipe = recipeDict });
             }
-            // ---------------------------------------------------------------------
+
             if (request.ThumbnailImage != null)
             {
                 entity.ThumbnailURL = await _storage.UploadAsync(
@@ -177,16 +165,41 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
         }
 
-        public async Task DeleteAsync(Guid id)
+        public async Task DeleteAsync(Guid userId, Guid id)
         {
+            var entity = await _unitOfWork.Models.GetByIdAsync(id);
+            if (entity == null) throw new KeyNotFoundException("Product not found");
+
+            // [Fix #2] Ownership check — chỉ Shop chủ sở mới được xóa
+            var shopId = await GetShopIdFromUserId(userId);
+            if (entity.ShopId != shopId)
+                throw new UnauthorizedAccessException("You do not have permission to delete this product.");
+
+            // [Fix #3] Không cho xóa nếu part đang có trong order active (InCart/Pending)
+            bool isInActiveOrder = await _unitOfWork.Models.IsPartInActiveOrderAsync(id);
+            if (isInActiveOrder)
+                throw new InvalidOperationException("Cannot delete this product because it is currently in an active order or cart. Please wait until the order is completed or cancelled.");
+
             await _unitOfWork.Models.DeleteAsync(id);
             await _unitOfWork.CommitAsync();
         }
 
         private string GenerateSlug(string name)
         {
-            var slug = name.ToLower().Trim().Replace(" ", "-");
-            return $"{slug}-{Guid.NewGuid().ToString().Substring(0, 6)}";
+            // [Fix #6] Normalize Unicode (tiếng Việt) sang ASCII trước khi tạo slug
+            var normalized = name.Normalize(System.Text.NormalizationForm.FormD);
+            var asciiChars = normalized
+                .Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)
+                            != System.Globalization.UnicodeCategory.NonSpacingMark)
+                .ToArray();
+            var slug = new string(asciiChars)
+                .ToLower()
+                .Trim()
+                .Replace(" ", "-");
+            // Xóa ký tự đặc biệt (giữ lại letters, digits, dấu gạch ngang)
+            slug = System.Text.RegularExpressions.Regex.Replace(slug, @"[^a-z0-9\-]", "");
+            slug = System.Text.RegularExpressions.Regex.Replace(slug, @"-+", "-").Trim('-');
+            return $"{slug}-{Guid.NewGuid().ToString()[..6]}";
         }
 
         private async Task<Guid> GetShopIdFromUserId(Guid userId)

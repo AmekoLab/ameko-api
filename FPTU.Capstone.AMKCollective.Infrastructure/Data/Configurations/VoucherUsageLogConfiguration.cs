@@ -15,6 +15,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .IsRequired()
                 .HasMaxLength(50);
 
+            builder.Property(vul => vul.OrderId)
+                .IsRequired();
+
+            builder.Property(vul => vul.DiscountApplied)
+                .HasPrecision(18, 2)
+                .IsRequired();
+
             // Relationships
             builder.HasOne(vul => vul.User)
                 .WithMany(u => u.VoucherUsageLogs)
@@ -28,3 +35,4 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
         }
     }
 }
+

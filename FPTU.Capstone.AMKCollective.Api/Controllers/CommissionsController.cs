@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
+using FPTU.Capstone.AMKCollective.Api.Controllers;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Commission;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -36,12 +36,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
             var requestId = await _commissionService.CreateRequestAsync(userId, request);
 
-            return Ok(new
-            {
-                Success = true,
-                Message = "Request created successfully",
-                Data = requestId
-            });
+            return SuccessResponse(new { RequestId = requestId }, "Request created successfully");
         }
         /// <summary>
         /// Retrieves a list of all commission requests created by the currently logged-in user.
@@ -53,7 +48,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             var userId = GetCurrentUserId();
             var requests = await _commissionService.GetUserRequestsAsync(userId);
-            return Ok(new { Success = true, Data = requests });
+            return SuccessResponse(requests, "Requests retrieved successfully");
         }
         /// <summary>
         /// Retrieves the details of a specific commission request.
@@ -68,9 +63,9 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             var userId = GetCurrentUserId();
             var request = await _commissionService.GetRequestDetailAsync(id, userId);
-            if (request == null) return NotFound(new { Success = false, Message = "Request not found" });
+            if (request == null) return NotFoundResponse<object>("Request not found");
 
-            return Ok(new { Success = true, Data = request });
+            return SuccessResponse(request, "Request retrieved successfully");
         }
         /// <summary>
         /// Accepts a specific quote submitted by a shop. 
@@ -87,16 +82,10 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
             if (!result.Success)
             {
-                return BadRequest(new { Success = false, Message = result.ErrorMessage });
+                return ErrorResponse<object>(result.ErrorMessage);
             }
 
-            // Trả về OrderId để FE điều hướng người dùng sang trang Thanh toán (Checkout)
-            return Ok(new
-            {
-                Success = true,
-                Message = "Quotation finalized successfully. Redirecting to the cart...",
-                OrderId = result.OrderId
-            });
+            return SuccessResponse(new { OrderId = result.OrderId }, "Quotation finalized successfully. Redirecting to the cart...");
         }
         /// <summary>
         /// Cancels a commission request.
@@ -111,9 +100,9 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             var userId = GetCurrentUserId();
             var result = await _commissionService.CancelRequestAsync(userId, requestId);
 
-            if (!result.Success) return BadRequest(new { Success = false, Message = result.ErrorMessage });
+            if (!result.Success) return ErrorResponse<object>(result.ErrorMessage);
 
-            return Ok(new { Success = true, Message = "The request has been successfully canceled." });
+            return SuccessResponse<object>("The request has been successfully canceled.");
         }
 
         /// <summary>
@@ -126,9 +115,9 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             var userId = GetCurrentUserId();
             var result = await _commissionService.PublishToPoolAsync(userId, requestId);
 
-            if (!result.Success) return BadRequest(new { Success = false, Message = result.ErrorMessage });
+            if (!result.Success) return ErrorResponse<object>(result.ErrorMessage);
 
-            return Ok(new { Success = true, Message = "Successfully published to the public pool." });
+            return SuccessResponse<object>("Successfully published to the public pool.");
         }
         // ==========================================
         // SHOP
@@ -143,7 +132,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         public async Task<IActionResult> GetOpenPoolRequests()
         {
             var requests = await _commissionService.GetOpenPoolRequestsAsync();
-            return Ok(new { Success = true, Data = requests });
+            return SuccessResponse(requests, "Open pool requests retrieved successfully");
         }
         /// <summary>
         /// Submits a new quotation (bid) for a specific commission request from the public pool or targeted list.
@@ -162,10 +151,10 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
             if (!result.Success)
             {
-                return BadRequest(new { Success = false, Message = result.ErrorMessage });
+                return ErrorResponse<object>(result.ErrorMessage);
             }
 
-            return Ok(new { Success = true, Message = "Quotation submitted successfully." });
+            return SuccessResponse<object>("Quotation submitted successfully.");
         }
         /// <summary>
         /// Updates an existing quotation.
@@ -181,9 +170,9 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             var shopUserId = GetCurrentUserId();
             var result = await _commissionService.UpdateQuoteAsync(shopUserId, quoteId, request);
 
-            if (!result.Success) return BadRequest(new { Success = false, Message = result.ErrorMessage });
+            if (!result.Success) return ErrorResponse<object>(result.ErrorMessage);
 
-            return Ok(new { Success = true, Message = "Quotation updated successfully." });
+            return SuccessResponse<object>("Quotation updated successfully.");
         }
         /// <summary>
         /// Revokes (withdraws) a quotation previously submitted by the shop.
@@ -198,9 +187,9 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             var shopUserId = GetCurrentUserId();
             var result = await _commissionService.RevokeQuoteAsync(shopUserId, quoteId);
 
-            if (!result.Success) return BadRequest(new { Success = false, Message = result.ErrorMessage });
+            if (!result.Success) return ErrorResponse<object>(result.ErrorMessage);
 
-            return Ok(new { Success = true, Message = "Quotation withdrawn successfully." });
+            return SuccessResponse<object>("Quotation withdrawn successfully.");
         }
         /// <summary>
         /// Retrieves a list of commission requests that were specifically targeted (sent directly) to the logged-in shop by customers.
@@ -212,7 +201,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             var shopUserId = GetCurrentUserId();
             var requests = await _commissionService.GetShopTargetedRequestsAsync(shopUserId);
-            return Ok(new { Success = true, Data = requests });
+            return SuccessResponse(requests, "Targeted requests retrieved successfully");
         }
         /// <summary>
         /// Retrieves the history of all quotations submitted by the logged-in shop.
@@ -225,7 +214,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             var shopUserId = GetCurrentUserId();
             var quotes = await _commissionService.GetShopQuotesAsync(shopUserId);
-            return Ok(new { Success = true, Data = quotes });
+            return SuccessResponse(quotes, "Shop quotes retrieved successfully");
         }
 
         /// <summary>
@@ -238,9 +227,9 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             var shopUserId = GetCurrentUserId();
             var result = await _commissionService.RejectTargetedRequestAsync(shopUserId, requestId);
 
-            if (!result.Success) return BadRequest(new { Success = false, Message = result.ErrorMessage });
+            if (!result.Success) return ErrorResponse<object>(result.ErrorMessage);
 
-            return Ok(new { Success = true, Message = "Successfully rejected the targeted request." });
+            return SuccessResponse<object>("Successfully rejected the targeted request.");
         }
     }
 }

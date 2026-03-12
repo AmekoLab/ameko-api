@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Builder;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
@@ -327,7 +327,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // 4. Tính lại tổng tiền giỏ hàng (Sau khi đã update giá các item)
             result.SubTotal = result.OrderItems.Sum(i => i.TotalPrice);
             result.DiscountAmount = cartOrder.DiscountAmount;
-            result.TotalAmount = Math.Max(0, result.SubTotal - result.DiscountAmount);
+            result.TotalAmount = Math.Max(0, result.SubTotal + result.ShippingFee - result.DiscountAmount);
 
             if (isPriceChanged || cartOrder.SubTotal != result.SubTotal)
             {
@@ -547,7 +547,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     {
                         shopVoucherError = "Voucher does not exist.";
                     }
-                    else if (shopVoucher.Status != VoucherStatus.Active || shopVoucher.StartDate > DateTime.Now || shopVoucher.EndDate < DateTime.Now)
+                    else if (shopVoucher.Status != VoucherStatus.Active || shopVoucher.StartDate > DateTime.UtcNow || shopVoucher.EndDate < DateTime.UtcNow)
                     {
                         shopVoucherError = "Voucher is expired or not yet active.";
                     }
@@ -615,7 +615,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 {
                     systemVoucherError = "This is not a system voucher.";
                 }
-                else if (sysVoucher.Status != VoucherStatus.Active || sysVoucher.StartDate > DateTime.Now || sysVoucher.EndDate < DateTime.Now)
+                else if (sysVoucher.Status != VoucherStatus.Active || sysVoucher.StartDate > DateTime.UtcNow || sysVoucher.EndDate < DateTime.UtcNow)
                 {
                     systemVoucherError = "System voucher is expired or not yet active.";
                 }
@@ -686,7 +686,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 var voucherCheck = await _unitOfWork.Vouchers.GetByIdAsync(av.VoucherId);
                 if (voucherCheck != null)
                 {
-                    if ((voucherCheck.UsedCount - 1) >= voucherCheck.UsageLimit)
+                    // [P2-4] Sửa công thức: Apply không tăng UsedCount nữa, nên check thẳng UsedCount >= UsageLimit
+                    if (voucherCheck.UsedCount >= voucherCheck.UsageLimit)
                         throw new InvalidOperationException($"The voucher {voucherCheck.Code} has reached its usage limit while in your cart.");
 
                     if (DateTime.UtcNow > voucherCheck.EndDate)
@@ -839,8 +840,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     // BƯỚC 3: KẾT TOÁN VOUCHER - BÀI TOÁN PHÂN BỔ (PRORATION)
                     // =====================================================================
 
-                    var systemVouchers = activeVouchers.Where(v => v.Type == VoucherType.Compensation).ToList();
-                    var shopVouchers = activeVouchers.Where(v => v.Type == VoucherType.Promotion || v.Type == VoucherType.Negotiation).ToList();
+                    // [P3-2] Phân loại đúng: mã Sàn = Compensation OR (Promotion của Admin, CreatorId == null)
+                    var systemVouchers = activeVouchers.Where(v =>
+                        v.Type == VoucherType.Compensation ||
+                        (v.Type == VoucherType.Promotion && v.CreatorId == null)
+                    ).ToList();
+                    // Mã Shop = có CreatorId (Shop tự tạo)
+                    var shopVouchers = activeVouchers.Where(v =>
+                        v.CreatorId != null &&
+                        (v.Type == VoucherType.Promotion || v.Type == VoucherType.Negotiation)
+                    ).ToList();
 
                     // 3.0 KIỂM TRA LẠI ĐIỀU KIỆN MÃ HỆ THỐNG TRÊN TỔNG CÁC MÓN ĐÃ CHỌN
                     foreach (var sysVoucher in systemVouchers)
@@ -927,22 +936,36 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         .SelectMany(o => o.OrderVouchers.Select(ov => ov.VoucherId))
                         .ToHashSet();
 
-                    // 4.2 Xử lý các voucher nháp đang nằm trong giỏ hàng
-                    var draftCartVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(cartOrder.Id);
-                    foreach (var draftVoucher in draftCartVouchers)
+                    // [P2-3 + P3-1] Sau khi tạo order thành công:
+                    // Bước A: Tăng UsedCount atomic cho từng voucher được thanh toán
+                    // Bước B: Ghi VoucherUsageLog cho mỗi order-voucher pair
+                    var usedVoucherIds = new HashSet<Guid>();
+                    foreach (var checkoutOrder in orderGroup.Orders)
                     {
-                        // Nếu voucher trong giỏ KHÔNG nằm trong danh sách được thanh toán (Ví dụ: Khách bỏ tick đồ Shop 2)
-                        if (!checkedOutVoucherIds.Contains(draftVoucher.VoucherId))
+                        foreach (var ov in checkoutOrder.OrderVouchers)
                         {
-                            // Hoàn trả lại lượt sử dụng (UsedCount)
-                            var unusedVoucher = await _unitOfWork.Vouchers.GetByIdAsync(draftVoucher.VoucherId);
-                            if (unusedVoucher != null && unusedVoucher.UsedCount > 0)
+                            // Tăng UsedCount một lần duy nhất per voucher (dùng HashSet tránh tăng 2 lần khi multi-shop)
+                            if (!usedVoucherIds.Contains(ov.VoucherId))
                             {
-                                unusedVoucher.UsedCount--;
-                                _unitOfWork.Vouchers.Update(unusedVoucher);
+                                await _unitOfWork.Vouchers.TryIncrementVoucherUsageAsync(ov.VoucherId);
+                                usedVoucherIds.Add(ov.VoucherId);
                             }
+
+                            // Ghi VoucherUsageLog
+                            await _unitOfWork.VoucherUsageLogs.AddAsync(new VoucherUsageLog
+                            {
+                                UserId = userId,
+                                VoucherId = ov.VoucherId,
+                                OrderId = checkoutOrder.Id,
+                                Code = ov.VoucherCode,
+                                DiscountApplied = ov.DiscountApplied,
+                                CreatedAt = DateTime.UtcNow
+                            });
                         }
                     }
+
+                    // Draft cart vouchers không nằm trong danh sách checkout → không cần hoàn UsedCount
+                    // (vì Apply không tăng UsedCount nữa — fix P2-1)
 
                     // 4.3 Bây giờ mới an toàn Xóa OrderVouchers nháp của Giỏ hàng (Cart)
                     await _unitOfWork.OrderVouchers.DeleteAllByOrderIdAsync(cartOrder.Id);
@@ -963,7 +986,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
                         cartOrder.SubTotal = cartOrder.TotalAmount;
                         cartOrder.DiscountAmount = 0;
-                        cartOrder.VoucherId = null;
                         await _unitOfWork.Orders.UpdateOrderAsync(cartOrder);
                     }
 
@@ -1099,15 +1121,22 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 throw new InvalidOperationException("Cannot cancel order at this stage.");
             }
 
-            // 2. Check Spam: Hủy >= 4 đơn/tuần
-            var lastWeek = DateTime.UtcNow.AddDays(-_orderSettings.CancellationSpamCheckDays);
-            int cancelledCount = await _unitOfWork.OrderIssues.CountUserIssuesAsync(
-                userId,
-                OrderIssueStatus.AutoCancelled, 
-                lastWeek
-            );
+            // 2. [Fix #2] Chặn duplicate: đơn đã có issue InProgress/Pending rồi
+            bool hasActiveIssue = await _unitOfWork.OrderIssues.HasActiveIssueForOrderAsync(request.OrderId);
+            if (hasActiveIssue)
+                throw new InvalidOperationException("A cancellation request for this order is already in progress. Please wait for it to be processed.");
 
-            bool isSpamRequest = cancelledCount >= _orderSettings.MaxCancellationsPerPeriod;
+            // 3. [Fix #1] Spam check chuẩn e-commerce: đếm tất cả request hủy đã xử lý (Accepted, AutoCancelled) + đang chờ (InProgress)
+            // Không tính Rejected vì đấy là đơn không bị hủy
+            var lastPeriod = DateTime.UtcNow.AddDays(-_orderSettings.CancellationSpamCheckDays);
+            var spamStatuses = new[]
+            {
+                OrderIssueStatus.ShopAccepted,
+                OrderIssueStatus.AutoCancelled,
+                OrderIssueStatus.InProgress
+            };
+            int cancelAttempts = await _unitOfWork.OrderIssues.CountUserCancelAttemptsAsync(userId, spamStatuses, lastPeriod);
+            bool isSpamRequest = cancelAttempts >= _orderSettings.MaxCancellationsPerPeriod;
 
             // 3. Create Entity OrderIssue
             var issue = new OrderIssue
@@ -1210,6 +1239,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 case OrderIssueStatus.AutoCancelled:
 
                     issue.Status = request.Decision;
+
+                    // [Fix #5] Snapshot trạng thái TRƯỚC khi đổi sang Cancelled
+                    bool isCompleted = order.OrderStatus == OrderStatus.Completed;
+                    bool isOrderPaid = order.PaymentStatus == PaymentStatus.Paid;
+
                     order.OrderStatus = OrderStatus.Cancelled;
                     order.CancelReason = request.Decision == OrderIssueStatus.AutoCancelled
                                          ? "Request timeout 24h (Auto-Refund)"
@@ -1232,7 +1266,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     // --- 3.2 XỬ LÝ VOUCHER & TẠO VOUCHER REFUND (BAO GỒM PHẠT SHOP) ---
                     // Chắc chắn đơn đã Paid nên không cần check if (PaymentStatus == Paid) nữa, 
                     // nhưng muốn an toàn thì vẫn giữ.
-                    if (order.PaymentStatus == PaymentStatus.Paid)
+                    if (isOrderPaid)
                     {
                         var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(order.Id);
                         decimal oldCompensationUsed = 0;
@@ -1280,8 +1314,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         }
 
                         // Bước D: Trừ tiền ví Shop 
-                        bool isCompleted = order.OrderStatus == OrderStatus.Completed;
-
                         // D1: Rút lại tiền hàng
                         await _walletService.DeductFundsForRefundAsync(
                             realActionUserId,

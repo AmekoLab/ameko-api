@@ -20,6 +20,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return await _context.OrderIssues
                 .Include(oi => oi.Logs)
                 .Include(oi => oi.Order)
+                    .ThenInclude(o => o.Shop) // [Fix #4] Thêm ThenInclude Shop để security check không bị null
                 .Include(oi => oi.User)
                 .FirstOrDefaultAsync(oi => oi.Id == id && !oi.IsDeleted, token);
         }
@@ -65,9 +66,31 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                                  x.CreatedAt >= fromDate);
         }
 
+        // [Fix #1] Đếm tất cả attempt hủy theo nhiều status — chuẩn e-commerce
+        public async Task<int> CountUserCancelAttemptsAsync(Guid userId, IEnumerable<OrderIssueStatus> statuses, DateTime fromDate)
+        {
+            var statusList = statuses.ToList();
+            return await _context.OrderIssues
+                .CountAsync(x => x.UserId == userId &&
+                                 statusList.Contains(x.Status) &&
+                                 x.Type == OrderIssueType.CancelRequest &&
+                                 x.CreatedAt >= fromDate);
+        }
+
+        // [Fix #2] Kiểm tra order đã có issue active chưa — tránh duplicate request
+        public async Task<bool> HasActiveIssueForOrderAsync(Guid orderId)
+        {
+            return await _context.OrderIssues
+                .AnyAsync(x => x.OrderId == orderId &&
+                               (x.Status == OrderIssueStatus.InProgress || x.Status == OrderIssueStatus.Pending) &&
+                               !x.IsDeleted);
+        }
+
         public async Task<List<OrderIssue>> GetExpiredIssuesAsync(DateTime threshold)
         {
             return await _context.OrderIssues
+                .Include(x => x.Order)  // [Fix #3] Worker cần order.ShopId để xử lý
+                    .ThenInclude(o => o.Shop)
                 .Where(x => x.Status == OrderIssueStatus.InProgress && x.CreatedAt <= threshold)
                 .ToListAsync();
         }

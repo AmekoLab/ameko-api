@@ -44,7 +44,6 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         // Navigation Properties
         public virtual User? Creator { get; set; }
         public virtual User? TargetUser { get; set; }
-        public virtual ICollection<Order> Orders { get; set; } = new List<Order>();
         public virtual ICollection<VoucherUsageLog> VoucherUsageLogs { get; set; } = new List<VoucherUsageLog>();
         public virtual ICollection<OrderVoucher> OrderVouchers { get; set; } = new List<OrderVoucher>();
     }

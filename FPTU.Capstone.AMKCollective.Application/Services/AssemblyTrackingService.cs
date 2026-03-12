@@ -43,13 +43,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<AssemblyStepTemplateResponse>(template);
         }
 
-        public async Task<AssemblyStepTemplateResponse> UpdateTemplateAsync(Guid templateId, SaveAssemblyStepTemplateRequest request)
+        public async Task<AssemblyStepTemplateResponse> UpdateTemplateAsync(Guid templateId, Guid shopId, SaveAssemblyStepTemplateRequest request)
         {
-            // Do entity của bạn dùng ID là int, mình giả định lấy bằng int (Nếu bạn đã sửa BaseEntity thành Guid thì code này vẫn chạy đúng)
-            var template = await _unitOfWork.AssemblyStepTemplates.GetByIdAsync(templateId);
+            var template = await _unitOfWork.AssemblyStepTemplates.GetByIdAsync(templateId)
+                ?? throw new KeyNotFoundException("Không tìm thấy mẫu quy trình này.");
 
-            if (template == null)
-                throw new KeyNotFoundException("Không tìm thấy mẫu quy trình này.");
+            if (template.ShopId != shopId)
+                throw new UnauthorizedAccessException("You do not have permission to modify this template.");
 
             _mapper.Map(request, template);
 
@@ -59,12 +59,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<AssemblyStepTemplateResponse>(template);
         }
 
-        public async Task DeleteTemplateAsync(Guid templateId)
+        public async Task DeleteTemplateAsync(Guid templateId, Guid shopId)
         {
-            var template = await _unitOfWork.AssemblyStepTemplates.GetByIdAsync(templateId);
+            var template = await _unitOfWork.AssemblyStepTemplates.GetByIdAsync(templateId)
+                ?? throw new KeyNotFoundException("Không tìm thấy mẫu quy trình này.");
 
-            if (template == null)
-                throw new KeyNotFoundException("Không tìm thấy mẫu quy trình này.");
+            if (template.ShopId != shopId)
+                throw new UnauthorizedAccessException("You do not have permission to delete this template.");
 
             _unitOfWork.AssemblyStepTemplates.Delete(template);
             await _unitOfWork.CommitAsync();
@@ -74,18 +75,38 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         #region Tracking Logs Management
 
-        public async Task<IEnumerable<AssemblyProgressLogResponse>> GetTrackingLogsAsync(Guid orderItemId)
+        public async Task<IEnumerable<AssemblyProgressLogResponse>> GetTrackingLogsAsync(Guid orderItemId, Guid requestingUserId)
         {
+            var orderItem = await _unitOfWork.Orders.GetOrderItemByIdAsync(orderItemId)
+                ?? throw new KeyNotFoundException("Order item not found.");
+
+            var order = await _unitOfWork.Orders.GetByIdAsync(orderItem.OrderId)
+                ?? throw new KeyNotFoundException("Order not found.");
+
+            bool isCustomer = order.CustomerId == requestingUserId;
+            bool isShopOwner = order.ShopId.HasValue
+                && await _unitOfWork.Shops.IsShopOwnerAsync(order.ShopId.Value, requestingUserId);
+
+            if (!isCustomer && !isShopOwner)
+                throw new UnauthorizedAccessException("You do not have permission to view these tracking logs.");
+
             var logs = await _unitOfWork.AssemblyProgressLogs.GetLogsByOrderItemIdAsync(orderItemId);
             return _mapper.Map<IEnumerable<AssemblyProgressLogResponse>>(logs);
         }
 
-        public async Task<AssemblyProgressLogResponse> UpdateProgressLogAsync(Guid progressLogId, UpdateAssemblyProgressRequest request)
+        public async Task<AssemblyProgressLogResponse> UpdateProgressLogAsync(Guid progressLogId, Guid shopId, UpdateAssemblyProgressRequest request)
         {
-            var log = await _unitOfWork.AssemblyProgressLogs.GetByIdAsync(progressLogId);
+            var log = await _unitOfWork.AssemblyProgressLogs.GetByIdAsync(progressLogId)
+                ?? throw new KeyNotFoundException("Không tìm thấy bước tiến trình này.");
 
-            if (log == null)
-                throw new KeyNotFoundException("Không tìm thấy bước tiến trình này.");
+            var orderItem = await _unitOfWork.Orders.GetOrderItemByIdAsync(log.OrderItemId)
+                ?? throw new KeyNotFoundException("Order item not found.");
+
+            var order = await _unitOfWork.Orders.GetByIdAsync(orderItem.OrderId)
+                ?? throw new KeyNotFoundException("Order not found.");
+
+            if (order.ShopId != shopId)
+                throw new UnauthorizedAccessException("You do not own the shop handling this order.");
 
             log.Status = request.Status;
             log.Note = request.Note;
@@ -109,8 +130,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<AssemblyProgressLogResponse>(log);
         }
 
-        public async Task<AssemblyProgressLogResponse> AddAdhocStepAsync(Guid orderItemId, AddAdhocStepRequest request)
+        public async Task<AssemblyProgressLogResponse> AddAdhocStepAsync(Guid orderItemId, Guid shopId, AddAdhocStepRequest request)
         {
+            var orderItem = await _unitOfWork.Orders.GetOrderItemByIdAsync(orderItemId)
+                ?? throw new KeyNotFoundException("Order item not found.");
+
+            var order = await _unitOfWork.Orders.GetByIdAsync(orderItem.OrderId)
+                ?? throw new KeyNotFoundException("Order not found.");
+
+            if (order.ShopId != shopId)
+                throw new UnauthorizedAccessException("You do not own the shop handling this order.");
+
             var log = new AssemblyProgressLog
             {
                 OrderItemId = orderItemId,

@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
+using FPTU.Capstone.AMKCollective.Api.Controllers;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Builder;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
@@ -38,6 +38,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// <param name="request">Contains the `BaseKitId`.</param>
         /// <returns>The Session ID and the configuration for the FIRST step.</returns>
         [HttpPost("start")]
+        [Authorize] // [Fix #1] Builder session chỉ tạo được khi đã đăng nhập
         [SwaggerOperation(
             Summary = "Start Builder Session",
             Description = "Initiates a new custom keyboard building session for a specific Base Kit. Returns the first step of the building process.")]
@@ -79,6 +80,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// <param name="request">SessionId, Current StepName, and Selected PartId.</param>
         /// <returns>The Next Step configuration, updated Preview Image URL, and updated Total Price.</returns>
         [HttpPost("select")]
+        [Authorize] // [Fix #1] Chỉ user đã login mới được chọn linh kiện
         [SwaggerOperation(
     Summary = "Select Part for Builder",
     Description = "Records a user's choice for a specific component in the builder session and returns the next step configuration."
@@ -114,6 +116,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Used by the Shop Owner dashboard to see what parts are linked to this Kit.
         /// </remarks>
         [HttpGet("config/{baseKitId}")]
+        [Authorize] // [Fix #1] Chỉ Admin/Shop mới cần xem config — yêu cầu đăng nhập tối thiểu
         [SwaggerOperation(
     Summary = "Get Builder Config",
     Description = "Retrieves the initial configuration and available slots for a specific Base Kit."
@@ -239,6 +242,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// </ul>
         /// </remarks>
         [HttpPost("options")]
+        [Authorize] // [Fix #1] Chỉ Admin/Shop mới được tạo option
+        // TODO: [Authorize(Roles = "Admin")] — bật lại sau khi test xong
         [SwaggerOperation(
     Summary = "Create Kit Option",
     Description = "Define a new selectable option slot for a keyboard kit."
@@ -262,6 +267,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Delete a specific Option.
         /// </summary>
         [HttpDelete("options/{id}")]
+        [Authorize] // [Fix #1] Chỉ Admin/Shop mới được xóa option
+        // TODO: [Authorize(Roles = "Admin")] — bật lại sau khi test xong
         [SwaggerOperation(
     Summary = "Delete Kit Option",
     Description = "Removes a configuration option from a kit."
@@ -288,6 +295,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Useful for importing configuration from Excel/CSV.
         /// </remarks>
         [HttpPost("options/bulk")]
+        [Authorize] // [Fix #1] Chỉ Admin/Shop mới được bulk import
+        // TODO: [Authorize(Roles = "Admin")] — bật lại sau khi test xong
         [SwaggerOperation(
     Summary = "Bulk Create Options",
     Description = "Import multiple kit options at once."
@@ -321,6 +330,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// <b>Warning:</b> This deletes all links/options for the specified Kit. Use with caution.
         /// </remarks>
         [HttpDelete("config/{baseKitId}")]
+        [Authorize] // [Fix #1] Chỉ Admin mới được reset toàn bộ config kit
+        // TODO: [Authorize(Roles = "Admin")] — bật lại sau khi test xong
         [SwaggerOperation(
     Summary = "Reset Builder Config",
     Description = "Resets the configuration of a base kit to its default state."
@@ -356,6 +367,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// <param name="stepName">Optional: If provided, jumps to specific step view (if allowed).</param>
         /// <returns>The full state of the session.</returns>
         [HttpGet("session/{sessionId}")]
+        [Authorize] // [Fix #1] Chỉ user đã login mới được resume session
         [SwaggerOperation(
     Summary = "Resume Session",
     Description = "Retrieves the state of an existing builder session."
@@ -383,6 +395,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Also reverts the preview image and recalculates the price.
         /// </remarks>
         [HttpDelete("session/{sessionId}/part/{stepName}")]
+        [Authorize] // [Fix #1] Chỉ user đã login mới được xóa part khỏi session
         [SwaggerOperation(Summary = "Remove Part from Session")]
         [SwaggerResponse(200, "Part removed successfully", typeof(ApiResponse<BuilderStepResponse>))]
         [SwaggerResponse(404, "Session not found")]
@@ -411,6 +424,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Returns a history of unfinished builds so the user can choose to resume one.
         /// </remarks>
         [HttpGet("sessions")]
+        [Authorize] // [Fix #1] Chỉ user đã login mới xem được danh sách session của mình
         [SwaggerOperation(Summary = "Get User Sessions")]
         [SwaggerResponse(200, "List retrieved successfully", typeof(ApiResponse<List<BuilderSessionSummaryResponse>>))]
         public async Task<IActionResult> GetUserSessions()
@@ -505,18 +519,9 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             var result = await _service.ConvertSessionToCommissionAsync(userId, request);
 
             if (!result.Success)
-                return BadRequest(new ApiResponse<string>
-                {
-                    Success = false,
-                    Message = result.ErrorMessage
-                });
+                return ErrorResponse<string>(result.ErrorMessage); // [Fix #5] Dùng chuẩn BaseApiController
 
-            return Ok(new ApiResponse<Guid>
-            {
-                Success = true,
-                Message = "Your custom request has been successfully submitted to the shop for quotation.",
-                Data = result.CommissionRequestId.Value
-            });
+            return SuccessResponse(result.CommissionRequestId!.Value, "Your custom request has been successfully submitted to the shop for quotation."); // [Fix #5]
         }
     }
 }

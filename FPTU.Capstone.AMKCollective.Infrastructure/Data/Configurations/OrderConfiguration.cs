@@ -46,10 +46,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .HasForeignKey(o => o.OrderGroupId)
                 .OnDelete(DeleteBehavior.SetNull); 
 
-            builder.HasOne(o => o.Voucher)
-                .WithMany(v => v.Orders)
-                .HasForeignKey(o => o.VoucherId)
-                .OnDelete(DeleteBehavior.SetNull);
 
             builder.HasOne(o => o.Customer)
                 .WithMany(u => u.CustomerOrders)
