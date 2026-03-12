@@ -63,15 +63,15 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             Summary = "Get my withdrawals",
             Description = "Retrieves the history of all withdrawal requests made by the authenticated user."
         )]
-        [SwaggerResponse(200, "Successfully retrieved user withdrawals", typeof(List<WithdrawalRequestResponseDto>))]
+        [SwaggerResponse(200, "Successfully retrieved user withdrawals", typeof(PaginatedResult<WithdrawalRequestResponseDto>))]
         [SwaggerResponse(401, "Unauthorized access")]
         [SwaggerResponse(500, "Internal server error")]
-        public async Task<IActionResult> GetMyWithdrawals()
+        public async Task<IActionResult> GetMyWithdrawals([FromQuery] int pageIndex = 1, [FromQuery] int pageSize = 10)
         {
             try
             {
                 var userId = GetCurrentUserId();
-                var results = await _withdrawalService.GetUserWithdrawalsAsync(userId);
+                var results = await _withdrawalService.GetUserWithdrawalsAsync(userId, pageIndex, pageSize);
                 return SuccessResponse(results, "Retrieved user withdrawals successfully.");
             }
             catch (Exception ex)
@@ -89,16 +89,71 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             Summary = "Get pending withdrawals",
             Description = "Retrieves all withdrawal requests currently in the Pending status that require Admin review and processing. Admin role suggested."
         )]
-        [SwaggerResponse(200, "Successfully retrieved pending withdrawals", typeof(List<WithdrawalRequestResponseDto>))]
+        [SwaggerResponse(200, "Successfully retrieved pending withdrawals", typeof(PaginatedResult<WithdrawalRequestResponseDto>))]
         [SwaggerResponse(401, "Unauthorized access")]
         [SwaggerResponse(403, "Forbidden - Requires Admin role")]
         [SwaggerResponse(500, "Internal server error")]
-        public async Task<IActionResult> GetPendingWithdrawals()
+        public async Task<IActionResult> GetPendingWithdrawals([FromQuery] int pageIndex = 1, [FromQuery] int pageSize = 10)
         {
             try
             {
-                var results = await _withdrawalService.GetPendingWithdrawalsAsync();
+                var results = await _withdrawalService.GetPendingWithdrawalsAsync(pageIndex, pageSize);
                 return SuccessResponse(results, "Retrieved pending withdrawals successfully.");
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// [Admin] Retrieves all processed (Completed/Rejected) withdrawal requests.
+        /// </summary>
+        [HttpGet("processed")]
+        // [Authorize(Roles = "Admin")] // Uncomment if Role-based Auth is enabled
+        [SwaggerOperation(
+            Summary = "Get processed withdrawals",
+            Description = "Retrieves all withdrawal requests that have been either Completed or Rejected by an Admin. Results are ordered by most recently processed."
+        )]
+        [SwaggerResponse(200, "Successfully retrieved processed withdrawals", typeof(PaginatedResult<WithdrawalRequestResponseDto>))]
+        [SwaggerResponse(401, "Unauthorized access")]
+        [SwaggerResponse(403, "Forbidden - Requires Admin role")]
+        [SwaggerResponse(500, "Internal server error")]
+        public async Task<IActionResult> GetProcessedWithdrawals([FromQuery] int pageIndex = 1, [FromQuery] int pageSize = 10)
+        {
+            try
+            {
+                var results = await _withdrawalService.GetProcessedWithdrawalsAsync(pageIndex, pageSize);
+                return SuccessResponse(results, "Retrieved processed withdrawals successfully.");
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// [User/Admin/Shop] Retrieves details of a specific withdrawal request by ID.
+        /// </summary>
+        [HttpGet("{id}")]
+        [SwaggerOperation(
+            Summary = "Get withdrawal details",
+            Description = "Retrieves the full details of a specific withdrawal request."
+        )]
+        [SwaggerResponse(200, "Successfully retrieved withdrawal details", typeof(WithdrawalRequestResponseDto))]
+        [SwaggerResponse(401, "Unauthorized access")]
+        [SwaggerResponse(404, "Withdrawal request not found")]
+        [SwaggerResponse(500, "Internal server error")]
+        public async Task<IActionResult> GetWithdrawalById(Guid id)
+        {
+            try
+            {
+                var result = await _withdrawalService.GetWithdrawalByIdAsync(id);
+                return SuccessResponse(result, "Retrieved withdrawal details successfully.");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<object>(ex.Message);
             }
             catch (Exception ex)
             {
