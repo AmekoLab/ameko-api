@@ -1,15 +1,13 @@
 ﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
 using FPTU.Capstone.AMKCollective.Application.DTOs.AssemblyTracking;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
-using FPTU.Capstone.AMKCollective.Application.Services;
-using FPTU.Capstone.AMKCollective.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("api/v1/assembly-tracking")]
     [ApiController]
     public class AssemblyTrackingController : BaseApiController
     {
@@ -56,6 +54,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Retrieves all predefined assembly step templates for a specific shop.
         /// </summary>
         [HttpGet("templates/shop")]
+        [Authorize]
         public async Task<IActionResult> GetTemplatesByShop()
         {
             try
@@ -77,6 +76,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Creates a new default assembly step template for a shop.
         /// </summary>
         [HttpPost("templates/shop")]
+        [Authorize]
         public async Task<IActionResult> CreateTemplate([FromBody] SaveAssemblyStepTemplateRequest request)
         {
             if (!ModelState.IsValid)
@@ -99,6 +99,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Updates an existing assembly step template.
         /// </summary>
         [HttpPut("templates/{templateId}")]
+        [Authorize]
         public async Task<IActionResult> UpdateTemplate(Guid templateId, [FromBody] SaveAssemblyStepTemplateRequest request)
         {
             if (!ModelState.IsValid)
@@ -106,12 +107,21 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
             try
             {
-                var template = await _trackingService.UpdateTemplateAsync(templateId, request);
+                var userId = GetCurrentUserId();
+                var shop = await _shopService.GetMyShopAsync(userId);
+                if (shop == null)
+                    return ErrorResponse<object>("This account does not own a shop.");
+
+                var template = await _trackingService.UpdateTemplateAsync(templateId, shop.Id, request);
                 return SuccessResponse(template, "Template updated successfully.");
             }
             catch (KeyNotFoundException ex)
             {
                 return NotFoundResponse<object>(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<object>(ex.Message);
             }
             catch (Exception ex)
             {
@@ -123,16 +133,26 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Deletes an assembly step template.
         /// </summary>
         [HttpDelete("templates/{templateId}")]
+        [Authorize]
         public async Task<IActionResult> DeleteTemplate(Guid templateId)
         {
             try
             {
-                await _trackingService.DeleteTemplateAsync(templateId);
+                var userId = GetCurrentUserId();
+                var shop = await _shopService.GetMyShopAsync(userId);
+                if (shop == null)
+                    return ErrorResponse<object>("This account does not own a shop.");
+
+                await _trackingService.DeleteTemplateAsync(templateId, shop.Id);
                 return SuccessResponse("Template deleted successfully.");
             }
             catch (KeyNotFoundException ex)
             {
                 return NotFoundResponse<object>(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<object>(ex.Message);
             }
             catch (Exception ex)
             {
@@ -148,12 +168,22 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Retrieves the entire assembly progress timeline for a specific order item.
         /// </summary>
         [HttpGet("logs/order-item/{orderItemId}")]
+        [Authorize]
         public async Task<IActionResult> GetTrackingLogs(Guid orderItemId)
         {
             try
             {
-                var logs = await _trackingService.GetTrackingLogsAsync(orderItemId);
+                var userId = GetCurrentUserId();
+                var logs = await _trackingService.GetTrackingLogsAsync(orderItemId, userId);
                 return SuccessResponse(logs, "Get tracking logs successfully.");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<object>(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<object>(ex.Message);
             }
             catch (Exception ex)
             {
@@ -165,6 +195,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Updates the status, note, and uploads a media file (image/video) for a specific assembly step.
         /// </summary>
         [HttpPut("logs/{progressLogId}")]
+        [Authorize]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> UpdateProgressLog(Guid progressLogId, [FromForm] UpdateAssemblyProgressRequest request)
         {
@@ -173,12 +204,21 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
             try
             {
-                var updatedLog = await _trackingService.UpdateProgressLogAsync(progressLogId, request);
+                var userId = GetCurrentUserId();
+                var shop = await _shopService.GetMyShopAsync(userId);
+                if (shop == null)
+                    return ErrorResponse<object>("This account does not own a shop.");
+
+                var updatedLog = await _trackingService.UpdateProgressLogAsync(progressLogId, shop.Id, request);
                 return SuccessResponse(updatedLog, "Progress log updated successfully.");
             }
             catch (KeyNotFoundException ex)
             {
                 return NotFoundResponse<object>(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<object>(ex.Message);
             }
             catch (Exception ex)
             {
@@ -190,6 +230,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Adds a spontaneous or extra assembly step (ad-hoc step).
         /// </summary>
         [HttpPost("logs/order-item/{orderItemId}/adhoc")]
+        [Authorize]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> AddAdhocStep(Guid orderItemId, [FromForm] AddAdhocStepRequest request)
         {
@@ -198,8 +239,21 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
             try
             {
-                var newLog = await _trackingService.AddAdhocStepAsync(orderItemId, request);
+                var userId = GetCurrentUserId();
+                var shop = await _shopService.GetMyShopAsync(userId);
+                if (shop == null)
+                    return ErrorResponse<object>("This account does not own a shop.");
+
+                var newLog = await _trackingService.AddAdhocStepAsync(orderItemId, shop.Id, request);
                 return SuccessResponse(newLog, "Adhoc step added successfully.");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<object>(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<object>(ex.Message);
             }
             catch (Exception ex)
             {

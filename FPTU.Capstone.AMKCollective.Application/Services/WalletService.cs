@@ -104,9 +104,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (wallet.Balance < totalDeduct)
             {
                 throw new InvalidOperationException($"Insufficient balance. You need {totalDeduct:N0} VND (including fees) to complete this transaction.");
-
             }
 
+            // [Fix] Kiểm tra mức rút tối thiểu
+            if (request.Amount < _walletSettings.MinimumWithdrawalAmount)
+            {
+                throw new InvalidOperationException($"Minimum withdrawal amount is {_walletSettings.MinimumWithdrawalAmount:N0} VND.");
+            }
 
             if (wallet.Balance - totalDeduct < _walletSettings.MinimumBalanceAfterWithdrawal)
             {
@@ -183,8 +187,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(shopId);
             if (wallet == null) return;
 
-            //wallet.HeldBalance += amount;
-            //_unitOfWork.Wallets.Update(wallet);
+            // [Fix] Idempotency: Kiểm tra đã ghi SalesPending cho orderId này chưa (tránh cộng tiền 2 lần)
+            var existing = (await _unitOfWork.Payments.GetByUserIdAsync(shopId))
+                .Any(p => p.RelatedOrderId == orderId && p.Type == PaymentType.SalesPending);
+            if (existing) return;
+
             await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, 0, amount);
             var log = new Payment
             {
@@ -515,9 +522,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (wallet == null) throw new KeyNotFoundException("Wallet not found.");
             if (string.IsNullOrEmpty(wallet.PinHash)) throw new InvalidOperationException("You have not set up a PIN yet.");
 
-            // 1. Tạo OTP ngẫu nhiên 6 số
-            var random = new Random();
-            string otp = random.Next(100000, 999999).ToString();
+            // 1. Tạo OTP ngẫu nhiên 6 số — [Fix] dùng RandomNumberGenerator thay new Random() (đảm bảo crypto-safe)
+            string otp = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
 
             // 2. Lưu vào DB (Hết hạn sau 5 phút)
             wallet.PinResetCode = otp;
@@ -561,6 +567,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             // 3. Đổi PIN mới
+            if (user == null) throw new KeyNotFoundException("User not found."); // [Fix] null check trước khi dùng
             wallet.PinHash = _passwordHasher.HashPassword(user, request.NewPin);
 
             // 4. Xóa OTP cũ để không dùng lại được

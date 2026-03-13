@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
+using FPTU.Capstone.AMKCollective.Api.Controllers;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Category;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Swashbuckle.AspNetCore.Annotations;
 using System.Security.Claims;
-
+using Microsoft.AspNetCore.Authorization;
 namespace FPTU.Capstone.AMKCollective.API.Controllers
 {
     [Route("api/v1/parts")]
@@ -78,6 +78,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // POST: api/parts
         [HttpPost]
+        //TODO: uncomment sau khi test xong
+        //[Authorize(Roles = "Shop")] 
         [SwaggerOperation(
     Summary = "Create Part (Shop/Admin)",
     Description = "Creates a new part/product listing."
@@ -101,6 +103,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // PUT: api/parts/{id}
         [HttpPut("{id}")]
+        //TODO: uncomment authorize sau khi test xong
+        //[Authorize(Roles = "Shop")] 
         [SwaggerOperation(
     Summary = "Update Part (Shop/Admin)",
     Description = "Updates an existing part's information."
@@ -111,12 +115,17 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                await _service.UpdateAsync(id, request);
+                var userId = GetCurrentUserId(); 
+                await _service.UpdateAsync(userId, id, request);
                 return SuccessResponse("Part updated successfully");
             }
             catch (KeyNotFoundException)
             {
                 return NotFoundResponse<string>($"Part with id {id} not found");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<string>(ex.Message);
             }
             catch (Exception ex)
             {
@@ -127,6 +136,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // DELETE: api/parts/{id}
         [HttpDelete("{id}")]
+        //TODO: uncomment sau khi test xong
+       // [Authorize(Roles = "Shop")] 
         [SwaggerOperation(
     Summary = "Delete Part (Shop/Admin)",
     Description = "Soft deletes a part."
@@ -137,8 +148,21 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                await _service.DeleteAsync(id);
+                var userId = GetCurrentUserId(); 
+                await _service.DeleteAsync(userId, id);
                 return SuccessResponse("Part deleted successfully");
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFoundResponse<string>($"Part with id {id} not found");
+            }
+            catch (UnauthorizedAccessException ex) 
+            {
+                return UnauthorizedResponse<string>(ex.Message);
+            }
+            catch (InvalidOperationException ex) 
+            {
+                return ErrorResponse<string>(ex.Message);
             }
             catch (Exception ex)
             {

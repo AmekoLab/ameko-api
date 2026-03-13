@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
@@ -205,6 +205,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // 1. Lấy Session
             var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.SessionId);
             if (session == null) throw new KeyNotFoundException("Session expired or not found");
+
+            // TODO (PRODUCTION): Bỏ comment để check expiry khi deploy thật
+            // if (session.ExpiresAt < DateTime.UtcNow)
+            //     throw new KeyNotFoundException("Session has expired. Please start a new session.");
 
             // 2. Lấy danh sách quy trình động từ BaseKit
             var workflow = GetWorkflowFromKit(session.BaseKit);
@@ -588,26 +592,25 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (session == null || session.UserId != userId)
                 return (false, null, "Builder session not found or access denied.");
 
-            // Lấy danh sách linh kiện khách đã chọn từ chuỗi JSON
-            var selectedParts = JsonSerializer.Deserialize<List<SelectedPartDto>>(session.SelectedItemsJson);
-            if (selectedParts == null || !selectedParts.Any())
+            // TODO (PRODUCTION): Bỏ comment để check expiry khi deploy thật
+            // if (session.ExpiresAt < DateTime.UtcNow)
+            //     return (false, null, "Builder session has expired. Please start a new session.");
+
+            // SelectedItemsJson được serialize là Dictionary<string, SelectedPartResponse> — không phải List<SelectedPartDto>
+            // Deserialization sai type cũ luôn trả về null → function luôn fail
+            var selectionDict = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson);
+            if (selectionDict == null || !selectionDict.Any())
                 return (false, null, "No parts have been selected in this session.");
 
-            // 2. Tìm Base Kit để xác định Shop nhận Commission
-            // Khách bắt buộc phải chọn Case/Kit đầu tiên, lấy ShopId của cái Kit đó
-            var baseKit = selectedParts.FirstOrDefault(p => p.Step == "case" || p.Step == "kit");
-            if (baseKit == null)
-                return (false, null, "Could not find a base kit to determine the target shop.");
-
-            // Sử dụng PartId để tra cứu Model trong DB
-            var kitModel = await _unitOfWork.Models.GetByIdAsync(baseKit.PartId);
+            // Dùng session.BaseKit trực tiếp thay vì tìm trong selectedParts
+            // BaseKit đã được Include sẵn bởi GetSessionByIdAsync
+            var kitModel = session.BaseKit;
             if (kitModel == null)
-                return (false, null, "The selected kit model does not exist in the database.");
+                return (false, null, "Could not find the base kit for this session.");
 
             // Tính tổng tiền vật tư cơ bản
-            decimal baseMaterialPrice = selectedParts.Sum(p => p.Price * p.Quantity);
+            decimal baseMaterialPrice = selectionDict.Values.Sum(p => p.Price * p.Quantity);
 
-            // 3. Nhào nặn ra cái Commission Request mới
             var newCommission = new CommissionRequest
             {
                 Id = Guid.NewGuid(),
@@ -615,13 +618,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 TargetedShopId = kitModel.ShopId, // Chỉ đích danh cái Shop bán Base Kit
                 Title = $"Custom Build: {kitModel.Name}",
 
-                // Đóng gói toàn bộ cấu hình vào Description kèm theo Note của khách (ghi bằng tiếng Anh cho chuyên nghiệp)
+                // Dùng selectionDict.Values thay vì selectedParts 
                 Description = $"Customer's Special Request:\n{request.CustomerNote}\n\n--- Base Material Configuration (Total: {baseMaterialPrice:N0} VND) ---\n"
-                              + JsonSerializer.Serialize(selectedParts, new JsonSerializerOptions { WriteIndented = true }),
+                              + JsonSerializer.Serialize(selectionDict, new JsonSerializerOptions { WriteIndented = true }),
 
-                MinBudget = baseMaterialPrice, // Giá thầu tối thiểu bằng giá vật tư
-                MaxBudget = 0, // Ước lượng ngân sách phụ phí tối đa khách chịu được
-                Status = CommissionStatus.PendingTarget, // Chờ Shop báo giá
+                MinBudget = baseMaterialPrice,
+                MaxBudget = 0,
+                Status = CommissionStatus.PendingTarget,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -651,18 +654,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         //    };
         //}
 
-        // 2. Logic tìm món ở bước ngay trước đó
-        private SelectedPartResponse? GetPreviousSelectedPart(Dictionary<string, SelectedPartResponse> selection, string currentStep)
-        {
-            // Nếu đang ở bước 'plate', thì bước trước là 'case'. Kiểm tra xem đã chọn case chưa.
-            if (currentStep == "plate" && selection.ContainsKey("case")) return selection["case"];
-
-            if (currentStep == "switch" && selection.ContainsKey("plate")) return selection["plate"];
-
-            if (currentStep == "keycap" && selection.ContainsKey("switch")) return selection["switch"];
-
-            return null; // Case là bước đầu, không có bước trước
-        }
+        // DEAD CODE — Commented out: function này dùng step names hard-code ("case", "plate", "switch")
+        // và không được call ở bất kỳ đâu. Dynamic workflow đã thay thế hoàn toàn.
+        // private SelectedPartResponse? GetPreviousSelectedPart(Dictionary<string, SelectedPartResponse> selection, string currentStep)
+        // {
+        //     if (currentStep == "plate" && selection.ContainsKey("case")) return selection["case"];
+        //     if (currentStep == "switch" && selection.ContainsKey("plate")) return selection["plate"];
+        //     if (currentStep == "keycap" && selection.ContainsKey("switch")) return selection["switch"];
+        //     return null;
+        // }
 
         // 3. Logic xóa các bước phía sau (Khi user chọn lại từ đầu)
         //private void ClearSubsequentSteps(Dictionary<string, SelectedPartResponse> selection, string currentStep)

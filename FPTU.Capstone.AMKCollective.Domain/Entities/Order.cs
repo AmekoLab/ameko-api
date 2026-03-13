@@ -8,7 +8,6 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
     public class Order : BaseEntity
     {
         public Guid? OrderGroupId { get; set; }
-        public Guid? VoucherId { get; set; }
         public Guid CustomerId { get; set; }
         public Guid? ShopId { get; set; }
         [MaxLength(100)]
@@ -36,7 +35,6 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
 
         // Navigation Properties
         public virtual OrderGroup? OrderGroup { get; set; }
-        public virtual Voucher? Voucher { get; set; }
         public virtual User Customer { get; set; } = null!;
         public virtual ShopProfile? Shop { get; set; } = null!;
         public virtual ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();

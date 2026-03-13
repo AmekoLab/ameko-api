@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
+using FPTU.Capstone.AMKCollective.Api.Controllers;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Shop;
@@ -492,6 +492,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Updates the shop’s bank information. Requires both password and PIN for verification.
         /// </summary>
         [HttpPut("bank-info")]
+        [Authorize(Roles = "Shop")] // [Fix #1] Chỉ Shop owner mới được đổi thông tin ngân hàng
         public async Task<IActionResult> UpdateBankInfo([FromBody] UpdateBankInfoRequest request)
         {
             if (!ModelState.IsValid)

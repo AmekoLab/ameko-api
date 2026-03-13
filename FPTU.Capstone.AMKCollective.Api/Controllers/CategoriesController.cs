@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
+using FPTU.Capstone.AMKCollective.Api.Controllers;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Category;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
@@ -11,7 +11,8 @@ using Swashbuckle.AspNetCore.Annotations;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
 {
-    [AllowAnonymous]
+    // [Fix #1] XÓA [AllowAnonymous] class-level — nó override hết [Authorize] actions bên trong.
+    // GET endpoints vẫn public (không có attribute = dùng policy mặc định, hoặc thêm [AllowAnonymous] riêng nếu cần).
     [ApiController]
     [Route("api/v1/catalog/categories")]
     public class CategoriesController : BaseApiController
@@ -62,6 +63,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpGet]
+        [AllowAnonymous] // Public — Guest/Customer/Shop đều xem được danh sách category
         [SwaggerOperation(Summary = "Get Categories (Public & Shop Context)")]
         public async Task<IActionResult> GetCategories(
     [FromQuery] GetCategoriesFilterRequest queryParams,
@@ -87,6 +89,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpGet("{id:guid}")]
+        [AllowAnonymous] // Public — ai cũng có thể xem chi tiết category
         [SwaggerOperation(
     Summary = "Get Category by ID",
     Description = "Retrieves details of a specific category, optionally including its sub-categories."
@@ -117,6 +120,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpGet("{id:guid}/parts")]
+        [AllowAnonymous] // Public — ai cũng có thể xem parts trong category
         [SwaggerOperation(
     Summary = "Get Parts in Category",
     Description = "Returns a paginated list of parts/products belonging to a specific category."
@@ -171,6 +175,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpPost]
+        [Authorize] // [Fix #1] Chỉ Admin hoặc Shop đăng nhập mới được tạo category
         [SwaggerOperation(
             Summary = "Create Category (Admin or Shop)",
             Description = @"Creates a new product category.
@@ -214,6 +219,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpPatch("{id:guid}")]
+        [Authorize] // [Fix #1] Chỉ Admin hoặc Shop đăng nhập mới được sửa category
         [SwaggerOperation(
             Summary = "Update Category (Admin or Shop)",
             Description = @"Updates an existing category's information.
@@ -268,6 +274,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpDelete("{id:guid}")]
+        [Authorize] // [Fix #1] Chỉ Admin hoặc Shop đăng nhập mới được xóa category
         [SwaggerOperation(
             Summary = "Delete Category (Admin or Shop)",
             Description = @"Soft deletes a category.
@@ -316,6 +323,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpGet("root")]
+        [AllowAnonymous] // Public — ai cũng có thể xem root categories
         [SwaggerOperation(
     Summary = "Get Root Categories",
     Description = "Retrieves only the top-level categories."
@@ -338,6 +346,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpGet("slug/{slug}/parts")]
+        [AllowAnonymous] // Public — browse by slug cho storefront
         [SwaggerOperation(
     Summary = "Get Parts by Category Slug",
     Description = "Retrieves parts using the category's URL-friendly slug instead of ID."

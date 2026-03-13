@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Shop;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
@@ -10,17 +10,19 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace FPTU.Capstone.AMKCollective.Application.Services
 {
     public class ShopService : IShopService
     {
-        private readonly IUnitOfWork _unitOfWork; // Chuyển sang dùng UnitOfWork
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IStorageService _storage;
         private readonly IMapper _mapper;
-        private readonly IUserService _userService; // Inject thêm UserService
+        private readonly IUserService _userService;
         private readonly IWalletService _walletService;
         private readonly IEmailService _emailService;
+        private readonly ILogger<ShopService> _logger; 
 
         public ShopService(
             IUnitOfWork unitOfWork,
@@ -28,7 +30,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             IMapper mapper,
             IUserService userService,
             IWalletService walletService,  
-            IEmailService emailService)
+            IEmailService emailService,
+            ILogger<ShopService> logger) 
         {
             _unitOfWork = unitOfWork;
             _storage = storage;
@@ -36,6 +39,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _userService = userService;
             _walletService = walletService;
             _emailService = emailService;
+            _logger = logger; 
         }
 
         public async Task<ShopResponse> GetShopPublicProfileAsync(Guid shopId)
@@ -294,6 +298,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 shop.AdminNote = request.AdminNote;
                 shop.ResubmitCount = 0;
                 shop.LastResubmitTime = null;
+
+                // Tạo Wallet cho Shop mới được duyệt — nếu chưa có sẽ tạo mới, nếu rồi thì bỏ qua
+                await _walletService.CreateWalletAsync(shop.UserId);
             }
             else // Rejected
             {
@@ -372,6 +379,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
             if (shop == null) throw new KeyNotFoundException("Shop not found");
+
+            // Không cho ban shop đã ban hoặc đang PendingApproval
+            if (shop.Status == ShopStatus.Banned)
+                throw new InvalidOperationException("Shop is already banned.");
+
+            if (shop.Status == ShopStatus.PendingApproval)
+                throw new InvalidOperationException("Cannot ban a shop that is pending approval. Please reject it instead.");
+
             shop.Status = ShopStatus.Banned;
             shop.IsActive = false;
             await _unitOfWork.Shops.UpdateAsync(shop);
@@ -389,14 +404,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 throw new InvalidOperationException("Shop is not currently banned.");
             }
 
-            // Chuyển về PendingApproval để yêu cầu duyệt lại
+            // Confirm: unban → PendingApproval (shop cần được Admin duyệt lại trước khi hoạt động)
             shop.Status = ShopStatus.PendingApproval;
 
-            // Giữ trạng thái ĐÓNG CỬA (IsActive = false)
+            // Giữ trạng thái ĐÓNG CỬa (IsActive = false) — owner mở lại thủ công sau khi được duyệt
             shop.IsActive = false;
 
-            // (Tùy chọn) Xóa ghi chú vi phạm cũ hoặc ghi log
-             shop.AdminNote = $"Unbanned at {DateTime.UtcNow}. Shop needs approval again.";
+            shop.AdminNote = $"Unbanned at {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC. Pending re-approval.";
 
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
@@ -443,7 +457,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             shop.BankAccountNumber = request.BankAccountNumber;
             shop.BankAccountName = request.BankAccountName;
 
-            _unitOfWork.Shops.UpdateAsync(shop);
+            await _unitOfWork.Shops.UpdateAsync(shop); 
             await _unitOfWork.CommitAsync();
 
             // 5. Gửi Email cảnh báo (Security Alert)
@@ -464,8 +478,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
             catch (Exception ex)
             {
-                // Không throw lỗi nếu gửi mail thất bại, chỉ log lại để không chặn luồng chính
-                Console.WriteLine($"Failed to send security alert email: {ex.Message}");
+                _logger.LogWarning(ex, "Failed to send security alert email for shop {ShopName}", shop.ShopName);
             }
         }
     }

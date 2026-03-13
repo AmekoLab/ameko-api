@@ -1,10 +1,11 @@
-﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
+using FPTU.Capstone.AMKCollective.Api.Controllers;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Payment;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Swashbuckle.AspNetCore.Annotations;
+using System.Security.Claims;
 
 namespace FPTU.Capstone.AMKCollective.API.Controllers
 {
@@ -20,12 +21,14 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         [HttpPost("create-checkout-session")]
+        [Authorize] // [Fix #3] Yêu cầu đăng nhập
         [SwaggerOperation(
     Summary = "Create Checkout Session",
     Description = "Creates a Stripe checkout session for payment processing."
 )]
         [SwaggerResponse(200, "Session created successfully")]
         [SwaggerResponse(400, "Invalid request data")]
+        [SwaggerResponse(403, "Order does not belong to current user")]
         public async Task<IActionResult> CreateCheckoutSession([FromBody] CreateCheckoutSessionRequest request)
         {
             if (!ModelState.IsValid)
@@ -33,7 +36,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return ErrorResponse<object>("Invalid request data");
             }
 
-            var result = await _paymentService.CreateCheckoutSessionAsync(request);
+            // [Fix #3] Validate ownership — truyền userId xuống service để kiểm tra
+            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!Guid.TryParse(userIdStr, out var userId))
+                return ErrorResponse<object>("Unauthorized");
+
+            var result = await _paymentService.CreateCheckoutSessionAsync(request, userId);
             return SuccessResponse(result, "Checkout session created successfully");
         }
 

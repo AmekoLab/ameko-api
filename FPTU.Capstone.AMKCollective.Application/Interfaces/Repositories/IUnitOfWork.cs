@@ -20,6 +20,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         IVoucherRepository Vouchers { get; }
         INotificationRepository Notifications { get; }
         IOrderVoucherRepository OrderVouchers { get; }
+        IVoucherUsageLogRepository VoucherUsageLogs { get; }
         ICommissionRequestRepository CommissionRequests { get; }
         ICommissionQuoteRepository CommissionQuotes { get; }
         IAssemblyProgressLogRepository AssemblyProgressLogs { get; }

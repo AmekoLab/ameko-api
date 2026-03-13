@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Voucher;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
@@ -84,8 +84,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 MaxDiscountAmount = null,
                 MinOrderValue = minOrderValue, // Constraint: Must purchase the agreed amount
 
-                StartDate = DateTime.Now,
-                EndDate = DateTime.Now.AddDays(_voucherSettings.NegotiationValidityDays), // Expires in 7 days to close the deal
+                StartDate = DateTime.UtcNow,
+                EndDate = DateTime.UtcNow.AddDays(_voucherSettings.NegotiationValidityDays), // Expires in 7 days to close the deal
                 UsageLimit = 1,
                 UsedCount = 0,
                 Status = VoucherStatus.Active,
@@ -123,8 +123,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 MaxDiscountAmount = null,
                 MinOrderValue = 0, // No minimum order value, can be used on any order
 
-                StartDate = DateTime.Now,
-                EndDate = DateTime.Now.AddMonths(_voucherSettings.CompensationValidityMonths), 
+                StartDate = DateTime.UtcNow,
+                EndDate = DateTime.UtcNow.AddMonths(_voucherSettings.CompensationValidityMonths), 
                 UsageLimit = 1,
                 UsedCount = 0,
                 Status = VoucherStatus.Active,
@@ -150,15 +150,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (order == null) throw new Exception("Order not found.");
             if (order.CustomerId != userId) throw new Exception("Unauthorized to modify this order.");
 
+            // [P3-3] Chỉ cho phép apply voucher khi giỏ hàng còn ở trạng thái InCart
+            if (order.OrderStatus != OrderStatus.InCart)
+                throw new InvalidOperationException("Vouchers can only be modified on an active shopping cart.");
+
             var incomingVoucher = await _unitOfWork.Vouchers.GetByCodeAsync(code);
             if (incomingVoucher == null) throw new Exception("Voucher not found.");
 
             // --- BASIC VALIDATION ---
             if (incomingVoucher.Status != VoucherStatus.Active) throw new Exception("Voucher is not active.");
-            if (DateTime.Now < incomingVoucher.StartDate || DateTime.Now > incomingVoucher.EndDate) throw new Exception("Voucher is expired or not yet started.");
+            if (DateTime.UtcNow < incomingVoucher.StartDate || DateTime.UtcNow > incomingVoucher.EndDate) throw new Exception("Voucher is expired or not yet started.");
             if (incomingVoucher.UsedCount >= incomingVoucher.UsageLimit) throw new Exception("Voucher usage limit reached.");
             if (incomingVoucher.TargetUserId != null && incomingVoucher.TargetUserId != userId)
                 throw new Exception("This voucher is not applicable to you.");
+
 
             // --- STACKING VALIDATION ---
             var appliedList = (await _unitOfWork.OrderVouchers.GetByOrderIdAsync(orderId)).ToList();
@@ -376,31 +381,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 newAppliedList.Add(orderVoucher);
 
                 totalDiscountAmount += stepDiscount;
-
-                // Chỉ tăng UsedCount cho mã vừa nhập
-                //if (currentVoucher.Id == incomingVoucher.Id)
-                //{
-                //    currentVoucher.UsedCount++;
-                //    _unitOfWork.Vouchers.Update(currentVoucher);
-                //}
-                if (currentVoucher.Id == incomingVoucher.Id)
-                {
-                    // Gọi update nguyên tử trực tiếp xuống DB
-                    bool success = await _unitOfWork.Vouchers.TryIncrementVoucherUsageAsync(currentVoucher.Id);
-                    if (!success)
-                    {
-                        // Rollback giao dịch nếu có ai đó vừa nhanh tay cướp lượt cuối cùng
-                        throw new Exception($"Voucher '{currentVoucher.Code}' has just reached its usage limit by another user.");
-                    }
-                }
+                // [P2-1] UsedCount KHÔNG tăng ở đây. Sẽ được tăng atomic tại Checkout.
             }
 
             // --- UPDATE ORDER ---
             order.DiscountAmount = totalDiscountAmount;
             order.TotalAmount = Math.Max(0, (order.SubTotal + order.ShippingFee) - totalDiscountAmount);
-            order.VoucherId = null;
-
-            _unitOfWork.Orders.UpdateOrderAsync(order);
+            await _unitOfWork.Orders.UpdateOrderAsync(order);
             await _unitOfWork.CommitAsync();
 
             return BuildApplyResult(order, newAppliedList);
@@ -413,6 +400,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (order == null) throw new Exception("Order not found.");
             if (order.CustomerId != userId) throw new Exception("Unauthorized.");
 
+            if (order.OrderStatus != OrderStatus.InCart)
+                throw new InvalidOperationException("Vouchers can only be modified on an active shopping cart.");
+
             var voucherToRemove = await _unitOfWork.Vouchers.GetByCodeAsync(voucherCode);
             if (voucherToRemove == null) throw new Exception("Voucher not found.");
 
@@ -422,12 +412,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // Remove the bridge record
             _unitOfWork.OrderVouchers.Delete(orderVoucherToRemove);
 
-            // Restore UsedCount for the removed voucher
-            if (voucherToRemove.UsedCount > 0)
-            {
-                voucherToRemove.UsedCount--;
-                _unitOfWork.Vouchers.Update(voucherToRemove);
-            }
+            // [P2-2] Không giảm UsedCount khi remove khỏi cart.
+            // UsedCount chỉ được tăng tại thời điểm Checkout, nên không cần hoàn lại ở đây.
 
             // Recalculate remaining vouchers to ensure caps are still accurate
             var remainingOrderVouchers = (await _unitOfWork.OrderVouchers.GetByOrderIdAsync(orderId))
@@ -532,7 +518,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             order.DiscountAmount = totalDiscountAmount;
             order.TotalAmount = Math.Max(0, (order.SubTotal + order.ShippingFee) - totalDiscountAmount);
 
-            _unitOfWork.Orders.UpdateOrderAsync(order);
+            await _unitOfWork.Orders.UpdateOrderAsync(order);
             await _unitOfWork.CommitAsync();
 
             return BuildApplyResult(order, remainingOrderVouchers);
@@ -547,25 +533,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(orderId);
 
-            // Restore UsedCount for ALL applied vouchers before deleting
-            foreach (var av in appliedVouchers)
-            {
-                var v = await _unitOfWork.Vouchers.GetByIdAsync(av.VoucherId);
-                if (v != null && v.UsedCount > 0)
-                {
-                    v.UsedCount--;
-                    _unitOfWork.Vouchers.Update(v);
-                }
-            }
+            // [P2-2] Không giảm UsedCount khi remove all khỏi cart.
+            // UsedCount chỉ được tăng tại thời điểm Checkout.
 
             await _unitOfWork.OrderVouchers.DeleteAllByOrderIdAsync(orderId);
 
             // Reset order totals
-            order.VoucherId = null;
             order.DiscountAmount = 0;
             order.TotalAmount = order.SubTotal + order.ShippingFee;
 
-            _unitOfWork.Orders.UpdateOrderAsync(order);
+            await _unitOfWork.Orders.UpdateOrderAsync(order);
             await _unitOfWork.CommitAsync();
         }
 
@@ -839,7 +816,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (!string.IsNullOrEmpty(request.Name)) voucher.Name = request.Name;
             if (!string.IsNullOrEmpty(request.Description)) voucher.Description = request.Description;
             if (request.EndDate.HasValue) voucher.EndDate = request.EndDate.Value;
-            if (request.UsageLimit.HasValue) voucher.UsageLimit = request.UsageLimit.Value;
+            if (request.UsageLimit.HasValue)
+            {
+                // [P3-6] Không cho phép set UsageLimit nhỏ hơn số lượt đã dùng
+                if (request.UsageLimit.Value < voucher.UsedCount)
+                    throw new InvalidOperationException(
+                        $"UsageLimit ({request.UsageLimit.Value}) cannot be less than the number of times already used ({voucher.UsedCount}).");
+                voucher.UsageLimit = request.UsageLimit.Value;
+            }
             if (request.Status.HasValue) voucher.Status = request.Status.Value;
 
             _unitOfWork.Vouchers.Update(voucher);
@@ -879,6 +863,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (!isAdmin && voucher.CreatorId != userId)
                 throw new UnauthorizedAccessException("You are not authorized to modify this voucher.");
+
+            // [P3-5] Không cho phép tái kích hoạt voucher đã Expired hoặc Depleted
+            if (voucher.Status == VoucherStatus.Expired || voucher.Status == VoucherStatus.Depleted)
+                throw new InvalidOperationException(
+                    $"Cannot toggle status of a voucher with status '{voucher.Status}'. " +
+                    "Only Active and Disabled vouchers can be toggled.");
 
             // Đảo trạng thái Active <-> Inactive
             voucher.Status = voucher.Status == VoucherStatus.Active ? VoucherStatus.Disabled : VoucherStatus.Active;

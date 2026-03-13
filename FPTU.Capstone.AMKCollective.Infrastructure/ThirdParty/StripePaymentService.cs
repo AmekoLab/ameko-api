@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Payment;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
@@ -80,6 +80,20 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                 SessionId = session.Id,
                 PaymentUrl = session.Url
             };
+        }
+
+        // [Fix #3] Overload có ownership check — dùng khi gọi từ Controller (có Auth)
+        public async Task<CheckoutSessionResponse> CreateCheckoutSessionAsync(CreateCheckoutSessionRequest request, Guid requestingUserId, CancellationToken token = default)
+        {
+            var orderGroup = await _unitOfWork.OrderGroups.GetByIdAsync(request.OrderGroupId);
+            if (orderGroup == null) throw new KeyNotFoundException("Order Group not found");
+
+            // Ownership check: đảm bảo user chỉ thanh toán đơn của chính mình
+            if (orderGroup.CustomerId != requestingUserId)
+                throw new UnauthorizedAccessException("You are not authorized to pay for this order.");
+
+            // Delegate về hàm gốc sau khi đã validate
+            return await CreateCheckoutSessionAsync(request, token);
         }
 
         public async Task ProcessWebhookAsync(string json, string stripeSignature)
@@ -168,69 +182,76 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
         {
             try
             {
-                //1. Tạo Scope NGAY TỪ ĐẦU (chỉ 1 lần duy nhất)
                 using (var scope = _serviceProvider.CreateScope())
                 {
-                    // Resolve WalletService 1 lần để dùng cho toàn bộ quá trình
                     var walletService = scope.ServiceProvider.GetRequiredService<IWalletService>();
 
                     var orderGroup = await _unitOfWork.OrderGroups.GetByIdAsync(orderGroupId);
 
-                    if (orderGroup != null)
+                    if (orderGroup == null) return;
+
+                    // [Fix #1] Idempotency guard — Stripe có thể gửi cùng 1 event nhiều lần
+                    if (orderGroup.PaymentStatus == PaymentStatus.Paid)
                     {
-                        orderGroup.PaymentStatus = PaymentStatus.Paid;
+                        Console.WriteLine($"[WEBHOOK] OrderGroup {orderGroupId} already fulfilled. Skipping.");
+                        return;
+                    }
 
-                        // 2. Update trạng thái Orders con
-                        if (orderGroup.Orders != null && orderGroup.Orders.Any())
+                    orderGroup.PaymentStatus = PaymentStatus.Paid;
+
+                    // [Fix #2] Thu thập thông tin shop TRƯỚC khi commit, để wallet call sau commit
+                    var shopPendingSales = new List<(Guid ShopUserId, Guid OrderId, decimal Amount)>();
+
+                    if (orderGroup.Orders != null && orderGroup.Orders.Any())
+                    {
+                        foreach (var order in orderGroup.Orders)
                         {
-                            foreach (var order in orderGroup.Orders)
-                            {
-                                order.PaymentStatus = PaymentStatus.Paid;
-                                order.OrderStatus = OrderStatus.Processing;
-                                await _unitOfWork.Orders.UpdateOrderAsync(order);
+                            order.PaymentStatus = PaymentStatus.Paid;
+                            order.OrderStatus = OrderStatus.Processing;
+                            await _unitOfWork.Orders.UpdateOrderAsync(order);
 
-                                if (order.ShopId.HasValue)
+                            if (order.ShopId.HasValue)
+                            {
+                                var shopProfile = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+                                if (shopProfile != null)
                                 {
-                                    var shopProfile = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
-                                    if (shopProfile != null)
-                                    {
-                                        await walletService.AddPendingSalesToWalletAsync(
-                                            shopProfile.UserId,
-                                            order.Id,
-                                            order.TotalAmount
-                                        );
-                                    }
+                                    shopPendingSales.Add((shopProfile.UserId, order.Id, order.TotalAmount));
                                 }
                             }
                         }
-
-                        // 3. Tạo Payment Log
-                        if (orderGroup.CustomerId == Guid.Empty)
-                        {
-                            throw new Exception("OrderGroup has invalid CustomerId (Guid.Empty)");
-                        }
-
-                        var payment = new FPTU.Capstone.AMKCollective.Domain.Entities.Payment
-                        {
-                            Id = Guid.NewGuid(),
-                            OrderGroupId = orderGroupId,
-                            UserId = orderGroup.CustomerId,
-                            Amount = orderGroup.TotalGroupAmount,
-                            Currency = "vnd",
-                            StripePaymentIntentId = transactionId,
-                            StripeSessionId = sessionId,
-                            Method = PaymentMethod.CreditCard,
-                            Status = PaymentStatus.Paid,
-                            Type = PaymentType.OrderPayment,
-                            CreatedAt = DateTime.UtcNow
-                        };
-
-                        await _unitOfWork.Payments.AddAsync(payment);
-
-                        // 4. Lưu tất cả thay đổi
-                        await _unitOfWork.CommitAsync();
                     }
-                } // Kết thúc Scope
+
+                    // Tạo Payment Log
+                    if (orderGroup.CustomerId == Guid.Empty)
+                        throw new Exception("OrderGroup has invalid CustomerId (Guid.Empty)");
+
+                    var payment = new FPTU.Capstone.AMKCollective.Domain.Entities.Payment
+                    {
+                        Id = Guid.NewGuid(),
+                        OrderGroupId = orderGroupId,
+                        UserId = orderGroup.CustomerId,
+                        Amount = orderGroup.TotalGroupAmount,
+                        Currency = "vnd",
+                        StripePaymentIntentId = transactionId,
+                        StripeSessionId = sessionId,
+                        Method = PaymentMethod.CreditCard,
+                        Status = PaymentStatus.Paid,
+                        Type = PaymentType.OrderPayment,
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    await _unitOfWork.Payments.AddAsync(payment);
+
+                    // [Fix #2] CommitAsync TRƯỚC — đảm bảo Order/Payment đã lưu xuống DB
+                    await _unitOfWork.CommitAsync();
+
+                    // [Fix #2] Sau commit mới cộng tiền vào ví Shop (tránh inconsistency)
+                    // Nếu wallet call fail ở đây, order đã paid → có thể reconcile sau
+                    foreach (var (shopUserId, orderId, amount) in shopPendingSales)
+                    {
+                        await walletService.AddPendingSalesToWalletAsync(shopUserId, orderId, amount);
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -314,6 +335,26 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                 {
                     payment.Status = PaymentStatus.Refunded;
                     payment.Description = $"Refunded via Stripe. Refund ID: {refund.Id}";
+                    _unitOfWork.Payments.Update(payment);
+
+                    // [Fix #4] Propagate Refunded status lên OrderGroup và tất cả Orders
+                    if (payment.OrderGroupId.HasValue)
+                    {
+                        var orderGroup = await _unitOfWork.OrderGroups.GetByIdAsync(payment.OrderGroupId.Value);
+                        if (orderGroup != null)
+                        {
+                            orderGroup.PaymentStatus = PaymentStatus.Refunded;
+                            if (orderGroup.Orders != null)
+                            {
+                                foreach (var order in orderGroup.Orders)
+                                {
+                                    order.PaymentStatus = PaymentStatus.Refunded;
+                                    await _unitOfWork.Orders.UpdateOrderAsync(order);
+                                }
+                            }
+                        }
+                    }
+
                     await _unitOfWork.CommitAsync();
                 }
             }

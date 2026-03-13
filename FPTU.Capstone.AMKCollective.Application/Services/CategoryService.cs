@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
@@ -111,8 +111,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var category = await _unitOfWork.Categories.GetByIdAsync(id, false, cancellationToken);
             if (category == null) throw new KeyNotFoundException($"Category with id {id} not found.");
 
-            //Logic check quyền: Admin (Guid.Empty hoặc null) được quyền sửa tất cả
-            bool isAdmin = !requesterShopId.HasValue || requesterShopId == Guid.Empty;
+            // [Fix #2] Admin luôn có requesterShopId = null (GetCurrentUserContextAsync chỉ set shopId khi role == "Shop")
+            // Guid.Empty không bao giờ xảy ra — bỏ condition thừa để tránh hiểu nhầm
+            bool isAdmin = !requesterShopId.HasValue;
 
             // Nếu không phải Admin VÀ ID người gọi không khớp ID chủ sở hữu category -> Chặn
             if (!isAdmin && category.ShopId != requesterShopId)
@@ -166,8 +167,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var category = await _unitOfWork.Categories.GetByIdAsync(id, false, cancellationToken);
             if (category == null) return false;
 
-            //Logic check quyền xóa tương tự Update (Admin xóa được hết)
-            bool isAdmin = !requesterShopId.HasValue || requesterShopId == Guid.Empty;
+            // [Fix #2] Admin luôn có requesterShopId = null
+            bool isAdmin = !requesterShopId.HasValue;
 
             if (!isAdmin && category.ShopId != requesterShopId)
             {
@@ -268,12 +269,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return dto;
         }
 
+        // [Fix #3] GenerateSlug xử lý Unicode tiếng Việt đầy đủ bằng Normalize NFD + strip diacritics
         private string GenerateSlug(string name)
         {
-            return name.ToLower()
-                .Replace(" ", "-")
-                .Replace("&", "and")
-                .Replace("đ", "d"); // Thêm xử lý tiếng Việt đơn giản nếu cần
+            var normalized = name.Replace("&", "and").Normalize(System.Text.NormalizationForm.FormD);
+            var asciiChars = normalized
+                .Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)
+                            != System.Globalization.UnicodeCategory.NonSpacingMark)
+                .ToArray();
+            var slug = new string(asciiChars).ToLower().Trim().Replace(" ", "-");
+            slug = System.Text.RegularExpressions.Regex.Replace(slug, @"[^a-z0-9\-]", "");
+            slug = System.Text.RegularExpressions.Regex.Replace(slug, @"-+", "-").Trim('-');
+            return slug;
         }
 
         private async Task<string> GenerateUniqueSlugAsync(string name, string? shopName, Guid? excludeId = null, CancellationToken cancellationToken = default)
