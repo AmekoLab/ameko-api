@@ -33,7 +33,8 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Voucher
         public string? CreatorName { get; set; } // Tên Shop tạo
 
         public Guid? TargetUserId { get; set; } // Nếu có, chỉ user này thấy
-
+        public int? MaxUsesPerUser { get; set; }
+        public string Scope { get; set; } = string.Empty;
         // Stacking info
         public bool IsStackable { get; set; }
         public string StackingPolicy { get; set; } = string.Empty;

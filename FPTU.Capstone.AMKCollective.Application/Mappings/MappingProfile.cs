@@ -264,27 +264,30 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.DiscountType, opt => opt.MapFrom(src => src.DiscountType.ToString()))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()))
                 .ForMember(dest => dest.StackingPolicy, opt => opt.MapFrom(src => src.StackingPolicy.ToString()))
+                .ForMember(dest => dest.Scope, opt => opt.MapFrom(src => src.Scope.ToString())) // Map Scope mới
                 .ForMember(dest => dest.CreatorName, opt => opt.MapFrom(src =>
                     src.Creator != null && src.Creator.ShopProfile != null
                     ? src.Creator.ShopProfile.ShopName
                     : (src.Creator != null ? src.Creator.Username : "Unknown")));
 
             // Map Entity OrderVoucher -> DTO AppliedVoucherResponse
-            CreateMap<OrderVoucher, AppliedVoucherResponse>()
+            CreateMap<VoucherUsageLog, AppliedVoucherResponse>()
+                .ForMember(dest => dest.VoucherCode, opt => opt.MapFrom(src => src.Code)) 
                 .ForMember(dest => dest.VoucherType, opt => opt.MapFrom(src => src.VoucherType.ToString()));
 
             // Map CreateRequest -> Entity
             CreateMap<CreateVoucherRequest, Voucher>()
-                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => VoucherStatus.Active)) 
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => VoucherStatus.Active))
                 .ForMember(dest => dest.UsedCount, opt => opt.Ignore())
-                .ForMember(dest => dest.CreatorId, opt => opt.Ignore()); 
+                .ForMember(dest => dest.CreatorId, opt => opt.Ignore());
 
             // Map UpdateRequest -> Entity
             CreateMap<UpdateVoucherRequest, Voucher>()
                 .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
 
-            CreateMap<OrderVoucher, VoucherUsageResponse>()
+            CreateMap<VoucherUsageLog, VoucherUsageResponse>()
+                .ForMember(dest => dest.VoucherCode, opt => opt.MapFrom(src => src.Code)) // Lấy Code của Log
                 .ForMember(dest => dest.CustomerName, opt => opt.MapFrom(src => src.Order.Customer.Username))
                 .ForMember(dest => dest.OrderTotalAmount, opt => opt.MapFrom(src => src.Order.TotalAmount))
                 .ForMember(dest => dest.AppliedAt, opt => opt.MapFrom(src => src.Order.CreatedAt));

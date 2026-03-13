@@ -6,13 +6,15 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
 {
     public class Voucher : BaseEntity
     {
-        public Guid? CreatorId { get; set; }
+        public Guid CreatorId { get; set; }
+        public Guid? ShopId { get; set; }
         public string Code { get; set; } = string.Empty;
 
         public string Name { get; set; } = string.Empty; //voucher's name
         public string? Description { get; set; }
 
         public VoucherType Type { get; set; } = VoucherType.Promotion;
+        public VoucherScope Scope { get; set; } = VoucherScope.System;
         public DiscountType DiscountType { get; set; } = DiscountType.FixedAmount;
 
         [Column(TypeName = "decimal(18,2)")]
@@ -30,6 +32,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
 
         public int UsageLimit { get; set; } = 1; // Total number of times the voucher can be used
         public int UsedCount { get; set; } = 0;  // Number of times already used
+        public int? MaxUsesPerUser { get; set; }
 
         public VoucherStatus Status { get; set; } = VoucherStatus.Active;
         public Guid? TargetUserId { get; set; }
@@ -42,9 +45,9 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public StackingPolicy StackingPolicy { get; set; } = StackingPolicy.None;
 
         // Navigation Properties
-        public virtual User? Creator { get; set; }
+        public virtual User Creator { get; set; }
         public virtual User? TargetUser { get; set; }
         public virtual ICollection<VoucherUsageLog> VoucherUsageLogs { get; set; } = new List<VoucherUsageLog>();
-        public virtual ICollection<OrderVoucher> OrderVouchers { get; set; } = new List<OrderVoucher>();
+        public virtual ShopProfile? Shop { get; set; }
     }
 }

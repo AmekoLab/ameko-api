@@ -46,6 +46,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Voucher
         public int UsageLimit { get; set; } = 1;
 
         public Guid? TargetUserId { get; set; } // Dùng cho Negotiation
+        public int? MaxUsesPerUser { get; set; }
 
         // Stacking — tùy chọn khi tạo Promotion voucher
         public bool IsStackable { get; set; } = false;

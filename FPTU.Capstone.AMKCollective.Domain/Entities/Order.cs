@@ -40,6 +40,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public virtual ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
         public virtual ICollection<Feedback> Feedbacks { get; set; } = new List<Feedback>();
         /// <summary>List of vouchers applied to this order (stacking).</summary>
-        public virtual ICollection<OrderVoucher> OrderVouchers { get; set; } = new List<OrderVoucher>();
+        //public virtual ICollection<OrderVoucher> OrderVouchers { get; set; } = new List<OrderVoucher>();
+        public virtual ICollection<VoucherUsageLog> VoucherUsageLogs { get; set; } = new List<VoucherUsageLog>();
     }
 }

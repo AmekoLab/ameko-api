@@ -224,7 +224,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 _unitOfWork.ClearChangeTracker();
 
                 // Kiểm tra xem đơn hàng (giỏ hàng) này có đang áp dụng voucher nào không
-                var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(cartOrder.Id);
+                var appliedVouchers = await _unitOfWork.VoucherUsageLogs.GetByOrderIdAsync(cartOrder.Id);
 
                 if (appliedVouchers != null && appliedVouchers.Any())
                 {
@@ -363,7 +363,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
             cartOrder.SubTotal = cartOrder.TotalAmount;
 
-            var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(cartOrder.Id); // cartOrder là biến lưu order giỏ hàng hiện tại của bạn
+            var appliedVouchers = await _unitOfWork.VoucherUsageLogs.GetByOrderIdAsync(cartOrder.Id); // cartOrder là biến lưu order giỏ hàng hiện tại của bạn
 
             if (appliedVouchers != null && appliedVouchers.Any())
             {
@@ -462,7 +462,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             cartOrder.TotalAmount = cartOrder.OrderItems.Where(i => !i.IsDeleted).Sum(i => i.TotalPrice);
             cartOrder.SubTotal = cartOrder.TotalAmount;
 
-            var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(cartOrder.Id);
+            var appliedVouchers = await _unitOfWork.VoucherUsageLogs.GetByOrderIdAsync(cartOrder.Id);
 
             if (appliedVouchers != null && appliedVouchers.Any())
             {
@@ -611,7 +611,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 {
                     systemVoucherError = "System voucher does not exist.";
                 }
-                else if (sysVoucher.CreatorId != null && sysVoucher.Type != VoucherType.Compensation)
+                else if (sysVoucher.Scope != VoucherScope.System && sysVoucher.Type != VoucherType.Compensation)
                 {
                     systemVoucherError = "This is not a system voucher.";
                 }
@@ -678,7 +678,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 throw new InvalidOperationException("Some selected items are invalid or not in your cart.");
 
             // --- MỤC 4: VALIDATE HẠN SỬ DỤNG VÀ CHUẨN BỊ DANH SÁCH VOUCHER ---
-            var appliedVouchersInCart = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(cartOrder.Id);
+            var appliedVouchersInCart = await _unitOfWork.VoucherUsageLogs.GetByOrderIdAsync(cartOrder.Id);
             var activeVouchers = new List<Voucher>();
 
             foreach (var av in appliedVouchersInCart)
@@ -840,16 +840,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     // BƯỚC 3: KẾT TOÁN VOUCHER - BÀI TOÁN PHÂN BỔ (PRORATION)
                     // =====================================================================
 
-                    // [P3-2] Phân loại đúng: mã Sàn = Compensation OR (Promotion của Admin, CreatorId == null)
+                    // [P3-2] Phân loại đúng mã Sàn / mã Shop
                     var systemVouchers = activeVouchers.Where(v =>
-                        v.Type == VoucherType.Compensation ||
-                        (v.Type == VoucherType.Promotion && v.CreatorId == null)
-                    ).ToList();
-                    // Mã Shop = có CreatorId (Shop tự tạo)
+                        v.Type == VoucherType.Compensation || v.Scope == VoucherScope.System).ToList();
+
                     var shopVouchers = activeVouchers.Where(v =>
-                        v.CreatorId != null &&
-                        (v.Type == VoucherType.Promotion || v.Type == VoucherType.Negotiation)
-                    ).ToList();
+                        v.Scope == VoucherScope.Shop &&
+                        (v.Type == VoucherType.Promotion || v.Type == VoucherType.Negotiation)).ToList();
 
                     // 3.0 KIỂM TRA LẠI ĐIỀU KIỆN MÃ HỆ THỐNG TRÊN TỔNG CÁC MÓN ĐÃ CHỌN
                     foreach (var sysVoucher in systemVouchers)
@@ -879,11 +876,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             decimal shopDiscount = _voucherService.CalculateVoucherDiscount(matchedShopVoucher, order.SubTotal);
                             if (shopDiscount > currentOrderRemain) shopDiscount = currentOrderRemain;
 
-                            await _unitOfWork.OrderVouchers.AddAsync(new OrderVoucher
+                            await _unitOfWork.VoucherUsageLogs.AddAsync(new VoucherUsageLog
                             {
+                                UserId = userId,
                                 OrderId = order.Id,
                                 VoucherId = matchedShopVoucher.Id,
-                                VoucherCode = matchedShopVoucher.Code,
+                                Code = matchedShopVoucher.Code,
                                 VoucherType = matchedShopVoucher.Type,
                                 DiscountApplied = shopDiscount,
                                 ApplyOrder = 1
@@ -903,14 +901,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                             if (proratedDiscount > currentOrderRemain) proratedDiscount = currentOrderRemain;
 
-                            await _unitOfWork.OrderVouchers.AddAsync(new OrderVoucher
+                            await _unitOfWork.VoucherUsageLogs.AddAsync(new VoucherUsageLog
                             {
+                                UserId = userId,
                                 OrderId = order.Id,
                                 VoucherId = sysVoucher.Id,
-                                VoucherCode = sysVoucher.Code,
+                                Code = sysVoucher.Code,
                                 VoucherType = sysVoucher.Type,
                                 DiscountApplied = proratedDiscount,
-                                ApplyOrder = 2
+                                ApplyOrder = 2  
                             });
 
                             orderDiscountAmount += proratedDiscount;
@@ -933,7 +932,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                     // 4.1 Lấy danh sách ID của các voucher đã được dùng trong đợt Checkout này
                     var checkedOutVoucherIds = orderGroup.Orders
-                        .SelectMany(o => o.OrderVouchers.Select(ov => ov.VoucherId))
+                        .SelectMany(o => o.VoucherUsageLogs.Select(ov => ov.VoucherId))
                         .ToHashSet();
 
                     // [P2-3 + P3-1] Sau khi tạo order thành công:
@@ -942,25 +941,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     var usedVoucherIds = new HashSet<Guid>();
                     foreach (var checkoutOrder in orderGroup.Orders)
                     {
-                        foreach (var ov in checkoutOrder.OrderVouchers)
+                        foreach (var ov in checkoutOrder.VoucherUsageLogs) // Đổi từ OrderVouchers sang VoucherUsageLogs
                         {
-                            // Tăng UsedCount một lần duy nhất per voucher (dùng HashSet tránh tăng 2 lần khi multi-shop)
                             if (!usedVoucherIds.Contains(ov.VoucherId))
                             {
                                 await _unitOfWork.Vouchers.TryIncrementVoucherUsageAsync(ov.VoucherId);
                                 usedVoucherIds.Add(ov.VoucherId);
                             }
-
-                            // Ghi VoucherUsageLog
-                            await _unitOfWork.VoucherUsageLogs.AddAsync(new VoucherUsageLog
-                            {
-                                UserId = userId,
-                                VoucherId = ov.VoucherId,
-                                OrderId = checkoutOrder.Id,
-                                Code = ov.VoucherCode,
-                                DiscountApplied = ov.DiscountApplied,
-                                CreatedAt = DateTime.UtcNow
-                            });
                         }
                     }
 
@@ -968,7 +955,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     // (vì Apply không tăng UsedCount nữa — fix P2-1)
 
                     // 4.3 Bây giờ mới an toàn Xóa OrderVouchers nháp của Giỏ hàng (Cart)
-                    await _unitOfWork.OrderVouchers.DeleteAllByOrderIdAsync(cartOrder.Id);
+                    await _unitOfWork.VoucherUsageLogs.DeleteAllByOrderIdAsync(cartOrder.Id);
 
                     // Dọn dẹp giỏ hàng
                     foreach (var item in selectedItems)
@@ -1268,7 +1255,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     // nhưng muốn an toàn thì vẫn giữ.
                     if (isOrderPaid)
                     {
-                        var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(order.Id);
+                        var appliedVouchers = await _unitOfWork.VoucherUsageLogs.GetByOrderIdAsync(order.Id);
                         decimal oldCompensationUsed = 0;
 
                         foreach (var av in appliedVouchers)
@@ -1472,7 +1459,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
 
                 // 3. Nhả lại lượt dùng Voucher
-                var appliedVouchers = await _unitOfWork.OrderVouchers.GetByOrderIdAsync(order.Id);
+                var appliedVouchers = await _unitOfWork.VoucherUsageLogs.GetByOrderIdAsync(order.Id);
                 foreach (var av in appliedVouchers)
                 {
                     var voucherToRestore = await _unitOfWork.Vouchers.GetByIdAsync(av.VoucherId);
