@@ -4,6 +4,8 @@ using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
+using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,19 +16,36 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
     public class WithdrawalService : IWithdrawalService
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IConfiguration _configuration;
 
-        public WithdrawalService(IUnitOfWork unitOfWork)
+        public WithdrawalService(IUnitOfWork unitOfWork, IConfiguration configuration)
         {
             _unitOfWork = unitOfWork;
+            _configuration = configuration;
         }
 
         public async Task<WithdrawalRequestResponseDto> CreateWithdrawalAsync(Guid userId, CreateWithdrawalRequestDto dto)
         {
-            // Step 1: Business Validation - Prevent queueing multiple pending requests
-            var pendingRequests = await _unitOfWork.WithdrawalRequests.GetPendingAsync();
-            if (pendingRequests.Any(r => r.UserId == userId))
+            // Step 1: Business Validation - Prevent queueing multiple pending requests and rate limit
+            var userRequests = await _unitOfWork.WithdrawalRequests.GetByUserIdAsync(userId);
+            
+            if (userRequests.Any(r => r.Status == WithdrawalStatus.Pending))
             {
                 throw new InvalidOperationException("You already have an active withdrawal request pending approval.");
+            }
+
+            // Step 1.5: Enforce minimum days between requests (configured in appsettings)
+            var daysBetweenRequests = _configuration.GetValue<int>("WalletSettings:DaysBetweenRequests", 15);
+            var latestRequest = userRequests.FirstOrDefault(); // GetByUserIdAsync is already ordered descending
+            
+            if (latestRequest != null)
+            {
+                var daysSinceLastRequest = (DateTime.UtcNow - latestRequest.RequestedAt).TotalDays;
+                if (daysSinceLastRequest < daysBetweenRequests)
+                {
+                    var waitDays = Math.Ceiling(daysBetweenRequests - daysSinceLastRequest);
+                    throw new InvalidOperationException($"You can only submit a withdrawal request every {daysBetweenRequests} days. Please wait {waitDays} more day(s).");
+                }
             }
 
             try
@@ -40,6 +59,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     if (wallet == null) throw new InvalidOperationException("Wallet not found.");
 
                     // Step 4: Validate Balance
+                    if (dto.Amount < 50000)
+                        throw new InvalidOperationException("Minimum withdrawal amount is 50,000.");
+                        
                     if (wallet.Balance < dto.Amount)
                         throw new InvalidOperationException("Insufficient wallet balance.");
 
@@ -160,16 +182,34 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
         }
 
-        public async Task<List<WithdrawalRequestResponseDto>> GetUserWithdrawalsAsync(Guid userId)
+        public async Task<WithdrawalRequestResponseDto> GetWithdrawalByIdAsync(Guid id)
         {
-            var requests = await _unitOfWork.WithdrawalRequests.GetByUserIdAsync(userId);
-            return requests.Select(MapToResponse).ToList();
+            var request = await _unitOfWork.WithdrawalRequests.GetByIdAsync(id);
+            if (request == null)
+                throw new KeyNotFoundException("Withdrawal request not found.");
+                
+            return MapToResponse(request);
         }
 
-        public async Task<List<WithdrawalRequestResponseDto>> GetPendingWithdrawalsAsync()
+        public async Task<PaginatedResult<WithdrawalRequestResponseDto>> GetUserWithdrawalsAsync(Guid userId, int pageIndex, int pageSize)
         {
-            var requests = await _unitOfWork.WithdrawalRequests.GetPendingAsync();
-            return requests.Select(MapToResponse).ToList();
+            var result = await _unitOfWork.WithdrawalRequests.GetByUserIdPagedAsync(userId, pageIndex, pageSize);
+            var mappedItems = result.Items.Select(MapToResponse).ToList();
+            return new PaginatedResult<WithdrawalRequestResponseDto>(mappedItems, result.TotalCount, pageIndex, pageSize);
+        }
+
+        public async Task<PaginatedResult<WithdrawalRequestResponseDto>> GetPendingWithdrawalsAsync(int pageIndex, int pageSize)
+        {
+            var result = await _unitOfWork.WithdrawalRequests.GetPendingPagedAsync(pageIndex, pageSize);
+            var mappedItems = result.Items.Select(MapToResponse).ToList();
+            return new PaginatedResult<WithdrawalRequestResponseDto>(mappedItems, result.TotalCount, pageIndex, pageSize);
+        }
+
+        public async Task<PaginatedResult<WithdrawalRequestResponseDto>> GetProcessedWithdrawalsAsync(int pageIndex, int pageSize)
+        {
+            var result = await _unitOfWork.WithdrawalRequests.GetProcessedPagedAsync(pageIndex, pageSize);
+            var mappedItems = result.Items.Select(MapToResponse).ToList();
+            return new PaginatedResult<WithdrawalRequestResponseDto>(mappedItems, result.TotalCount, pageIndex, pageSize);
         }
 
         // Helper Map Method
