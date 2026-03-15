@@ -28,9 +28,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IWalletService _walletService;
         private readonly OrderSettings _orderSettings;
         private readonly FrontendUrls _frontendUrls;
+        private readonly SystemSettings _systemSettings;
 
         public OrderService(IUnitOfWork unitOfWork, IMapper mapper, IPaymentService paymentService, IVoucherService voucher, IWalletService wallet, IOptions<OrderSettings> orderOptions,
-        IOptions<FrontendUrls> urlOptions)
+        IOptions<FrontendUrls> urlOptions, SystemSettings systemSettings)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
@@ -39,6 +40,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _walletService = wallet;
             _orderSettings = orderOptions.Value;
             _frontendUrls = urlOptions.Value;
+            _systemSettings = systemSettings;
         }
 
         // =================================================================
@@ -1255,53 +1257,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     // nhưng muốn an toàn thì vẫn giữ.
                     if (isOrderPaid)
                     {
-                        var appliedVouchers = await _unitOfWork.VoucherUsageLogs.GetByOrderIdAsync(order.Id);
-                        decimal oldCompensationUsed = 0;
-
-                        foreach (var av in appliedVouchers)
-                        {
-                            var appliedVoucher = await _unitOfWork.Vouchers.GetByIdAsync(av.VoucherId);
-                            if (appliedVoucher != null)
-                            {
-                                // 1. Tiền đền bù cũ -> Ghi nhận để gộp vào mã mới
-                                if (appliedVoucher.Type == VoucherType.Compensation)
-                                {
-                                    oldCompensationUsed += av.DiscountApplied;
-                                }
-                                // 2. Mã Khuyến mãi / Thương lượng -> Hoàn lại 1 lượt cho hệ thống
-                                else if (appliedVoucher.Type == VoucherType.Promotion || appliedVoucher.Type == VoucherType.Negotiation)
-                                {
-                                    if (appliedVoucher.UsedCount > 0 && DateTime.UtcNow <= appliedVoucher.EndDate)
-                                    {
-                                        appliedVoucher.UsedCount--;
-                                        _unitOfWork.Vouchers.Update(appliedVoucher);
-                                    }
-                                }
-                            }
-                        }
-
-                        // Bước B: Tính toán Dòng tiền
                         decimal cashPaidAmount = order.TotalAmount;
 
-                        // Mức phạt Shop hủy đơn (Ví dụ 10%)
-                        decimal penaltyRate = _orderSettings.ShopCancellationPenaltyRate;
-                        decimal penaltyAmount = cashPaidAmount * penaltyRate;
+                        // BƯỚC 3.2.1: Hoàn 100% tiền thật vào Ví Khách Hàng
+                        await _walletService.RefundToWalletAsync(
+                            issue.UserId,
+                            cashPaidAmount,
+                            $"Refund for cancelled order #{order.Id}"
+                        );
 
-                        // Tổng Voucher hoàn lại = Tiền thật + Tiền đền bù cũ + Tiền phạt Shop
-                        decimal totalRefundVoucherValue = cashPaidAmount + oldCompensationUsed + penaltyAmount;
-
-                        // Bước C: Tạo Voucher Refund
-                        if (totalRefundVoucherValue > 0)
-                        {
-                            await _voucherService.CreateCompensationVoucherAsync(
-                                realActionUserId,
-                                issue.UserId,
-                                totalRefundVoucherValue
-                            );
-                        }
-
-                        // Bước D: Trừ tiền ví Shop 
-                        // D1: Rút lại tiền hàng
+                        // BƯỚC 3.2.2: Trừ tiền hàng khỏi Ví (HeldBalance) của Shop
+                        // Vì Shop không giao hàng nên phải rút lại tiền doanh thu đang tạm giữ
                         await _walletService.DeductFundsForRefundAsync(
                             realActionUserId,
                             order.Id,
@@ -1309,18 +1275,50 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             isCompleted
                         );
 
-                        // D2: Trừ tiền phạt (Penalty)
-                        if (penaltyAmount > 0)
+                        // BƯỚC 3.2.3: Hoàn lượt dùng Voucher gốc
+                        var appliedVouchers = await _unitOfWork.VoucherUsageLogs.GetByOrderIdAsync(order.Id);
+                        foreach (var av in appliedVouchers)
                         {
-                            await _walletService.AdjustBalanceAsync(
-                                realActionUserId,
-                                 new AdjustBalanceRequest
-                                 {
-                                     UserId = realActionUserId,
-                                     Amount = -penaltyAmount,
-                                     Reason = $"Cancellation fee for Order #{order.Id}"
-                                 }
-                            );
+                            var appliedVoucher = await _unitOfWork.Vouchers.GetByIdAsync(av.VoucherId);
+                            // Trả lại lượt dùng cho mọi loại voucher để khách tự xài lại ở đơn sau
+                            if (appliedVoucher != null && appliedVoucher.UsedCount > 0 && DateTime.UtcNow <= appliedVoucher.EndDate)
+                            {
+                                appliedVoucher.UsedCount--;
+                                _unitOfWork.Vouchers.Update(appliedVoucher);
+                            }
+                        }
+
+                        // BƯỚC 3.2.4: Phân định lỗi & Xử phạt
+                        bool isShopFault = request.Decision == OrderIssueStatus.AutoCancelled;
+
+                        if (isShopFault)
+                        {
+                            // Tính tiền phạt Shop
+                            decimal penaltyRate = _orderSettings.ShopCancellationPenaltyRate;
+                            decimal penaltyAmount = cashPaidAmount * penaltyRate;
+
+                            if (penaltyAmount > 0)
+                            {
+                                // A. Trừ tiền phạt vào Ví của Shop
+                                await _walletService.AdjustBalanceAsync(
+                                    realActionUserId,
+                                     new AdjustBalanceRequest
+                                     {
+                                         UserId = realActionUserId,
+                                         Amount = -penaltyAmount,
+                                         Reason = $"Penalty fee for 24h timeout auto-cancel Order #{order.Id}"
+                                     }
+                                );
+
+                                // B. Tặng Voucher Đền bù cho khách (Do System Bot tạo)
+                                Guid systemBotId = _systemSettings.SystemBotId;
+
+                                await _voucherService.CreateCompensationVoucherAsync(
+                                    systemBotId,
+                                    issue.UserId,
+                                    penaltyAmount // Mệnh giá đúng bằng tiền phạt của Shop
+                                );
+                            }
                         }
 
                         order.PaymentStatus = PaymentStatus.Refunded;

@@ -1,5 +1,6 @@
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -92,7 +93,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<int> CountUsageByUserAndVoucherAsync(Guid userId, Guid voucherId, Guid excludeOrderId)
         {
             return await _context.VoucherUsageLogs
-                .CountAsync(x => x.UserId == userId && x.VoucherId == voucherId && x.OrderId != excludeOrderId);
+                .Include(x => x.Order) 
+                .CountAsync(x => x.UserId == userId
+                              && x.VoucherId == voucherId
+                              && x.OrderId != excludeOrderId
+                              && x.Order.OrderStatus != OrderStatus.Cancelled);
         }
     }
 }

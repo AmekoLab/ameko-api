@@ -52,6 +52,24 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data
 
             // Apply all configurations from assembly (includes UserConfiguration etc.)
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
+
+
+            // SEED DATA: SYSTEM BOT ACCOUNT
+            var systemBotId = Guid.Parse("00000000-0000-0000-0000-000000000001");
+            var adminId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+
+            modelBuilder.Entity<User>().HasData(new User
+            {
+                Id = systemBotId,
+                Email = "noreply@amkcollective.com",
+                HashedPassword = "NoPasswordNeededForBot",
+                FirstName = "AMK",
+                LastName = "System",
+                Status = Domain.Enums.AccountStatus.Active, 
+                RoleId = adminId, 
+                EmailConfirmed = true,
+                CreatedAt = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc) 
+            });
         }
     }
 }
