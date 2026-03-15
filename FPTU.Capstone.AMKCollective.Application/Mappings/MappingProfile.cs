@@ -358,7 +358,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             CreateMap<AssemblyProgressLog, AssemblyProgressLogResponse>()
                 .ForMember(dest => dest.ProgressLogId, opt => opt.MapFrom(src => src.Id));
 
+            //==================TRANSACTION=======================//
+            CreateMap<Transaction, WalletTransactionResponse>()
+                .ForMember(dest => dest.Type, opt => opt.MapFrom(src => src.Type.ToString()))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => "Completed")) 
+                .ForMember(dest => dest.FeeAmount, opt => opt.MapFrom(src => 0m));
 
+            CreateMap<Transaction, HeldTransactionResponse>()
+                .ForMember(dest => dest.TransactionId, opt => opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.Date, opt => opt.MapFrom(src => src.CreatedAt))
+                .ForMember(dest => dest.OrderId, opt => opt.MapFrom(src => src.RelatedOrderId))
+                .ForMember(dest => dest.OrderStatus, opt => opt.MapFrom(src =>
+                    src.RelatedOrder != null ? src.RelatedOrder.OrderStatus.ToString() : "Unknown"))
+                .ForMember(dest => dest.Reason, opt => opt.MapFrom(src => "Reserved Funds (Until Order is Completed)"));
         }
 
 

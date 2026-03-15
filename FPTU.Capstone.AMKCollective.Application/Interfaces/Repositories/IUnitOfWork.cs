@@ -27,6 +27,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         IAssemblyStepTemplateRepository AssemblyStepTemplates { get; }
         Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> action);
         IWithdrawalRequestRepository WithdrawalRequests { get; }
+        ITransactionRepository Transactions{ get; }
         Task CommitAsync();
         void Rollback();
         /// <summary>

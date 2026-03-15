@@ -10,8 +10,8 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public Guid? OrderGroupId { get; set; }
         public Guid UserId { get; set; }
         // Link to the single Order for tracing product revenue (SalesPending/SalesReleased)
-        public Guid? RelatedOrderId { get; set; }
-        public Guid? WalletId { get; set; }
+        //public Guid? RelatedOrderId { get; set; }
+        //public Guid? WalletId { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]
         //CURRENCY INFORMATION
@@ -48,7 +48,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         // Navigation Properties
         public virtual OrderGroup? OrderGroup { get; set; }
         public virtual User? User { get; set; }
-        public virtual Order? RelatedOrder { get; set; }
-        public virtual Wallet? Wallet { get; set; }
+        //public virtual Order? RelatedOrder { get; set; }
+        //public virtual Wallet? Wallet { get; set; }
     }
 }

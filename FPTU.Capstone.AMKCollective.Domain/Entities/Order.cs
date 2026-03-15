@@ -42,5 +42,8 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         /// <summary>List of vouchers applied to this order (stacking).</summary>
         //public virtual ICollection<OrderVoucher> OrderVouchers { get; set; } = new List<OrderVoucher>();
         public virtual ICollection<VoucherUsageLog> VoucherUsageLogs { get; set; } = new List<VoucherUsageLog>();
+        //public virtual ICollection<OrderVoucher> OrderVouchers { get; set; } = new List<OrderVoucher>();
+        //public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
+        public virtual ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
     }
 }

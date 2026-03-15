@@ -33,6 +33,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         private IAssemblyStepTemplateRepository? _assemblyStepTemplates;
         private IDbContextTransaction? _currentTransaction;
         private IWithdrawalRequestRepository? _withdrawalRequests;
+        private ITransactionRepository? _transactions;
         public UnitOfWork(ApplicationDbContext context)
         {
             _context = context;
@@ -65,6 +66,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         public IAssemblyStepTemplateRepository AssemblyStepTemplates => _assemblyStepTemplates ??= new AssemblyStepTemplateRepository(_context);
         public IWithdrawalRequestRepository WithdrawalRequests => _withdrawalRequests ??= new WithdrawalRequestRepository(_context);
+        public ITransactionRepository Transactions => _transactions ??= new TransactionRepository(_context);
 
         public async Task CommitAsync()
         {
