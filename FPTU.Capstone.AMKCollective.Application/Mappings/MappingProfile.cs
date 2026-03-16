@@ -313,19 +313,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.Amount, opt => opt.MapFrom(src => src.Amount))
                 .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.Reason))
                     // Các field khác như Type, Status sẽ gán trong Service
-                .ForMember(dest => dest.UserId, opt => opt.Ignore());
-
-            CreateMap<Payment, HeldTransactionResponse>()
-                .ForMember(dest => dest.TransactionId, opt => opt.MapFrom(src => src.Id))
-                .ForMember(dest => dest.Date, opt => opt.MapFrom(src => src.CreatedAt)) // Map Date <- CreatedAt
-                .ForMember(dest => dest.OrderId, opt => opt.MapFrom(src => src.RelatedOrderId))
-
-                // Map OrderStatus từ bảng Order liên quan
-                .ForMember(dest => dest.OrderStatus, opt => opt.MapFrom(src =>
-                src.RelatedOrder != null ? src.RelatedOrder.OrderStatus.ToString() : "Unknown"))
-
-                // Gán cứng lý do 
-                .ForMember(dest => dest.Reason, opt => opt.MapFrom(src => "Reserved Funds (Until Order is Completed)"));
+                .ForMember(dest => dest.UserId, opt => opt.Ignore());         
 
             // =========================================================
             // Commission (Commission -> DTO)

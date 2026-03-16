@@ -35,6 +35,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<bool> VerifyPinAsync(Guid userId, string pin); // Hàm dùng chung cho các feature sau này
         Task SendPinResetCodeAsync(Guid userId);
         Task ResetPinWithOtpAsync(Guid userId, ResetWalletPinRequest request);
+
+        Task PayOrderGroupWithWalletAsync(Guid userId, Guid orderGroupId, decimal amount);
     }
 }
 

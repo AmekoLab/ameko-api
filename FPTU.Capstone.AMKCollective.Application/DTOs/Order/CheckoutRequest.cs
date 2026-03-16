@@ -1,4 +1,5 @@
-﻿using System;
+﻿using FPTU.Capstone.AMKCollective.Domain.Enums;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -20,5 +21,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
         public string SuccessUrl { get; set; } = string.Empty;
         public string CancelUrl { get; set; } = string.Empty;
         public List<Guid> SelectedOrderItemIds { get; set; } = new List<Guid>();
+
+        public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.CreditCard;
     }
 }

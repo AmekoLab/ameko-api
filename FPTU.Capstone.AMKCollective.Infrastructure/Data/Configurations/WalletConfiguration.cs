@@ -45,11 +45,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .OnDelete(DeleteBehavior.Restrict);
 
             // One-to-Many relationship with Payment
-            builder.HasMany(w => w.Payments)
-                .WithOne(p => p.Wallet)
-                .HasForeignKey(p => p.WalletId)
-                .OnDelete(DeleteBehavior.SetNull);
-
+            //builder.HasMany(w => w.Payments)
+            //    .WithOne(p => p.Wallet)
+            //    .HasForeignKey(p => p.WalletId)
+            //    .OnDelete(DeleteBehavior.SetNull);
+            builder.HasMany(w => w.Transactions)
+                .WithOne(t => t.Wallet)
+                .HasForeignKey(t => t.WalletId)
+                .OnDelete(DeleteBehavior.Cascade);
             builder.HasIndex(w => w.UserId)
                 .IsUnique();
 

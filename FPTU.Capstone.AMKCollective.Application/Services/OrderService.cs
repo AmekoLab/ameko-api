@@ -719,7 +719,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         Orders = new List<Order>()
                     };
 
-                    var itemsByShop = selectedItems.GroupBy(i => {
+                    var itemsByShop = selectedItems.GroupBy(i =>
+                    {
                         // 1. Hàng thường & Builder (Có ProductId)
                         if (i.ProductId.HasValue && i.Product != null)
                             return i.Product.ShopId;
@@ -842,15 +843,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     // BƯỚC 3: KẾT TOÁN VOUCHER - BÀI TOÁN PHÂN BỔ (PRORATION)
                     // =====================================================================
 
-                    // [P3-2] Phân loại đúng mã Sàn / mã Shop
+
                     var systemVouchers = activeVouchers.Where(v =>
-                        v.Type == VoucherType.Compensation || v.Scope == VoucherScope.System).ToList();
+                v.Type == VoucherType.Compensation || v.Scope == VoucherScope.System).ToList();
 
                     var shopVouchers = activeVouchers.Where(v =>
                         v.Scope == VoucherScope.Shop &&
                         (v.Type == VoucherType.Promotion || v.Type == VoucherType.Negotiation)).ToList();
 
-                    // 3.0 KIỂM TRA LẠI ĐIỀU KIỆN MÃ HỆ THỐNG TRÊN TỔNG CÁC MÓN ĐÃ CHỌN
                     foreach (var sysVoucher in systemVouchers)
                     {
                         if (totalCheckoutSubTotal < sysVoucher.MinOrderValue)
@@ -859,13 +859,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             );
                     }
 
+                    // TẠO BIẾN NÀY ĐỂ GHI NHỚ CÁC VOUCHER NÀO ĐÃ ĐƯỢC ÁP DỤNG THÀNH CÔNG
+                    var appliedVoucherIdsToIncrement = new HashSet<Guid>();
+
                     foreach (var order in orderGroup.Orders)
                     {
                         decimal orderDiscountAmount = 0;
-                        decimal systemDiscountForThisOrder = 0; // ---> THÊM BIẾN NÀY ĐỂ ĐẾM TIỀN SÀN BÙ
+                        decimal systemDiscountForThisOrder = 0;
                         decimal currentOrderRemain = order.SubTotal;
 
-                        var shopInfo = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value); // Giả sử order.ShopId có value
+                        var shopInfo = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
                         Guid shopOwnerId = shopInfo != null ? shopInfo.UserId : Guid.Empty;
 
                         // 3.1. ÁP MÃ CỦA ĐÚNG SHOP ĐÓ
@@ -891,6 +894,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                             orderDiscountAmount += shopDiscount;
                             currentOrderRemain -= shopDiscount;
+
+                            // GHI NHỚ ID VOUCHER NÀY ĐỂ LÁT NỮA TRỪ LƯỢT
+                            appliedVoucherIdsToIncrement.Add(matchedShopVoucher.Id);
                         }
 
                         // 3.2. ÁP MÃ CỦA SÀN & PHÂN BỔ (PRORATION)
@@ -911,12 +917,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                                 Code = sysVoucher.Code,
                                 VoucherType = sysVoucher.Type,
                                 DiscountApplied = proratedDiscount,
-                                ApplyOrder = 2  
+                                ApplyOrder = 2
                             });
 
                             orderDiscountAmount += proratedDiscount;
-                            systemDiscountForThisOrder += proratedDiscount; // ---> CỘNG DỒN TIỀN SÀN VÀO ĐÂY
+                            systemDiscountForThisOrder += proratedDiscount;
                             currentOrderRemain -= proratedDiscount;
+
+                            // GHI NHỚ ID VOUCHER NÀY ĐỂ LÁT NỮA TRỪ LƯỢT
+                            appliedVoucherIdsToIncrement.Add(sysVoucher.Id);
                         }
 
                         // 3.3. CHỐT TIỀN CHO ĐƠN NÀY (Đã trừ mọi khoản discount)
@@ -932,29 +941,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     // 4. Lưu dữ liệu OrderGroup
                     await _unitOfWork.OrderGroups.CreateAsync(orderGroup);
 
-                    // 4.1 Lấy danh sách ID của các voucher đã được dùng trong đợt Checkout này
-                    var checkedOutVoucherIds = orderGroup.Orders
-                        .SelectMany(o => o.VoucherUsageLogs.Select(ov => ov.VoucherId))
-                        .ToHashSet();
-
-                    // [P2-3 + P3-1] Sau khi tạo order thành công:
-                    // Bước A: Tăng UsedCount atomic cho từng voucher được thanh toán
-                    // Bước B: Ghi VoucherUsageLog cho mỗi order-voucher pair
-                    var usedVoucherIds = new HashSet<Guid>();
-                    foreach (var checkoutOrder in orderGroup.Orders)
+                    // 4.1 TĂNG USEDCOUNT CHO VOUCHER (ĐÃ FIX LỖI)
+                    // Chỉ cần lặp qua danh sách ID mà chúng ta vừa gom được ở Bước 3
+                    foreach (var voucherId in appliedVoucherIdsToIncrement)
                     {
-                        foreach (var ov in checkoutOrder.VoucherUsageLogs) // Đổi từ OrderVouchers sang VoucherUsageLogs
-                        {
-                            if (!usedVoucherIds.Contains(ov.VoucherId))
-                            {
-                                await _unitOfWork.Vouchers.TryIncrementVoucherUsageAsync(ov.VoucherId);
-                                usedVoucherIds.Add(ov.VoucherId);
-                            }
-                        }
+                        await _unitOfWork.Vouchers.TryIncrementVoucherUsageAsync(voucherId);
                     }
-
-                    // Draft cart vouchers không nằm trong danh sách checkout → không cần hoàn UsedCount
-                    // (vì Apply không tăng UsedCount nữa — fix P2-1)
 
                     // 4.3 Bây giờ mới an toàn Xóa OrderVouchers nháp của Giỏ hàng (Cart)
                     await _unitOfWork.VoucherUsageLogs.DeleteAllByOrderIdAsync(cartOrder.Id);
@@ -980,12 +972,30 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                     await _unitOfWork.CommitAsync();
 
-                    // 5. Gọi Stripe
-                    var paymentRequest = new CreateCheckoutSessionRequest { OrderGroupId = orderGroup.Id, SuccessUrl = successUrl, CancelUrl = cancelUrl };
-                    var paymentRes = await _paymentService.CreateCheckoutSessionAsync(paymentRequest, token);
+                    // 5. RẼ NHÁNH PHƯƠNG THỨC THANH TOÁN
+                    if (request.PaymentMethod == PaymentMethod.Wallet)
+                    {
+                        // Gọi hàm helper để xử lý thanh toán bằng Ví
+                        return await ProcessWalletCheckoutAsync(userId, orderGroup, successUrl);
+                    }
+                    else
+                    {
+                        // Mặc định gọi sang Stripe
+                        var paymentRequest = new CreateCheckoutSessionRequest
+                        {
+                            OrderGroupId = orderGroup.Id,
+                            SuccessUrl = successUrl,
+                            CancelUrl = cancelUrl
+                        };
+                        var paymentRes = await _paymentService.CreateCheckoutSessionAsync(paymentRequest, token);
 
-                    // Không cần gọi CommitTransactionAsync nữa, hàm ExecuteInTransactionAsync đã tự lo
-                    return new CheckoutResponse { OrderGroupId = orderGroup.Id, TotalAmount = orderGroup.TotalGroupAmount, PaymentUrl = paymentRes.PaymentUrl };
+                        return new CheckoutResponse
+                        {
+                            OrderGroupId = orderGroup.Id,
+                            TotalAmount = orderGroup.TotalGroupAmount,
+                            PaymentUrl = paymentRes.PaymentUrl
+                        };
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -1647,6 +1657,30 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // 6. Commit tất cả changes
             await _unitOfWork.CommitAsync();
+        }
+
+        private async Task<CheckoutResponse> ProcessWalletCheckoutAsync(Guid userId, OrderGroup orderGroup, string successUrl)
+        {
+            // 1. Gọi sang WalletService để trừ tiền và ghi Transaction
+            await _walletService.PayOrderGroupWithWalletAsync(userId, orderGroup.Id, orderGroup.TotalGroupAmount);
+
+            // 2. Cập nhật trạng thái Payment của OrderGroup và các Order lẻ thành Đã Thanh Toán
+            orderGroup.PaymentStatus = PaymentStatus.Paid;
+            foreach (var order in orderGroup.Orders)
+            {
+                order.PaymentStatus = PaymentStatus.Paid;
+            }
+
+            //_unitOfWork.OrderGroups.Update(orderGroup);
+            await _unitOfWork.CommitAsync();
+
+            // 3. Trả về Response 
+            return new CheckoutResponse
+            {
+                OrderGroupId = orderGroup.Id,
+                TotalAmount = orderGroup.TotalGroupAmount,
+                PaymentUrl = successUrl
+            };
         }
     }
 }

@@ -13,7 +13,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Enums
         SalesRevenue = 2,       // Cộng tiền doanh thu bán hàng cho Shop
         Deposit = 3,            // Cộng tiền khi user nạp tiền vào Wallet (thông qua Payment/Stripe)
         Withdrawal = 4,         // Trừ tiền khi tạo WithdrawalRequest rút tiền về ngân hàng
-        SalesPending = 5,       //
-        ManualAdjustment = 6    //
+        SalesPending = 5,       // Tiền bị giữ
+        ManualAdjustment = 6    // Điều chỉnh số dư thủ công
     }
 }

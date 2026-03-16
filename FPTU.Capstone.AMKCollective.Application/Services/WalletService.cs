@@ -623,7 +623,33 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             return _mapper.Map<List<HeldTransactionResponse>>(heldTransactions);
         }
+        public async Task PayOrderGroupWithWalletAsync(Guid userId, Guid orderGroupId, decimal amount)
+        {
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+            if (wallet == null) throw new InvalidOperationException("Wallet does not exist.");
 
+            if (wallet.Balance < amount)
+                throw new InvalidOperationException("Your wallet balance is insufficient to complete this checkout.");
+
+            // Trừ tiền trong ví
+            bool success = await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, -amount, 0);
+            if (!success) throw new InvalidOperationException("Transaction failed due to concurrent update. Please try again.");
+
+            // Ghi nhận vào Sổ cái (Transaction) bằng OrderGroupId
+            var transaction = new Transaction
+            {
+                WalletId = wallet.Id,
+                OrderGroupId = orderGroupId,
+                Amount = amount,
+                Type = TransactionType.OrderPayment,
+                Description = $"Payment for Order Group #{orderGroupId}",
+                Currency = "VND",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _unitOfWork.Transactions.AddAsync(transaction);
+            await _unitOfWork.CommitAsync();
+        }
 
         // Helper
         // dùng cho các API Rút tiền/Update Bank 
