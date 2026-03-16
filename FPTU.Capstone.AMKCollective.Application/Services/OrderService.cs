@@ -31,7 +31,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly SystemSettings _systemSettings;
 
         public OrderService(IUnitOfWork unitOfWork, IMapper mapper, IPaymentService paymentService, IVoucherService voucher, IWalletService wallet, IOptions<OrderSettings> orderOptions,
-        IOptions<FrontendUrls> urlOptions, SystemSettings systemSettings)
+        IOptions<FrontendUrls> urlOptions, IOptions<SystemSettings> systemSettings)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
@@ -40,7 +40,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _walletService = wallet;
             _orderSettings = orderOptions.Value;
             _frontendUrls = urlOptions.Value;
-            _systemSettings = systemSettings;
+            _systemSettings = systemSettings.Value;
         }
 
         // =================================================================
