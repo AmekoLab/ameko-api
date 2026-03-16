@@ -264,27 +264,30 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.DiscountType, opt => opt.MapFrom(src => src.DiscountType.ToString()))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString()))
                 .ForMember(dest => dest.StackingPolicy, opt => opt.MapFrom(src => src.StackingPolicy.ToString()))
+                .ForMember(dest => dest.Scope, opt => opt.MapFrom(src => src.Scope.ToString())) // Map Scope mới
                 .ForMember(dest => dest.CreatorName, opt => opt.MapFrom(src =>
                     src.Creator != null && src.Creator.ShopProfile != null
                     ? src.Creator.ShopProfile.ShopName
                     : (src.Creator != null ? src.Creator.Username : "Unknown")));
 
             // Map Entity OrderVoucher -> DTO AppliedVoucherResponse
-            CreateMap<OrderVoucher, AppliedVoucherResponse>()
+            CreateMap<VoucherUsageLog, AppliedVoucherResponse>()
+                .ForMember(dest => dest.VoucherCode, opt => opt.MapFrom(src => src.Code)) 
                 .ForMember(dest => dest.VoucherType, opt => opt.MapFrom(src => src.VoucherType.ToString()));
 
             // Map CreateRequest -> Entity
             CreateMap<CreateVoucherRequest, Voucher>()
-                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => VoucherStatus.Active)) 
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => VoucherStatus.Active))
                 .ForMember(dest => dest.UsedCount, opt => opt.Ignore())
-                .ForMember(dest => dest.CreatorId, opt => opt.Ignore()); 
+                .ForMember(dest => dest.CreatorId, opt => opt.Ignore());
 
             // Map UpdateRequest -> Entity
             CreateMap<UpdateVoucherRequest, Voucher>()
                 .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
 
-            CreateMap<OrderVoucher, VoucherUsageResponse>()
+            CreateMap<VoucherUsageLog, VoucherUsageResponse>()
+                .ForMember(dest => dest.VoucherCode, opt => opt.MapFrom(src => src.Code)) // Lấy Code của Log
                 .ForMember(dest => dest.CustomerName, opt => opt.MapFrom(src => src.Order.Customer.Username))
                 .ForMember(dest => dest.OrderTotalAmount, opt => opt.MapFrom(src => src.Order.TotalAmount))
                 .ForMember(dest => dest.AppliedAt, opt => opt.MapFrom(src => src.Order.CreatedAt));
@@ -310,19 +313,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.Amount, opt => opt.MapFrom(src => src.Amount))
                 .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.Reason))
                     // Các field khác như Type, Status sẽ gán trong Service
-                .ForMember(dest => dest.UserId, opt => opt.Ignore());
-
-            CreateMap<Payment, HeldTransactionResponse>()
-                .ForMember(dest => dest.TransactionId, opt => opt.MapFrom(src => src.Id))
-                .ForMember(dest => dest.Date, opt => opt.MapFrom(src => src.CreatedAt)) // Map Date <- CreatedAt
-                .ForMember(dest => dest.OrderId, opt => opt.MapFrom(src => src.RelatedOrderId))
-
-                // Map OrderStatus từ bảng Order liên quan
-                .ForMember(dest => dest.OrderStatus, opt => opt.MapFrom(src =>
-                src.RelatedOrder != null ? src.RelatedOrder.OrderStatus.ToString() : "Unknown"))
-
-                // Gán cứng lý do 
-                .ForMember(dest => dest.Reason, opt => opt.MapFrom(src => "Reserved Funds (Until Order is Completed)"));
+                .ForMember(dest => dest.UserId, opt => opt.Ignore());         
 
             // =========================================================
             // Commission (Commission -> DTO)
@@ -355,7 +346,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             CreateMap<AssemblyProgressLog, AssemblyProgressLogResponse>()
                 .ForMember(dest => dest.ProgressLogId, opt => opt.MapFrom(src => src.Id));
 
+            //==================TRANSACTION=======================//
+            CreateMap<Transaction, WalletTransactionResponse>()
+                .ForMember(dest => dest.Type, opt => opt.MapFrom(src => src.Type.ToString()))
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => "Completed")) 
+                .ForMember(dest => dest.FeeAmount, opt => opt.MapFrom(src => 0m));
 
+            CreateMap<Transaction, HeldTransactionResponse>()
+                .ForMember(dest => dest.TransactionId, opt => opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.Date, opt => opt.MapFrom(src => src.CreatedAt))
+                .ForMember(dest => dest.OrderId, opt => opt.MapFrom(src => src.RelatedOrderId))
+                .ForMember(dest => dest.OrderStatus, opt => opt.MapFrom(src =>
+                    src.RelatedOrder != null ? src.RelatedOrder.OrderStatus.ToString() : "Unknown"))
+                .ForMember(dest => dest.Reason, opt => opt.MapFrom(src => "Reserved Funds (Until Order is Completed)"));
         }
 
 

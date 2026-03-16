@@ -22,7 +22,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .HasPrecision(18, 2)
                 .IsRequired();
 
-            // Relationships
+            builder.Property(vul => vul.VoucherType).IsRequired();
+            builder.Property(vul => vul.ApplyOrder).IsRequired();
+
+            // --- Relationships ---
             builder.HasOne(vul => vul.User)
                 .WithMany(u => u.VoucherUsageLogs)
                 .HasForeignKey(vul => vul.UserId)
@@ -32,6 +35,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .WithMany(v => v.VoucherUsageLogs)
                 .HasForeignKey(vul => vul.VoucherId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            builder.HasOne(vul => vul.Order)
+                .WithMany(o => o.VoucherUsageLogs)
+                .HasForeignKey(vul => vul.OrderId)
+                .OnDelete(DeleteBehavior.Cascade); 
         }
     }
 }

@@ -50,8 +50,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<List<WalletTransactionResponse>> GetTransactionsAsync(Guid userId)
         {
-            var payments = await _unitOfWork.Payments.GetByUserIdAsync(userId);
-            return _mapper.Map<List<WalletTransactionResponse>>(payments);
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+            if (wallet == null) return new List<WalletTransactionResponse>();
+            var transactions = await _unitOfWork.Transactions.GetByWalletIdAsync(wallet.Id);
+            return _mapper.Map<List<WalletTransactionResponse>>(transactions);
         }
 
         public async Task CreateWalletAsync(Guid userId)
@@ -93,7 +95,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (string.IsNullOrEmpty(shop.BankAccountNumber) || string.IsNullOrEmpty(shop.BankName))
             {
                 throw new InvalidOperationException("You have not updated your bank account information. Please go to Shop Settings to update it.");
-
             }
 
             // 4. Tính toán phí và kiểm tra số dư
@@ -106,7 +107,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 throw new InvalidOperationException($"Insufficient balance. You need {totalDeduct:N0} VND (including fees) to complete this transaction.");
             }
 
-            // [Fix] Kiểm tra mức rút tối thiểu
+            // Kiểm tra mức rút tối thiểu
             if (request.Amount < _walletSettings.MinimumWithdrawalAmount)
             {
                 throw new InvalidOperationException($"Minimum withdrawal amount is {_walletSettings.MinimumWithdrawalAmount:N0} VND.");
@@ -116,37 +117,39 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 throw new InvalidOperationException("The remaining balance after withdrawal must be at least 2,000,000 VND.");
             }
-            
 
-            // 5. Tạo Giao dịch Rút tiền (Payment)
-            var payment = new Payment
+            // 5. Trừ tiền trong ví ngay lập tức (Chuyển sang trạng thái chờ)
+            bool success = await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, -totalDeduct, 0);
+            if (!success) throw new InvalidOperationException("Transaction failed. Wallet balance changed concurrently.");
+
+            // 6. TẠO RECORD VÀO BẢNG WithdrawalRequest (Thay vì bảng Payment)
+            var withdrawalReq = new WithdrawalRequest
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
-                WalletId = wallet.Id,
                 Amount = request.Amount,
-                FeeAmount = feeAmount, // Lưu phí riêng để thống kê
-                Currency = "VND",
-                Type = PaymentType.Withdrawal, 
-                Status = PaymentStatus.Pending, // Chờ Admin duyệt
-                Method = PaymentMethod.BankTransfer,
-                CreatedAt = DateTime.UtcNow,
-
-                // Snapshot lại thông tin ngân hàng TẠI THỜI ĐIỂM RÚT
-                // Để lỡ sau này Shop đổi bank thì giao dịch cũ vẫn lưu bank cũ
-                Description = $"Withdraw to: {shop.BankName} - {shop.BankAccountNumber} - {shop.BankAccountName}",
-                BillingAddress = $"{shop.BankName}|{shop.BankAccountNumber}|{shop.BankAccountName}" // Lưu cấu trúc để Admin dễ parse
+                BankName = shop.BankName,
+                BankAccountNumber = shop.BankAccountNumber,
+                BankAccountName = shop.BankAccountName,
+                Status = WithdrawalStatus.Pending,
+                RequestedAt = DateTime.UtcNow
             };
 
-            // 6. Trừ tiền trong ví ngay lập tức (Chuyển sang trạng thái chờ)
-            //wallet.Balance -= totalDeduct;           
+            await _unitOfWork.WithdrawalRequests.AddAsync(withdrawalReq);
 
-            await _unitOfWork.Payments.AddAsync(payment);
-            //_unitOfWork.Wallets.Update(wallet);
-            bool success = await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, -totalDeduct, 0);
-            if (!success) throw new InvalidOperationException("Transaction failed. Wallet balance changed concurrently.");
+            // 7. Ghi log Transaction: Trừ tiền ví để rút
+            var transaction = new Transaction
+            {
+                WalletId = wallet.Id,
+                Amount = totalDeduct,
+                Type = TransactionType.Withdrawal,
+                Description = $"Withdrawal request to {shop.BankName} - {shop.BankAccountNumber} (Amount: {request.Amount:N0}, Fee: {feeAmount:N0})",
+                Currency = "VND",
+                CreatedAt = DateTime.UtcNow
+            };
+            await _unitOfWork.Transactions.AddAsync(transaction);
+
             await _unitOfWork.CommitAsync();
-
             // TODO: gửi thông báo cho admin khi có đơn rút mới.
         }
 
@@ -158,27 +161,21 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (wallet.Balance < amount)
                 throw new Exception("Wallet balance is insufficient for payment.");
 
-            //wallet.Balance -= amount;
-            //_unitOfWork.Wallets.Update(wallet);
             bool success = await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, -amount, 0);
             if (!success) throw new Exception("Transaction failed. Wallet balance changed concurrently.");
-            var transaction = new Payment
+
+            var transaction = new Transaction
             {
-                UserId = userId,
                 WalletId = wallet.Id,
                 RelatedOrderId = orderId,
                 Amount = amount,
-                Type = PaymentType.PaymentByWallet,
-                Status = PaymentStatus.Paid,
-
-                // [FIXED] Use proposed enum value
-                Method = PaymentMethod.Wallet,
-
+                Type = TransactionType.OrderPayment,
                 Description = $"Payment for order #{orderId}",
-                Currency = "VND"
+                Currency = "VND",
+                CreatedAt = DateTime.UtcNow
             };
 
-            await _unitOfWork.Payments.AddAsync(transaction);
+            await _unitOfWork.Transactions.AddAsync(transaction);
             await _unitOfWork.CommitAsync();
         }
 
@@ -187,25 +184,24 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(shopId);
             if (wallet == null) return;
 
-            // [Fix] Idempotency: Kiểm tra đã ghi SalesPending cho orderId này chưa (tránh cộng tiền 2 lần)
-            var existing = (await _unitOfWork.Payments.GetByUserIdAsync(shopId))
-                .Any(p => p.RelatedOrderId == orderId && p.Type == PaymentType.SalesPending);
+            var existing = (await _unitOfWork.Transactions.GetByWalletIdAsync(wallet.Id))
+                .Any(t => t.RelatedOrderId == orderId && t.Type == TransactionType.SalesPending);
             if (existing) return;
 
             await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, 0, amount);
-            var log = new Payment
+
+            var transaction = new Transaction
             {
-                UserId = shopId,
                 WalletId = wallet.Id,
                 RelatedOrderId = orderId,
                 Amount = amount,
-                Type = PaymentType.SalesPending,
-                Status = PaymentStatus.Paid,
+                Type = TransactionType.SalesPending,
                 Description = $"Pending sales revenue from order #{orderId}",
-                Currency = "VND"
+                Currency = "VND",
+                CreatedAt = DateTime.UtcNow
             };
 
-            await _unitOfWork.Payments.AddAsync(log);
+            await _unitOfWork.Transactions.AddAsync(transaction);
             await _unitOfWork.CommitAsync();
         }
 
@@ -216,24 +212,21 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (wallet.HeldBalance >= amount)
             {
-                //wallet.HeldBalance -= amount;
-                //wallet.Balance += amount;
-                //_unitOfWork.Wallets.Update(wallet);
                 bool success = await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, amount, -amount);
                 if (!success) return;
-                var log = new Payment
+
+                var transaction = new Transaction
                 {
-                    UserId = shopId,
                     WalletId = wallet.Id,
                     RelatedOrderId = orderId,
                     Amount = amount,
-                    Type = PaymentType.SalesReleased,
-                    Status = PaymentStatus.Paid,
+                    Type = TransactionType.SalesRevenue,
                     Description = $"Released revenue for order #{orderId}",
-                    Currency = "VND"
+                    Currency = "VND",
+                    CreatedAt = DateTime.UtcNow
                 };
 
-                await _unitOfWork.Payments.AddAsync(log);
+                await _unitOfWork.Transactions.AddAsync(transaction);
                 await _unitOfWork.CommitAsync();
             }
         }
@@ -248,21 +241,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 if (wallet == null) return;
             }
 
-            //wallet.Balance += amount;
-            //_unitOfWork.Wallets.Update(wallet);
             await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, amount, 0);
-            var log = new Payment
+
+            var transaction = new Transaction
             {
-                UserId = userId,
                 WalletId = wallet.Id,
                 Amount = amount,
-                Type = PaymentType.RefundToWallet,
-                Status = PaymentStatus.Paid,
+                Type = TransactionType.OrderRefund,
                 Description = reason,
-                Currency = "VND"
+                Currency = "VND",
+                CreatedAt = DateTime.UtcNow
             };
 
-            await _unitOfWork.Payments.AddAsync(log);
+            await _unitOfWork.Transactions.AddAsync(transaction);
             await _unitOfWork.CommitAsync();
         }
 
@@ -273,34 +264,25 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (isOrderCompleted)
             {
-                // Trừ Balance, cho phép âm (allowNegative: true)
                 await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, -amount, 0, true);
             }
             else
             {
-                // Trừ tiền treo (HeldBalance)
                 await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, 0, -amount, true);
             }
 
-            //_unitOfWork.Wallets.Update(wallet);
-
-            // Ghi log giao dịch
-            var log = new Payment
+            var transaction = new Transaction
             {
-                Id = Guid.NewGuid(),
-                UserId = shopId,
                 WalletId = wallet.Id,
                 RelatedOrderId = orderId,
-                Amount = -amount, // Số âm thể hiện bị trừ
-                Type = PaymentType.RefundToWallet, 
-                Status = PaymentStatus.Paid,
-                Method = PaymentMethod.Wallet,
+                Amount = amount,
+                Type = TransactionType.OrderRefund,
                 Description = $"Refund deduction for Order #{orderId}",
                 Currency = "VND",
                 CreatedAt = DateTime.UtcNow
             };
 
-            await _unitOfWork.Payments.AddAsync(log);
+            await _unitOfWork.Transactions.AddAsync(transaction);
             await _unitOfWork.CommitAsync();
         }
 
@@ -308,13 +290,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<PaginatedResult<WalletTransactionResponse>> GetTransactionsByFilterAsync(PaymentFilterRequest filter)
         {
-            // Gọi Repository lấy dữ liệu đã phân trang
-            var (items, totalCount) = await _unitOfWork.Payments.GetPaymentsByFilterAsync(filter);
-
-            // Map Entity sang DTO
+            var (items, totalCount) = await _unitOfWork.Transactions.GetTransactionsByFilterAsync(filter);
             var mappedItems = _mapper.Map<List<WalletTransactionResponse>>(items);
-
-            // Trả về kết quả phân trang
             return new PaginatedResult<WalletTransactionResponse>(mappedItems, totalCount, filter.PageNumber, filter.PageSize);
         }
 
@@ -322,28 +299,25 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task ApproveWithdrawalAsync(Guid adminId, Guid paymentId, WithdrawalActionRequest request)
         {
-            // Lấy Payment và kiểm tra
-            var payment = await _unitOfWork.Payments.GetByIdAsync(paymentId);
-            if (payment == null) throw new KeyNotFoundException("Transaction not found");
+            // Lấy từ bảng WithdrawalRequest (Lưu ý: FE vẫn truyền paymentId nhưng thực chất nó là Id của WithdrawalRequest)
+            var withdrawalReq = await _unitOfWork.WithdrawalRequests.GetByIdAsync(paymentId);
+            if (withdrawalReq == null) throw new KeyNotFoundException("Transaction not found");
 
-            if (payment.Type != PaymentType.Withdrawal)
-                throw new InvalidOperationException("This transaction is not a withdrawal request.");
+            if (withdrawalReq.Status != WithdrawalStatus.Pending)
+                throw new InvalidOperationException($"Cannot approve transaction with status '{withdrawalReq.Status}'. Only 'Pending' requests can be approved.");
 
-            if (payment.Status != PaymentStatus.Pending)
-                throw new InvalidOperationException($"Cannot approve transaction with status '{payment.Status}'. Only 'Pending' requests can be approved.");
-
-            // Validate: Bắt buộc phải có ảnh bằng chứng chuyển khoản
-             if (string.IsNullOrEmpty(request.EvidenceImageUrl))
+            // Validate: Bắt buộc phải có ảnh bằng chứng chuyển khoản theo business rule
+            if (string.IsNullOrEmpty(request.EvidenceImageUrl))
                 throw new ArgumentException("Evidence Image (Banking Receipt) is required for approval.");
 
             // Cập nhật trạng thái
-            payment.Status = PaymentStatus.Paid;
+            withdrawalReq.Status = WithdrawalStatus.Completed;
+            withdrawalReq.AdminId = adminId;
+            withdrawalReq.EvidenceUrl = request.EvidenceImageUrl;
+            withdrawalReq.AdminMessage = request.Reason;
+            withdrawalReq.ProcessedAt = DateTime.UtcNow;
 
-            // Lưu thông tin Admin duyệt + Link ảnh bằng chứng + Ghi chú (nếu có) vào Description
-            // Format này giúp sau này FE dễ parse hoặc hiển thị
-            payment.Description = $"[APPROVED] By Admin: {adminId} | Proof: {request.EvidenceImageUrl} | Note: {request.Reason}";
-
-            _unitOfWork.Payments.Update(payment);
+            _unitOfWork.WithdrawalRequests.Update(withdrawalReq);
             await _unitOfWork.CommitAsync();
 
             // TODO: Gửi email thông báo cho Shop là tiền đã về tài khoản ngân hàng hoặc notification idk
@@ -357,27 +331,36 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 throw new ArgumentException("Reason is required when rejecting a withdrawal request.");
             }
 
-            // Lấy Payment
-            var payment = await _unitOfWork.Payments.GetByIdAsync(paymentId);
-            if (payment == null) throw new KeyNotFoundException("Transaction not found");
+            // Lấy WithdrawalRequest
+            var withdrawalReq = await _unitOfWork.WithdrawalRequests.GetByIdAsync(paymentId);
+            if (withdrawalReq == null) throw new KeyNotFoundException("Transaction not found");
 
-            if (payment.Type != PaymentType.Withdrawal)
-                throw new InvalidOperationException("This transaction is not a withdrawal request.");
-
-            if (payment.Status != PaymentStatus.Pending)
+            if (withdrawalReq.Status != WithdrawalStatus.Pending)
                 throw new InvalidOperationException("Cannot reject this transaction. Only 'Pending' requests can be rejected.");
 
             // HOÀN TIỀN VỀ VÍ
-            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(payment.UserId);
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(withdrawalReq.UserId);
 
             if (wallet != null)
             {
-                // Hoàn lại tiền gốc + phí rút (vì giao dịch hủy thì không thu phí)
-                //wallet.Balance += (payment.Amount + payment.FeeAmount);
-                // Lưu ý: FeeAmount nên để nullable trong Entity hoặc check null như trên
+                // Hoàn lại tiền gốc + phí rút (Tính lại phí dựa trên Amount vì bảng WithdrawalRequest không lưu FeeAmount)
+                decimal feePercent = _walletSettings.WithdrawalFeePercent;
+                decimal feeAmount = withdrawalReq.Amount * feePercent;
+                decimal refundAmount = withdrawalReq.Amount + feeAmount;
 
-                //_unitOfWork.Wallets.Update(wallet);
-                await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, (payment.Amount + payment.FeeAmount), 0);
+                await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, refundAmount, 0);
+
+                // Ghi log Transaction hoàn tiền vào sổ cái ví
+                var transaction = new Transaction
+                {
+                    WalletId = wallet.Id,
+                    Amount = refundAmount,
+                    Type = TransactionType.ManualAdjustment,
+                    Description = $"[REJECTED] Withdrawal refunded. Reason: {request.Reason}",
+                    Currency = "VND",
+                    CreatedAt = DateTime.UtcNow
+                };
+                await _unitOfWork.Transactions.AddAsync(transaction);
             }
             else
             {
@@ -385,13 +368,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             // Cập nhật trạng thái giao dịch
-            payment.Status = PaymentStatus.Failed;
+            withdrawalReq.Status = WithdrawalStatus.Rejected;
+            withdrawalReq.AdminId = adminId;
+            withdrawalReq.AdminMessage = request.Reason;
+            withdrawalReq.ProcessedAt = DateTime.UtcNow;
 
-            // Lưu lý do từ chối vào FailureMessage hoặc Description
-            payment.FailureMessage = request.Reason;
-            payment.Description = $"[REJECTED] By Admin: {adminId}. Reason: {request.Reason}";
-
-            _unitOfWork.Payments.Update(payment);
+            _unitOfWork.WithdrawalRequests.Update(withdrawalReq);
             await _unitOfWork.CommitAsync();
 
             // TODO: Gửi email thông báo cho Shop lý do bị từ chối hoặc notification idk
@@ -399,42 +381,26 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task AdjustBalanceAsync(Guid adminId, AdjustBalanceRequest request)
         {
-            // 1. Lấy ví của User mục tiêu
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(request.UserId);
             if (wallet == null)
             {
-                // Nếu chưa có ví thì tạo mới (Tùy logic, thường Shop mới có ví)
                 await CreateWalletAsync(request.UserId);
                 wallet = await _unitOfWork.Wallets.GetByUserIdAsync(request.UserId);
             }
 
-            // 2. Kiểm tra số dư nếu là phép trừ
-            if (request.Amount < 0 && wallet.Balance < Math.Abs(request.Amount))
-            {
-                //TODO: chưa biết có nên cho balance âm không
-                // throw new InvalidOperationException("Insufficient balance to deduct.");
-            }
-
-            // 3. Cập nhật số dư
-            //wallet.Balance += request.Amount;
-            //_unitOfWork.Wallets.Update(wallet);
             await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, request.Amount, 0, true);
-            // 4. Tạo Transaction Log
-            var transaction = _mapper.Map<Payment>(request);
-            transaction.Id = Guid.NewGuid();
-            transaction.WalletId = wallet.Id; 
-            transaction.UserId = request.UserId; // Chủ ví
 
-            transaction.Type = PaymentType.ManualAdjustment;
-            transaction.Status = PaymentStatus.Paid; // Điều chỉnh xong ngay lập tức
-            transaction.Method = PaymentMethod.Wallet; 
-            transaction.Currency = "VND";
+            var transaction = new Transaction
+            {
+                WalletId = wallet.Id,
+                Amount = request.Amount,
+                Type = TransactionType.ManualAdjustment,
+                Description = $"{request.Reason} (Adjusted by Admin {adminId})",
+                Currency = "VND",
+                CreatedAt = DateTime.UtcNow
+            };
 
-            // Lưu vết Admin nào đã thực hiện (Optional - ghi vào description hoặc 1 field CreatedBy nếu có)
-            transaction.Description = $"{request.Reason} (Adjusted by Admin)";
-            transaction.CreatedBy = adminId;
-
-            await _unitOfWork.Payments.AddAsync(transaction);
+            await _unitOfWork.Transactions.AddAsync(transaction);
             await _unitOfWork.CommitAsync();
         }
 
@@ -626,16 +592,22 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
             if (wallet == null) return new WalletStatisticsResponse();
-            var stats = await _unitOfWork.Payments.GetPaymentStatsByWalletIdAsync(wallet.Id);
+
+            var transactions = await _unitOfWork.Transactions.GetByWalletIdAsync(wallet.Id);
+            var withdrawals = await _unitOfWork.WithdrawalRequests.GetByUserIdAsync(userId);
+            var now = DateTime.UtcNow;
 
             return new WalletStatisticsResponse
             {
                 AvailableBalance = wallet.Balance,
                 HeldBalance = wallet.HeldBalance,
-                TotalRevenue = stats.TotalRevenue,
-                TotalWithdrawn = stats.TotalWithdrawn,
-                PendingWithdrawal = stats.PendingWithdrawal,
-                ThisMonthRevenue = stats.ThisMonthRevenue
+                // Doanh thu = Tổng các giao dịch SalesRevenue
+                TotalRevenue = transactions.Where(t => t.Type == TransactionType.SalesRevenue).Sum(t => t.Amount),
+                ThisMonthRevenue = transactions.Where(t => t.Type == TransactionType.SalesRevenue && t.CreatedAt.Month == now.Month && t.CreatedAt.Year == now.Year).Sum(t => t.Amount),
+
+                // Rút tiền lấy từ bảng WithdrawalRequests
+                TotalWithdrawn = withdrawals.Where(w => w.Status == WithdrawalStatus.Completed).Sum(w => w.Amount),
+                PendingWithdrawal = withdrawals.Where(w => w.Status == WithdrawalStatus.Pending).Sum(w => w.Amount)
             };
         }
 
@@ -643,10 +615,41 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
             if (wallet == null) return new List<HeldTransactionResponse>();
-            var payments = await _unitOfWork.Payments.GetHeldPaymentsByWalletIdAsync(wallet.Id);
-            return _mapper.Map<List<HeldTransactionResponse>>(payments);
-        }
 
+            var transactions = await _unitOfWork.Transactions.GetByWalletIdAsync(wallet.Id);
+
+            // Lọc ra các giao dịch đang treo (SalesPending)
+            var heldTransactions = transactions.Where(t => t.Type == TransactionType.SalesPending).ToList();
+
+            return _mapper.Map<List<HeldTransactionResponse>>(heldTransactions);
+        }
+        public async Task PayOrderGroupWithWalletAsync(Guid userId, Guid orderGroupId, decimal amount)
+        {
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+            if (wallet == null) throw new InvalidOperationException("Wallet does not exist.");
+
+            if (wallet.Balance < amount)
+                throw new InvalidOperationException("Your wallet balance is insufficient to complete this checkout.");
+
+            // Trừ tiền trong ví
+            bool success = await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, -amount, 0);
+            if (!success) throw new InvalidOperationException("Transaction failed due to concurrent update. Please try again.");
+
+            // Ghi nhận vào Sổ cái (Transaction) bằng OrderGroupId
+            var transaction = new Transaction
+            {
+                WalletId = wallet.Id,
+                OrderGroupId = orderGroupId,
+                Amount = amount,
+                Type = TransactionType.OrderPayment,
+                Description = $"Payment for Order Group #{orderGroupId}",
+                Currency = "VND",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _unitOfWork.Transactions.AddAsync(transaction);
+            await _unitOfWork.CommitAsync();
+        }
 
         // Helper
         // dùng cho các API Rút tiền/Update Bank 

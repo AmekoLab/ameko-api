@@ -19,8 +19,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
 
         Task<Payment?> GetPaymentByOrderGroupIdAsync(Guid orderGroupId);
         Task<IEnumerable<Payment>> GetByUserIdAsync(Guid userId, CancellationToken token = default);
-        Task<(decimal TotalRevenue, decimal TotalWithdrawn, decimal PendingWithdrawal, decimal ThisMonthRevenue)> GetPaymentStatsByWalletIdAsync(Guid walletId);
-        Task<List<Payment>> GetHeldPaymentsByWalletIdAsync(Guid walletId);
+        //Task<(decimal TotalRevenue, decimal TotalWithdrawn, decimal PendingWithdrawal, decimal ThisMonthRevenue)> GetPaymentStatsByWalletIdAsync(Guid walletId);
+        //Task<List<Payment>> GetHeldPaymentsByWalletIdAsync(Guid walletId);
 
         // 1. Lấy Payment theo ID 
         Task<Payment?> GetByIdAsync(Guid id);
@@ -31,7 +31,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<(IEnumerable<Payment> Items, int TotalCount)> GetPaymentsByFilterAsync(PaymentFilterRequest filter);
 
         // 3. Lấy danh sách chờ duyệt nhanh cho Admin
-        Task<IEnumerable<Payment>> GetPendingWithdrawalsAsync();
+        //Task<IEnumerable<Payment>> GetPendingWithdrawalsAsync();
 
     }
 }

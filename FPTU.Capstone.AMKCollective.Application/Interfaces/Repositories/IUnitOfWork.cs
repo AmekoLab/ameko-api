@@ -19,7 +19,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         IOrderIssueLogRepository OrderIssueLogs { get; }
         IVoucherRepository Vouchers { get; }
         INotificationRepository Notifications { get; }
-        IOrderVoucherRepository OrderVouchers { get; }
+        //IOrderVoucherRepository OrderVouchers { get; }
         IVoucherUsageLogRepository VoucherUsageLogs { get; }
         ICommissionRequestRepository CommissionRequests { get; }
         ICommissionQuoteRepository CommissionQuotes { get; }
@@ -27,6 +27,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         IAssemblyStepTemplateRepository AssemblyStepTemplates { get; }
         Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> action);
         IWithdrawalRequestRepository WithdrawalRequests { get; }
+        ITransactionRepository Transactions{ get; }
         Task CommitAsync();
         void Rollback();
         /// <summary>

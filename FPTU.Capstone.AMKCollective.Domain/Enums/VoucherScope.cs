@@ -6,9 +6,9 @@ using System.Threading.Tasks;
 
 namespace FPTU.Capstone.AMKCollective.Domain.Enums
 {
-    public enum PaymentMethod
+    public enum VoucherScope
     {
-        CreditCard = 0,
-        Wallet = 1       
+        System = 0, // Voucher sàn (áp dụng mọi nơi)
+        Shop = 1    // Voucher shop (chỉ áp dụng cho sản phẩm của Shop đó)
     }
 }

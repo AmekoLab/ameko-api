@@ -26,7 +26,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data
         public DbSet<OrderItemComponent> OrderItemComponents { get; set; } = null!;
         public DbSet<Voucher> Vouchers { get; set; } = null!;
         public DbSet<VoucherUsageLog> VoucherUsageLogs { get; set; } = null!;
-        public DbSet<OrderVoucher> OrderVouchers { get; set; } = null!;
         public DbSet<Follow> Follows { get; set; } = null!;
         public DbSet<Feedback> Feedbacks { get; set; } = null!;
         public DbSet<Conversation> Conversations { get; set; } = null!;
@@ -38,6 +37,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data
         public DbSet<PostComment> PostComments { get; set; } = null!;
         public DbSet<CommunityAttachment> CommunityAttachments { get; set; } = null!;
         public DbSet<Wallet> Wallets { get; set; } = null!;
+        public DbSet<Transaction> Transactions { get; set; } = null!;
         public DbSet<OrderIssue> OrderIssues { get; set; } = null!;
         public DbSet<OrderIssueLog> OrderIssueLogs { get; set; } = null!;
         public DbSet<WithdrawalRequest> WithdrawalRequests { get; set; } = null!;
@@ -51,6 +51,25 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data
 
             // Apply all configurations from assembly (includes UserConfiguration etc.)
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
+
+
+            // SEED DATA: SYSTEM BOT ACCOUNT
+            var systemBotId = Guid.Parse("00000000-0000-0000-0000-000000000001");
+            var adminId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+
+            modelBuilder.Entity<User>().HasData(new User
+            {
+                Id = systemBotId,
+                Username = "systembot",
+                Email = "noreply@amkcollective.com",
+                HashedPassword = "NoPasswordNeededForBot",
+                FirstName = "AMK",
+                LastName = "System",
+                Status = Domain.Enums.AccountStatus.Active, 
+                RoleId = adminId, 
+                EmailConfirmed = true,
+                CreatedAt = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc) 
+            });
         }
     }
 }

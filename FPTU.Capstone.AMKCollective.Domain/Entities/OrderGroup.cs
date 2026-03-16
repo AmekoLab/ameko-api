@@ -15,5 +15,6 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public virtual User Customer { get; set; } = null!;
         public virtual ICollection<Order> Orders { get; set; } = new List<Order>();
         public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>(0);
+        public virtual ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
     }
 }

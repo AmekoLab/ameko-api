@@ -25,7 +25,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         private IOrderIssueLogRepository? _orderIssueLogs;
         private IVoucherRepository? _voucher;
         private INotificationRepository? _notifications;
-        private IOrderVoucherRepository? _orderVoucher;
+        //private IOrderVoucherRepository? _orderVoucher;
         private IVoucherUsageLogRepository? _voucherUsageLogs;
         private ICommissionRequestRepository? _commissionRequests;
         private ICommissionQuoteRepository? _commissionQuotes;
@@ -33,6 +33,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         private IAssemblyStepTemplateRepository? _assemblyStepTemplates;
         private IDbContextTransaction? _currentTransaction;
         private IWithdrawalRequestRepository? _withdrawalRequests;
+        private ITransactionRepository? _transactions;
         public UnitOfWork(ApplicationDbContext context)
         {
             _context = context;
@@ -57,7 +58,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public IOrderIssueLogRepository OrderIssueLogs => _orderIssueLogs ??= new OrderIssueLogRepository(_context);
         public IVoucherRepository Vouchers => _voucher ??= new VoucherRepository(_context);
         public INotificationRepository Notifications => _notifications ??= new NotificationRepository(_context);
-        public IOrderVoucherRepository OrderVouchers => _orderVoucher ??= new OrderVoucherRepository(_context);
+        //public IOrderVoucherRepository OrderVouchers => _orderVoucher ??= new OrderVoucherRepository(_context);
         public IVoucherUsageLogRepository VoucherUsageLogs => _voucherUsageLogs ??= new VoucherUsageLogRepository(_context);
         public ICommissionRequestRepository CommissionRequests => _commissionRequests ??= new CommissionRequestRepository(_context);
         public ICommissionQuoteRepository CommissionQuotes => _commissionQuotes ??= new CommissionQuoteRepository(_context);
@@ -65,6 +66,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         public IAssemblyStepTemplateRepository AssemblyStepTemplates => _assemblyStepTemplates ??= new AssemblyStepTemplateRepository(_context);
         public IWithdrawalRequestRepository WithdrawalRequests => _withdrawalRequests ??= new WithdrawalRequestRepository(_context);
+        public ITransactionRepository Transactions => _transactions ??= new TransactionRepository(_context);
 
         public async Task CommitAsync()
         {

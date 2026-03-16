@@ -19,7 +19,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Voucher
 
         [Range(0, int.MaxValue)]
         public int? UsageLimit { get; set; }
-
+        public int? MaxUsesPerUser { get; set; }
         public VoucherStatus? Status { get; set; } // Active/Disabled
     }
 }
