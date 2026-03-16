@@ -43,7 +43,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 
         Task ProcessCancelRequestAsync(Guid userId, ProcessIssueRequest request, CancellationToken token = default);
 
-        Task<string> RepayAsync(Guid userId, Guid orderGroupId, CancellationToken token = default);
+        Task<CheckoutResponse> RepayAsync(Guid userId, RepayRequest request, CancellationToken token = default);
         Task<OrderResponse> GetOrderDetailAsync(Guid userId, Guid orderId);
 
         // BACKGROUND WORKER - Release held funds after warranty period

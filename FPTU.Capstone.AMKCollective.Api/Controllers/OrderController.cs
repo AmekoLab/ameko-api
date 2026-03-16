@@ -34,12 +34,24 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
     Description = "Finalizes the order based on items in the cart or immediate purchase requests."
 )]
         [SwaggerResponse(200, "Checkout initiated successfully")]
+        [SwaggerResponse(400, "Bad Request - Voucher conditions not met or stock issue")]
         [SwaggerResponse(401, "Unauthorized")]
         public async Task<IActionResult> Checkout([FromBody] CheckoutRequest request)
         {
-            var userId = GetCurrentUserId();
-            var result = await _orderService.CheckoutAsync(userId, request);
-            return SuccessResponse(result, "Checkout initiated successfully");
+            try
+            {
+                var userId = GetCurrentUserId();
+                var result = await _orderService.CheckoutAsync(userId, request);
+                return SuccessResponse(result, "Checkout initiated successfully");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<string>(ex.Message);
+            }
         }
 
         // 2. Thêm vào giỏ
@@ -223,17 +235,22 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// <param name="orderGroupId">The ID of the order group to pay</param>
         /// <returns>Payment URL</returns>
         [HttpPost("repay/{orderGroupId}")]
-        public async Task<IActionResult> Repay(Guid orderGroupId)
+        public async Task<IActionResult> Repay(Guid orderGroupId, [FromBody] RepayRequest? request)
         {
             try
             {
+                if (request == null)
+                {
+                    request = new RepayRequest();
+                }
+                request.OrderGroupId = orderGroupId;
                 var userId = GetCurrentUserId();
 
                 // 2. Gọi Service để lấy link thanh toán mới
-                var paymentUrl = await _orderService.RepayAsync(userId, orderGroupId);
+                var response = await _orderService.RepayAsync(userId, request);
 
                 // 3. Trả về link thanh toán (Dùng hàm SuccessResponse của BaseApiController)
-                return SuccessResponse(new { PaymentUrl = paymentUrl }, "Payment link generated successfully.");
+                return SuccessResponse(response, "Repayment processed successfully.");
             }
             catch (KeyNotFoundException ex)
             {

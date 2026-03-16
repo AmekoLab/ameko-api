@@ -664,51 +664,22 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<CheckoutResponse> CheckoutAsync(Guid userId, CheckoutRequest request, CancellationToken token = default)
         {
-            // 1. Lấy giỏ hàng hiện tại
-            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
-            if (cartOrder == null || !cartOrder.OrderItems.Any())
-                throw new InvalidOperationException("Cart is empty.");
+            // 1. Kiểm tra giỏ hàng và lấy danh sách sản phẩm được chọn
+            var (cartOrder, selectedItems) = await ValidateAndGetCartItemsAsync(userId, request.SelectedOrderItemIds);
 
-            if (request.SelectedOrderItemIds == null || !request.SelectedOrderItemIds.Any())
-                throw new InvalidOperationException("Please select at least one item to checkout.");
+            // 2. Kiểm tra và lấy danh sách Voucher hợp lệ
+            var activeVouchers = await ValidateAndGetActiveVouchersAsync(cartOrder.Id);
 
-            var selectedItems = cartOrder.OrderItems
-                .Where(i => request.SelectedOrderItemIds.Contains(i.Id))
-                .ToList();
-
-            if (!selectedItems.Any() || selectedItems.Count != request.SelectedOrderItemIds.Distinct().Count())
-                throw new InvalidOperationException("Some selected items are invalid or not in your cart.");
-
-            // --- MỤC 4: VALIDATE HẠN SỬ DỤNG VÀ CHUẨN BỊ DANH SÁCH VOUCHER ---
-            var appliedVouchersInCart = await _unitOfWork.VoucherUsageLogs.GetByOrderIdAsync(cartOrder.Id);
-            var activeVouchers = new List<Voucher>();
-
-            foreach (var av in appliedVouchersInCart)
-            {
-                var voucherCheck = await _unitOfWork.Vouchers.GetByIdAsync(av.VoucherId);
-                if (voucherCheck != null)
-                {
-                    // [P2-4] Sửa công thức: Apply không tăng UsedCount nữa, nên check thẳng UsedCount >= UsageLimit
-                    if (voucherCheck.UsedCount >= voucherCheck.UsageLimit)
-                        throw new InvalidOperationException($"The voucher {voucherCheck.Code} has reached its usage limit while in your cart.");
-
-                    if (DateTime.UtcNow > voucherCheck.EndDate)
-                        throw new InvalidOperationException($"The voucher {voucherCheck.Code} has expired.");
-
-                    activeVouchers.Add(voucherCheck);
-                }
-            }
-
-            // Chuẩn bị URL
+            // Chuẩn bị URL thanh toán
             string successUrl = string.IsNullOrEmpty(request.SuccessUrl) ? _frontendUrls.PaymentSuccessPath : request.SuccessUrl;
             string cancelUrl = string.IsNullOrEmpty(request.CancelUrl) ? _frontendUrls.PaymentCancelPath : request.CancelUrl;
 
-            // SỬ DỤNG EXECUTION STRATEGY
+            // 3. Thực thi logic lõi trong Transaction
             return await _unitOfWork.ExecuteInTransactionAsync(async () =>
             {
                 try
                 {
-                    // 2. KHỞI TẠO ORDER GROUP
+                    // Khởi tạo Order Group
                     var orderGroup = new OrderGroup
                     {
                         Id = Guid.NewGuid(),
@@ -719,288 +690,27 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         Orders = new List<Order>()
                     };
 
-                    var itemsByShop = selectedItems.GroupBy(i =>
-                    {
-                        // 1. Hàng thường & Builder (Có ProductId)
-                        if (i.ProductId.HasValue && i.Product != null)
-                            return i.Product.ShopId;
+                    // Bước 3.1: Chia đơn theo Shop, trừ kho và tính Subtotal
+                    decimal totalCheckoutSubTotal = await CreateOrdersAndDeductStockAsync(userId, request, selectedItems, orderGroup);
 
-                        // 2. Hàng Commission (ProductId = null, lấy từ DesignConfig)
-                        if (!string.IsNullOrEmpty(i.DesignConfig))
-                        {
-                            try
-                            {
-                                using var doc = System.Text.Json.JsonDocument.Parse(i.DesignConfig);
-                                if (doc.RootElement.TryGetProperty("ShopId", out var shopIdProp) && shopIdProp.TryGetGuid(out var shopId))
-                                    return shopId;
-                            }
-                            catch { }
-                        }
+                    // Bước 3.2: Phân bổ Voucher và chốt tổng tiền thanh toán
+                    var appliedVoucherIds = await ApplyVouchersAndCalculateTotalsAsync(userId, orderGroup, activeVouchers, totalCheckoutSubTotal);
 
-                        return Guid.Empty;
-                    });
-                    decimal totalCheckoutSubTotal = 0;
-
-                    // BƯỚC 2.1: TẠO ĐƠN HÀNG LẺ CHO TỪNG SHOP VÀ TÍNH TỔNG TIỀN GỐC (SUBTOTAL)
-                    foreach (var shopGroup in itemsByShop)
-                    {
-                        if (shopGroup.Key == Guid.Empty) continue;
-
-                        var order = new Order
-                        {
-                            Id = Guid.NewGuid(),
-                            OrderGroupId = orderGroup.Id,
-                            CustomerId = userId,
-                            ShopId = shopGroup.Key,
-                            ReceiverName = request.ReceiverName,
-                            ReceiverPhone = request.ReceiverPhone,
-                            ShippingAddress = request.ShippingAddress,
-                            Note = request.Note,
-                            OrderStatus = OrderStatus.Pending,
-                            PaymentStatus = PaymentStatus.Pending,
-                            CreatedAt = DateTime.UtcNow,
-                            OrderItems = new List<OrderItem>()
-                        };
-
-                        decimal shopSubTotal = 0;
-
-                        foreach (var cartItem in shopGroup)
-                        {
-                            Model product = null; // Khai báo biến product ra ngoài
-
-                            // Chỉ check kho và trừ kho nếu món hàng CÓ ProductId (Hàng thường & Builder)
-                            if (cartItem.ProductId.HasValue)
-                            {
-                                bool success = await _unitOfWork.Models.UpdateStockAsync(cartItem.ProductId.Value, -cartItem.Quantity);
-
-                                // Nếu success = false nghĩa là hàm bị chặn lại do kho không đủ (nhỏ hơn 0) hoặc SP đã bị xóa
-                                if (!success)
-                                {
-                                    throw new InvalidOperationException($"Product '{cartItem.ProductName}' is out of stock or missing.");
-                                }
-                            }
-
-                            // Clone OrderItem
-                            var orderItem = new OrderItem
-                            {
-                                Id = Guid.NewGuid(),
-                                OrderId = order.Id,
-                                ProductId = cartItem.ProductId,
-                                ProductName = cartItem.ProductName,
-                                ProductImage = cartItem.ProductImage,
-                                UnitPrice = cartItem.UnitPrice,
-                                Quantity = cartItem.Quantity,
-                                TotalPrice = cartItem.TotalPrice,
-                                IsCustom = cartItem.IsCustom,
-                                DesignConfig = cartItem.DesignConfig,
-                                OrderItemComponents = new List<OrderItemComponent>()
-                            };
-
-                            // Copy Components (Custom Product)
-                            if (cartItem.OrderItemComponents != null && cartItem.OrderItemComponents.Any())
-                            {
-                                foreach (var comp in cartItem.OrderItemComponents)
-                                {
-                                    var partEntity = await _unitOfWork.Models.GetByIdAsync(comp.PartId);
-                                    if (partEntity == null) throw new InvalidOperationException($"Component {comp.PartName} not found.");
-
-                                    int requiredQtyPerKit = comp.Quantity;
-                                    int totalPartNeeded = requiredQtyPerKit * cartItem.Quantity;
-
-                                    bool compSuccess = await _unitOfWork.Models.UpdateStockAsync(comp.PartId, -totalPartNeeded);
-
-                                    // 🌟 COMMISSION SAFEGUARD: Chỉ quăng lỗi thiếu kho nếu là hàng có sẵn/Builder (có ProductId)
-                                    if (!compSuccess && cartItem.ProductId.HasValue)
-                                    {
-                                        throw new InvalidOperationException($"Insufficient stock for component: {comp.PartName}");
-                                    }
-
-                                    orderItem.OrderItemComponents.Add(new OrderItemComponent
-                                    {
-                                        Id = Guid.NewGuid(),
-                                        OrderItemId = orderItem.Id,
-                                        PartId = comp.PartId,
-                                        PartName = comp.PartName,
-                                        PartPriceSnapshot = comp.PartPriceSnapshot,
-                                        PartImageUrl = comp.PartImageUrl,
-                                        Quantity = requiredQtyPerKit
-                                    });
-                                }
-                            }
-
-                            order.OrderItems.Add(orderItem);
-                            shopSubTotal += orderItem.TotalPrice;
-                        }
-
-                        order.SubTotal = shopSubTotal;
-                        order.ShippingFee = _orderSettings.DefaultShippingFee;
-
-                        totalCheckoutSubTotal += shopSubTotal;
-                        orderGroup.Orders.Add(order);
-                    }
-
-                    // =====================================================================
-                    // BƯỚC 3: KẾT TOÁN VOUCHER - BÀI TOÁN PHÂN BỔ (PRORATION)
-                    // =====================================================================
-
-
-                    var systemVouchers = activeVouchers.Where(v =>
-                v.Type == VoucherType.Compensation || v.Scope == VoucherScope.System).ToList();
-
-                    var shopVouchers = activeVouchers.Where(v =>
-                        v.Scope == VoucherScope.Shop &&
-                        (v.Type == VoucherType.Promotion || v.Type == VoucherType.Negotiation)).ToList();
-
-                    foreach (var sysVoucher in systemVouchers)
-                    {
-                        if (totalCheckoutSubTotal < sysVoucher.MinOrderValue)
-                            throw new InvalidOperationException(
-                                $"The order total ({totalCheckoutSubTotal:N0} VND) does not satisfy the minimum requirement ({sysVoucher.MinOrderValue:N0} VND) for applying system voucher {sysVoucher.Code}. Please add more items or remove the voucher."
-                            );
-                    }
-
-                    // TẠO BIẾN NÀY ĐỂ GHI NHỚ CÁC VOUCHER NÀO ĐÃ ĐƯỢC ÁP DỤNG THÀNH CÔNG
-                    var appliedVoucherIdsToIncrement = new HashSet<Guid>();
-
-                    foreach (var order in orderGroup.Orders)
-                    {
-                        decimal orderDiscountAmount = 0;
-                        decimal systemDiscountForThisOrder = 0;
-                        decimal currentOrderRemain = order.SubTotal;
-
-                        var shopInfo = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
-                        Guid shopOwnerId = shopInfo != null ? shopInfo.UserId : Guid.Empty;
-
-                        // 3.1. ÁP MÃ CỦA ĐÚNG SHOP ĐÓ
-                        var matchedShopVoucher = shopVouchers.FirstOrDefault(v => v.CreatorId == shopOwnerId);
-                        if (matchedShopVoucher != null)
-                        {
-                            if (order.SubTotal < matchedShopVoucher.MinOrderValue)
-                                throw new InvalidOperationException($"Tổng tiền các món bạn chọn từ Shop không đủ điều kiện tối thiểu để dùng mã {matchedShopVoucher.Code}.");
-
-                            decimal shopDiscount = _voucherService.CalculateVoucherDiscount(matchedShopVoucher, order.SubTotal);
-                            if (shopDiscount > currentOrderRemain) shopDiscount = currentOrderRemain;
-
-                            await _unitOfWork.VoucherUsageLogs.AddAsync(new VoucherUsageLog
-                            {
-                                UserId = userId,
-                                OrderId = order.Id,
-                                VoucherId = matchedShopVoucher.Id,
-                                Code = matchedShopVoucher.Code,
-                                VoucherType = matchedShopVoucher.Type,
-                                DiscountApplied = shopDiscount,
-                                ApplyOrder = 1
-                            });
-
-                            orderDiscountAmount += shopDiscount;
-                            currentOrderRemain -= shopDiscount;
-
-                            // GHI NHỚ ID VOUCHER NÀY ĐỂ LÁT NỮA TRỪ LƯỢT
-                            appliedVoucherIdsToIncrement.Add(matchedShopVoucher.Id);
-                        }
-
-                        // 3.2. ÁP MÃ CỦA SÀN & PHÂN BỔ (PRORATION)
-                        decimal weight = totalCheckoutSubTotal > 0 ? (order.SubTotal / totalCheckoutSubTotal) : 0;
-
-                        foreach (var sysVoucher in systemVouchers)
-                        {
-                            decimal totalSysDiscount = _voucherService.CalculateVoucherDiscount(sysVoucher, totalCheckoutSubTotal);
-                            decimal proratedDiscount = totalSysDiscount * weight;
-
-                            if (proratedDiscount > currentOrderRemain) proratedDiscount = currentOrderRemain;
-
-                            await _unitOfWork.VoucherUsageLogs.AddAsync(new VoucherUsageLog
-                            {
-                                UserId = userId,
-                                OrderId = order.Id,
-                                VoucherId = sysVoucher.Id,
-                                Code = sysVoucher.Code,
-                                VoucherType = sysVoucher.Type,
-                                DiscountApplied = proratedDiscount,
-                                ApplyOrder = 2
-                            });
-
-                            orderDiscountAmount += proratedDiscount;
-                            systemDiscountForThisOrder += proratedDiscount;
-                            currentOrderRemain -= proratedDiscount;
-
-                            // GHI NHỚ ID VOUCHER NÀY ĐỂ LÁT NỮA TRỪ LƯỢT
-                            appliedVoucherIdsToIncrement.Add(sysVoucher.Id);
-                        }
-
-                        // 3.3. CHỐT TIỀN CHO ĐƠN NÀY (Đã trừ mọi khoản discount)
-                        order.DiscountAmount = orderDiscountAmount;
-                        order.SystemDiscountAmount = systemDiscountForThisOrder;
-                        order.TotalAmount = Math.Max(0, (order.SubTotal + order.ShippingFee) - order.DiscountAmount);
-
-                        orderGroup.TotalGroupAmount += order.TotalAmount;
-                    }
-
-                    // =====================================================================
-
-                    // 4. Lưu dữ liệu OrderGroup
+                    // Bước 3.3: Lưu OrderGroup
                     await _unitOfWork.OrderGroups.CreateAsync(orderGroup);
 
-                    // 4.1 TĂNG USEDCOUNT CHO VOUCHER (ĐÃ FIX LỖI)
-                    // Chỉ cần lặp qua danh sách ID mà chúng ta vừa gom được ở Bước 3
-                    foreach (var voucherId in appliedVoucherIdsToIncrement)
-                    {
-                        await _unitOfWork.Vouchers.TryIncrementVoucherUsageAsync(voucherId);
-                    }
-
-                    // 4.3 Bây giờ mới an toàn Xóa OrderVouchers nháp của Giỏ hàng (Cart)
-                    await _unitOfWork.VoucherUsageLogs.DeleteAllByOrderIdAsync(cartOrder.Id);
-
-                    // Dọn dẹp giỏ hàng
-                    foreach (var item in selectedItems)
-                    {
-                        _unitOfWork.Orders.DeleteOrderItem(item);
-                        cartOrder.OrderItems.Remove(item);
-                    }
-
-                    if (!cartOrder.OrderItems.Any())
-                    {
-                        _unitOfWork.Orders.Delete(cartOrder);
-                    }
-                    else
-                    {
-                        cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
-                        cartOrder.SubTotal = cartOrder.TotalAmount;
-                        cartOrder.DiscountAmount = 0;
-                        await _unitOfWork.Orders.UpdateOrderAsync(cartOrder);
-                    }
+                    // Bước 3.4: Tăng lượt dùng voucher và dọn dẹp giỏ hàng
+                    await FinalizeVouchersAndCleanupCartAsync(cartOrder, selectedItems, appliedVoucherIds);
 
                     await _unitOfWork.CommitAsync();
 
-                    // 5. RẼ NHÁNH PHƯƠNG THỨC THANH TOÁN
-                    if (request.PaymentMethod == PaymentMethod.Wallet)
-                    {
-                        // Gọi hàm helper để xử lý thanh toán bằng Ví
-                        return await ProcessWalletCheckoutAsync(userId, orderGroup, successUrl);
-                    }
-                    else
-                    {
-                        // Mặc định gọi sang Stripe
-                        var paymentRequest = new CreateCheckoutSessionRequest
-                        {
-                            OrderGroupId = orderGroup.Id,
-                            SuccessUrl = successUrl,
-                            CancelUrl = cancelUrl
-                        };
-                        var paymentRes = await _paymentService.CreateCheckoutSessionAsync(paymentRequest, token);
-
-                        return new CheckoutResponse
-                        {
-                            OrderGroupId = orderGroup.Id,
-                            TotalAmount = orderGroup.TotalGroupAmount,
-                            PaymentUrl = paymentRes.PaymentUrl
-                        };
-                    }
+                    // Bước 4: Xử lý rẽ nhánh thanh toán (Ví / Cổng thanh toán)
+                    return await ProcessPaymentBranchAsync(userId, request.PaymentMethod, orderGroup, successUrl, cancelUrl, token);
                 }
                 catch (Exception ex)
                 {
                     // Quăng lỗi ra để ExecutionStrategy bắt và TỰ ĐỘNG gọi RollbackTransactionAsync
-                    throw new InvalidOperationException($"Checkout failed: {ex.Message}");
+                    throw;
                 }
             });
         }
@@ -1370,10 +1080,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // TODO: notify User
         }
 
-        public async Task<string> RepayAsync(Guid userId, Guid orderGroupId, CancellationToken token = default)
+        public async Task<CheckoutResponse> RepayAsync(Guid userId, RepayRequest request, CancellationToken token = default)
         {
-            // 1. Lấy thông tin đơn hàng 
-            var orderGroup = await _unitOfWork.OrderGroups.GetByIdAsync(orderGroupId);
+            // 1. Lấy thông tin đơn hàng (Kèm theo các order con bên trong)
+            var orderGroup = await _unitOfWork.OrderGroups.GetByIdAsync(request.OrderGroupId);
 
             if (orderGroup == null)
                 throw new KeyNotFoundException("Order not found.");
@@ -1389,18 +1099,58 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (orderGroup.Orders.Any(o => o.OrderStatus == OrderStatus.Cancelled))
                 throw new InvalidOperationException("This order has been cancelled. Please order again.");
 
-            // 4. Tạo Stripe Session mới
-            // Lưu ý: Cấu hình URL trả về cho Repay có thể khác Checkout gốc (tuỳ bạn)
-            var paymentRequest = new CreateCheckoutSessionRequest
+            // Chuẩn bị URL
+            string successUrl = string.IsNullOrEmpty(request.SuccessUrl) ? _frontendUrls.PaymentSuccessPath : request.SuccessUrl;
+            string cancelUrl = string.IsNullOrEmpty(request.CancelUrl) ? _frontendUrls.OrderPendingPath : request.CancelUrl;
+
+            // =====================================================================
+            // 4. RẼ NHÁNH PHƯƠNG THỨC THANH TOÁN LẠI (REPAY)
+            // =====================================================================
+
+            if (request.PaymentMethod == PaymentMethod.Wallet)
             {
-                OrderGroupId = orderGroup.Id,
-                SuccessUrl = _frontendUrls.PaymentSuccessPath,
-                CancelUrl = _frontendUrls.OrderPendingPath
-            };
+                // Khách hàng đổi ý, muốn dùng Ví để thanh toán lại đơn đang chờ
 
-            var paymentRes = await _paymentService.CreateCheckoutSessionAsync(paymentRequest, token);
+                // Trừ tiền và ghi Transaction
+                await _walletService.PayOrderGroupWithWalletAsync(userId, orderGroup.Id, orderGroup.TotalGroupAmount);
 
-            return paymentRes.PaymentUrl;
+                // Cập nhật trạng thái
+                orderGroup.PaymentStatus = PaymentStatus.Paid;
+                foreach (var order in orderGroup.Orders)
+                {
+                    order.PaymentStatus = PaymentStatus.Paid;
+                    order.OrderStatus = OrderStatus.Processing; // Đẩy đơn đi tiếp
+                }
+
+                //_unitOfWork.OrderGroups.Update(orderGroup);
+                await _unitOfWork.CommitAsync();
+
+                return new CheckoutResponse
+                {
+                    OrderGroupId = orderGroup.Id,
+                    TotalAmount = orderGroup.TotalGroupAmount,
+                    PaymentUrl = successUrl // Trả thẳng về trang thành công
+                };
+            }
+            else
+            {
+                // Mặc định hoặc khách vẫn muốn dùng Stripe
+                var paymentRequest = new CreateCheckoutSessionRequest
+                {
+                    OrderGroupId = orderGroup.Id,
+                    SuccessUrl = successUrl,
+                    CancelUrl = cancelUrl
+                };
+
+                var paymentRes = await _paymentService.CreateCheckoutSessionAsync(paymentRequest, token);
+
+                return new CheckoutResponse
+                {
+                    OrderGroupId = orderGroup.Id,
+                    TotalAmount = orderGroup.TotalGroupAmount,
+                    PaymentUrl = paymentRes.PaymentUrl
+                };
+            }
         }
         public async Task<OrderResponse> GetOrderDetailAsync(Guid userId, Guid orderId)
         {
@@ -1669,6 +1419,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             foreach (var order in orderGroup.Orders)
             {
                 order.PaymentStatus = PaymentStatus.Paid;
+                order.OrderStatus = OrderStatus.Processing;
             }
 
             //_unitOfWork.OrderGroups.Update(orderGroup);
@@ -1681,6 +1432,297 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 TotalAmount = orderGroup.TotalGroupAmount,
                 PaymentUrl = successUrl
             };
+        }
+
+        //===================CHECKOUT============================//
+        private async Task<(Order cartOrder, List<OrderItem> selectedItems)> ValidateAndGetCartItemsAsync(Guid userId, List<Guid> selectedOrderItemIds)
+        {
+            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
+            if (cartOrder == null || !cartOrder.OrderItems.Any())
+                throw new InvalidOperationException("Cart is empty.");
+
+            if (selectedOrderItemIds == null || !selectedOrderItemIds.Any())
+                throw new InvalidOperationException("Please select at least one item to checkout.");
+
+            var selectedItems = cartOrder.OrderItems
+                .Where(i => selectedOrderItemIds.Contains(i.Id))
+                .ToList();
+
+            if (!selectedItems.Any() || selectedItems.Count != selectedOrderItemIds.Distinct().Count())
+                throw new InvalidOperationException("Some selected items are invalid or not in your cart.");
+
+            return (cartOrder, selectedItems);
+        }
+        private async Task<List<Voucher>> ValidateAndGetActiveVouchersAsync(Guid cartOrderId)
+        {
+            var appliedVouchersInCart = await _unitOfWork.VoucherUsageLogs.GetByOrderIdAsync(cartOrderId);
+            var activeVouchers = new List<Voucher>();
+
+            foreach (var av in appliedVouchersInCart)
+            {
+                var voucherCheck = await _unitOfWork.Vouchers.GetByIdAsync(av.VoucherId);
+                if (voucherCheck != null)
+                {
+                    if (voucherCheck.UsedCount >= voucherCheck.UsageLimit)
+                        throw new InvalidOperationException($"The voucher {voucherCheck.Code} has reached its usage limit while in your cart.");
+
+                    if (DateTime.UtcNow > voucherCheck.EndDate)
+                        throw new InvalidOperationException($"The voucher {voucherCheck.Code} has expired.");
+
+                    activeVouchers.Add(voucherCheck);
+                }
+            }
+
+            return activeVouchers;
+        }
+        private async Task<decimal> CreateOrdersAndDeductStockAsync(Guid userId, CheckoutRequest request, List<OrderItem> selectedItems, OrderGroup orderGroup)
+        {
+            var itemsByShop = selectedItems.GroupBy(i =>
+            {
+                if (i.ProductId.HasValue && i.Product != null)
+                    return i.Product.ShopId;
+
+                if (!string.IsNullOrEmpty(i.DesignConfig))
+                {
+                    try
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(i.DesignConfig);
+                        if (doc.RootElement.TryGetProperty("ShopId", out var shopIdProp) && shopIdProp.TryGetGuid(out var shopId))
+                            return shopId;
+                    }
+                    catch { }
+                }
+                return Guid.Empty;
+            });
+
+            decimal totalCheckoutSubTotal = 0;
+
+            foreach (var shopGroup in itemsByShop)
+            {
+                if (shopGroup.Key == Guid.Empty) continue;
+
+                var order = new Order
+                {
+                    Id = Guid.NewGuid(),
+                    OrderGroupId = orderGroup.Id,
+                    CustomerId = userId,
+                    ShopId = shopGroup.Key,
+                    ReceiverName = request.ReceiverName,
+                    ReceiverPhone = request.ReceiverPhone,
+                    ShippingAddress = request.ShippingAddress,
+                    Note = request.Note,
+                    OrderStatus = OrderStatus.Pending,
+                    PaymentStatus = PaymentStatus.Pending,
+                    CreatedAt = DateTime.UtcNow,
+                    OrderItems = new List<OrderItem>()
+                };
+
+                decimal shopSubTotal = 0;
+
+                foreach (var cartItem in shopGroup)
+                {
+                    if (cartItem.ProductId.HasValue)
+                    {
+                        bool success = await _unitOfWork.Models.UpdateStockAsync(cartItem.ProductId.Value, -cartItem.Quantity);
+                        if (!success)
+                            throw new InvalidOperationException($"Product '{cartItem.ProductName}' is out of stock or missing.");
+                    }
+
+                    var orderItem = new OrderItem
+                    {
+                        Id = Guid.NewGuid(),
+                        OrderId = order.Id,
+                        ProductId = cartItem.ProductId,
+                        ProductName = cartItem.ProductName,
+                        ProductImage = cartItem.ProductImage,
+                        UnitPrice = cartItem.UnitPrice,
+                        Quantity = cartItem.Quantity,
+                        TotalPrice = cartItem.TotalPrice,
+                        IsCustom = cartItem.IsCustom,
+                        DesignConfig = cartItem.DesignConfig,
+                        OrderItemComponents = new List<OrderItemComponent>()
+                    };
+
+                    if (cartItem.OrderItemComponents != null && cartItem.OrderItemComponents.Any())
+                    {
+                        foreach (var comp in cartItem.OrderItemComponents)
+                        {
+                            var partEntity = await _unitOfWork.Models.GetByIdAsync(comp.PartId);
+                            if (partEntity == null) throw new InvalidOperationException($"Component {comp.PartName} not found.");
+
+                            int requiredQtyPerKit = comp.Quantity;
+                            int totalPartNeeded = requiredQtyPerKit * cartItem.Quantity;
+
+                            bool compSuccess = await _unitOfWork.Models.UpdateStockAsync(comp.PartId, -totalPartNeeded);
+
+                            if (!compSuccess && cartItem.ProductId.HasValue)
+                            {
+                                throw new InvalidOperationException($"Insufficient stock for component: {comp.PartName}");
+                            }
+
+                            orderItem.OrderItemComponents.Add(new OrderItemComponent
+                            {
+                                Id = Guid.NewGuid(),
+                                OrderItemId = orderItem.Id,
+                                PartId = comp.PartId,
+                                PartName = comp.PartName,
+                                PartPriceSnapshot = comp.PartPriceSnapshot,
+                                PartImageUrl = comp.PartImageUrl,
+                                Quantity = requiredQtyPerKit
+                            });
+                        }
+                    }
+
+                    order.OrderItems.Add(orderItem);
+                    shopSubTotal += orderItem.TotalPrice;
+                }
+
+                order.SubTotal = shopSubTotal;
+                order.ShippingFee = _orderSettings.DefaultShippingFee;
+
+                totalCheckoutSubTotal += shopSubTotal;
+                orderGroup.Orders.Add(order);
+            }
+
+            return totalCheckoutSubTotal;
+        }
+        private async Task<HashSet<Guid>> ApplyVouchersAndCalculateTotalsAsync(Guid userId, OrderGroup orderGroup, List<Voucher> activeVouchers, decimal totalCheckoutSubTotal)
+        {
+            var systemVouchers = activeVouchers.Where(v => v.Type == VoucherType.Compensation || v.Scope == VoucherScope.System).ToList();
+            var shopVouchers = activeVouchers.Where(v => v.Scope == VoucherScope.Shop && (v.Type == VoucherType.Promotion || v.Type == VoucherType.Negotiation)).ToList();
+
+            foreach (var sysVoucher in systemVouchers)
+            {
+                if (totalCheckoutSubTotal < sysVoucher.MinOrderValue)
+                    throw new Exception(
+                        $"The order total ({totalCheckoutSubTotal:N0} VND) does not satisfy the minimum requirement ({sysVoucher.MinOrderValue:N0} VND) for applying system voucher {sysVoucher.Code}. Please add more items or remove the voucher."
+                    );
+            }
+
+            var appliedVoucherIdsToIncrement = new HashSet<Guid>();
+
+            foreach (var order in orderGroup.Orders)
+            {
+                decimal orderDiscountAmount = 0;
+                decimal systemDiscountForThisOrder = 0;
+                decimal currentOrderRemain = order.SubTotal;
+
+                var shopInfo = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+                Guid shopOwnerId = shopInfo != null ? shopInfo.UserId : Guid.Empty;
+
+                // Xử lý mã của Shop
+                var matchedShopVoucher = shopVouchers.FirstOrDefault(v => v.CreatorId == shopOwnerId);
+                if (matchedShopVoucher != null)
+                {
+                    if (order.SubTotal < matchedShopVoucher.MinOrderValue)
+                        throw new Exception($"The total value of items from this shop does not meet the minimum requirement to apply this voucher. {matchedShopVoucher.Code}.");
+
+                    decimal shopDiscount = _voucherService.CalculateVoucherDiscount(matchedShopVoucher, order.SubTotal);
+                    if (shopDiscount > currentOrderRemain) shopDiscount = currentOrderRemain;
+
+                    await _unitOfWork.VoucherUsageLogs.AddAsync(new VoucherUsageLog
+                    {
+                        UserId = userId,
+                        OrderId = order.Id,
+                        VoucherId = matchedShopVoucher.Id,
+                        Code = matchedShopVoucher.Code,
+                        VoucherType = matchedShopVoucher.Type,
+                        DiscountApplied = shopDiscount,
+                        ApplyOrder = 1
+                    });
+
+                    orderDiscountAmount += shopDiscount;
+                    currentOrderRemain -= shopDiscount;
+                    appliedVoucherIdsToIncrement.Add(matchedShopVoucher.Id);
+                }
+
+                // Xử lý mã của Sàn (Proration)
+                decimal weight = totalCheckoutSubTotal > 0 ? (order.SubTotal / totalCheckoutSubTotal) : 0;
+
+                foreach (var sysVoucher in systemVouchers)
+                {
+                    decimal totalSysDiscount = _voucherService.CalculateVoucherDiscount(sysVoucher, totalCheckoutSubTotal);
+                    decimal proratedDiscount = totalSysDiscount * weight;
+
+                    if (proratedDiscount > currentOrderRemain) proratedDiscount = currentOrderRemain;
+
+                    await _unitOfWork.VoucherUsageLogs.AddAsync(new VoucherUsageLog
+                    {
+                        UserId = userId,
+                        OrderId = order.Id,
+                        VoucherId = sysVoucher.Id,
+                        Code = sysVoucher.Code,
+                        VoucherType = sysVoucher.Type,
+                        DiscountApplied = proratedDiscount,
+                        ApplyOrder = 2
+                    });
+
+                    orderDiscountAmount += proratedDiscount;
+                    systemDiscountForThisOrder += proratedDiscount;
+                    currentOrderRemain -= proratedDiscount;
+                    appliedVoucherIdsToIncrement.Add(sysVoucher.Id);
+                }
+
+                // Chốt tiền cho Order
+                order.DiscountAmount = orderDiscountAmount;
+                order.SystemDiscountAmount = systemDiscountForThisOrder;
+                order.TotalAmount = Math.Max(0, (order.SubTotal + order.ShippingFee) - order.DiscountAmount);
+
+                orderGroup.TotalGroupAmount += order.TotalAmount;
+            }
+
+            return appliedVoucherIdsToIncrement;
+        }
+        private async Task FinalizeVouchersAndCleanupCartAsync(Order cartOrder, List<OrderItem> selectedItems, HashSet<Guid> appliedVoucherIdsToIncrement)
+        {
+            foreach (var voucherId in appliedVoucherIdsToIncrement)
+            {
+                await _unitOfWork.Vouchers.TryIncrementVoucherUsageAsync(voucherId);
+            }
+
+            await _unitOfWork.VoucherUsageLogs.DeleteAllByOrderIdAsync(cartOrder.Id);
+
+            foreach (var item in selectedItems)
+            {
+                _unitOfWork.Orders.DeleteOrderItem(item);
+                cartOrder.OrderItems.Remove(item);
+            }
+
+            if (!cartOrder.OrderItems.Any())
+            {
+                _unitOfWork.Orders.Delete(cartOrder);
+            }
+            else
+            {
+                cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
+                cartOrder.SubTotal = cartOrder.TotalAmount;
+                cartOrder.DiscountAmount = 0;
+                await _unitOfWork.Orders.UpdateOrderAsync(cartOrder);
+            }
+        }
+        private async Task<CheckoutResponse> ProcessPaymentBranchAsync(Guid userId, PaymentMethod paymentMethod, OrderGroup orderGroup, string successUrl, string cancelUrl, CancellationToken token)
+        {
+            if (paymentMethod == PaymentMethod.Wallet)
+            {
+                return await ProcessWalletCheckoutAsync(userId, orderGroup, successUrl);
+            }
+            else
+            {
+                var paymentRequest = new CreateCheckoutSessionRequest
+                {
+                    OrderGroupId = orderGroup.Id,
+                    SuccessUrl = successUrl,
+                    CancelUrl = cancelUrl
+                };
+                var paymentRes = await _paymentService.CreateCheckoutSessionAsync(paymentRequest, token);
+
+                return new CheckoutResponse
+                {
+                    OrderGroupId = orderGroup.Id,
+                    TotalAmount = orderGroup.TotalGroupAmount,
+                    PaymentUrl = paymentRes.PaymentUrl
+                };
+            }
         }
     }
 }
