@@ -20,6 +20,10 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public decimal DiscountApplied { get; set; }
         public int ApplyOrder { get; set; }
 
+        /// <summary>Actual discount amount applied by this voucher on this order.</summary>
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal DiscountApplied { get; set; }
+
         // Navigation Properties
         public virtual User User { get; set; } = null!;
         public virtual Voucher Voucher { get; set; } = null!;
