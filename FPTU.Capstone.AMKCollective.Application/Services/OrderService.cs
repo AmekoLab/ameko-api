@@ -53,10 +53,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // ══════════════════════════════════════════════════════════════
             // PHASE 1: READ-ONLY — Thu thập dữ liệu cần thiết, snapshot vào biến cục bộ.
-            //          Không giữ bất kỳ tracked entity nào cho bước WRITE.
             // ══════════════════════════════════════════════════════════════
 
-            Guid productId;
+            Guid? productId = null;
+            Guid? assembledProductId = null;
             string productName;
             string productImage;
             decimal productPrice;
@@ -75,7 +75,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.BuilderSessionId.Value);
                 if (session == null) throw new KeyNotFoundException("Builder session not found.");
 
-                // Snapshot session data
                 sessionId = session.Id;
                 sessionCurrentStep = session.CurrentStep;
                 sessionBaseKitId = session.BaseKitId;
@@ -84,7 +83,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 var baseKit = await _unitOfWork.Models.GetByIdAsync(session.BaseKitId);
                 if (baseKit == null) throw new KeyNotFoundException("Product not found.");
 
-                // Snapshot product data
                 productId = baseKit.Id;
                 productName = baseKit.Name;
                 productImage = baseKit.ThumbnailURL ?? "";
@@ -100,8 +98,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                 var snapshot = await FetchAssembledProductSnapshotAsync(request.ProductId.Value);
 
-                // Gán snapshot vào các biến cục bộ cho Phase 2
-                productId = snapshot.Id;
+                assembledProductId = snapshot.Id;
                 productName = snapshot.Name;
                 productImage = snapshot.Image;
                 productPrice = snapshot.Price;
@@ -114,25 +111,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 throw new InvalidOperationException("Invalid cart request parameters.");
             }
 
-            // Validate từ snapshot (không cần entity nào nữa)
             if (!productIsActive) throw new InvalidOperationException("Product is inactive.");
             if (shopUnavailable) throw new InvalidOperationException("Shop unavailable.");
             if (productStock < request.Quantity)
                 throw new InvalidOperationException($"Insufficient stock. Available: {productStock}");
 
             // ══════════════════════════════════════════════════════════════
-            // PHASE 2: WRITE — Clear tracker → Load cart AsNoTracking (READ-ONLY).
-            //          Mọi thao tác ghi đều qua stub entity hoặc Add() rõ ràng.
-            //          KHÔNG BAO GIỜ ghi qua entity load từ DB → 0% phantom Modified.
+            // PHASE 2: WRITE 
             // ══════════════════════════════════════════════════════════════
             _unitOfWork.ClearChangeTracker();
-
-            // Cart loaded AsNoTracking — chỉ để đọc, quyết định logic
             var cartOrder = await _unitOfWork.Orders.GetCartOnlyAsync(userId);
 
             if (cartOrder == null)
             {
-                // ─── CASE A: CHƯA CÓ GIỎ HÀNG → Tạo mới toàn bộ (chỉ INSERT) ───
                 cartOrder = new Order
                 {
                     Id = Guid.NewGuid(),
@@ -149,26 +140,25 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     if (sessionCurrentStep != "complete")
                         throw new InvalidOperationException($"Builder session chưa hoàn tất. Bước hiện tại: '{sessionCurrentStep}'.");
                     var selectedParts = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(sessionSelectedItemsJson!);
-                    cartOrder.OrderItems.Add(BuildCustomOrderItem(cartOrder.Id, request.Quantity, productId, productName, productImage, productPrice, sessionId!.Value, selectedParts));
+                    cartOrder.OrderItems.Add(BuildCustomOrderItem(cartOrder.Id, request.Quantity, productId!.Value, productName, productImage, productPrice, sessionId!.Value, selectedParts));
                 }
                 else
                 {
-                    cartOrder.OrderItems.Add(BuildNormalOrderItem(cartOrder.Id, request.Quantity, productId, productName, productImage, productPrice));
+                    cartOrder.OrderItems.Add(BuildNormalOrderItem(cartOrder.Id, request.Quantity, assembledProductId!.Value, productName, productImage, productPrice));
                 }
 
                 cartOrder.TotalAmount = cartOrder.OrderItems.Sum(i => i.TotalPrice);
                 cartOrder.SubTotal = cartOrder.TotalAmount;
-                await _unitOfWork.Orders.AddAsync(cartOrder); // Entire graph → Added
-                await _unitOfWork.CommitAsync();               // Chỉ INSERT, không UPDATE
+                await _unitOfWork.Orders.AddAsync(cartOrder);
+                await _unitOfWork.CommitAsync();
             }
             else
             {
-                // ─── CASE B: ĐÃ CÓ GIỎ HÀNG → Dùng stub để UPDATE, Add() để INSERT ───
-                // cartOrder là AsNoTracking → Change Tracker hoàn toàn sạch.
                 OrderItem? itemToInsert = null;
 
                 if (request.BuilderSessionId.HasValue)
                 {
+                    // (Logic Builder Giữ Nguyên - Không cần thay đổi)
                     if (sessionCurrentStep != "complete")
                         throw new InvalidOperationException($"Builder session chưa hoàn tất. Bước hiện tại: '{sessionCurrentStep}'.");
                     var selectedParts = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(sessionSelectedItemsJson!);
@@ -179,22 +169,22 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                     if (existingItem != null)
                     {
-                        // UPDATE via stub → chỉ gửi SET Quantity, UnitPrice, TotalPrice WHERE Id=X
                         int newQty = existingItem.Quantity + request.Quantity;
                         decimal newTotal = existingItem.UnitPrice * newQty;
-                        existingItem.Quantity = newQty;       // in-memory cho tính total bên dưới
+                        existingItem.Quantity = newQty;
                         existingItem.TotalPrice = newTotal;
                         _unitOfWork.Orders.UpdateItemQuantity(existingItem.Id, newQty, existingItem.UnitPrice, newTotal);
                     }
                     else
                     {
-                        itemToInsert = BuildCustomOrderItem(cartOrder.Id, request.Quantity, productId, productName, productImage, productPrice, sessionId!.Value, selectedParts);
-                        cartOrder.OrderItems.Add(itemToInsert); // in-memory cho tính total
+                        itemToInsert = BuildCustomOrderItem(cartOrder.Id, request.Quantity, productId!.Value, productName, productImage, productPrice, sessionId!.Value, selectedParts);
+                        cartOrder.OrderItems.Add(itemToInsert);
                     }
                 }
                 else
                 {
-                    var existingItem = cartOrder.OrderItems.FirstOrDefault(oi => oi.ProductId == productId && !oi.IsCustom && !oi.IsDeleted);
+                    // Lọc trùng item AssembledProduct
+                    var existingItem = cartOrder.OrderItems.FirstOrDefault(oi => oi.AssembledProductId == assembledProductId && !oi.IsCustom && !oi.IsDeleted);
 
                     if (existingItem != null)
                     {
@@ -209,31 +199,25 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     }
                     else
                     {
-                        itemToInsert = BuildNormalOrderItem(cartOrder.Id, request.Quantity, productId, productName, productImage, productPrice);
+                        itemToInsert = BuildNormalOrderItem(cartOrder.Id, request.Quantity, assembledProductId!.Value, productName, productImage, productPrice);
                         cartOrder.OrderItems.Add(itemToInsert);
                     }
                 }
 
-                // Persist new item (INSERT vào change tracker)
                 if (itemToInsert != null)
                     await _unitOfWork.Orders.AddOrderItemAsync(itemToInsert);
 
-                // Update Order total via stub (UPDATE Orders SET TotalAmount=X WHERE Id=Y)
                 decimal cartTotal = cartOrder.OrderItems.Where(i => !i.IsDeleted).Sum(i => i.TotalPrice);
                 _unitOfWork.Orders.UpdateCartTotal(cartOrder.Id, cartTotal);
 
-                // 1. Commit ngay lập tức để lưu item mới và stub update xuống Database
                 await _unitOfWork.CommitAsync();
 
-                // 2. Clear cái Stub rỗng (đang bị lỗi CustomerId = Guid.Empty) ra khỏi bộ nhớ EF Core
                 _unitOfWork.ClearChangeTracker();
 
-                // Kiểm tra xem đơn hàng (giỏ hàng) này có đang áp dụng voucher nào không
                 var appliedVouchers = await _unitOfWork.VoucherUsageLogs.GetByOrderIdAsync(cartOrder.Id);
 
                 if (appliedVouchers != null && appliedVouchers.Any())
                 {
-                    // 3. Lúc này GetByIdAsync bên VoucherService sẽ bắt buộc lấy data chuẩn từ DB
                     await _voucherService.RemoveAllVouchersAsync(userId, cartOrder.Id);
                 }
             }
@@ -1096,13 +1080,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         /// Factory — tạo OrderItem thường (pure, không side effect).
         /// </summary>
         private static OrderItem BuildNormalOrderItem(Guid orderId, int quantity,
-            Guid productId, string productName, string productImage, decimal productPrice)
+            Guid assembledProductId, string productName, string productImage, decimal productPrice)
         {
             return new OrderItem
             {
                 Id = Guid.NewGuid(),
                 OrderId = orderId,
-                ProductId = productId,
+                ProductId = null, 
+                AssembledProductId = assembledProductId, 
                 ProductName = productName,
                 ProductImage = productImage,
                 UnitPrice = productPrice,
@@ -1325,23 +1310,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         }
         private async Task<decimal> CreateOrdersAndDeductStockAsync(Guid userId, CheckoutRequest request, List<OrderItem> selectedItems, OrderGroup orderGroup)
         {
-            var itemsByShop = selectedItems.GroupBy(i =>
+            var shopIdMap = new Dictionary<Guid, Guid>();
+            foreach (var item in selectedItems)
             {
-                if (i.ProductId.HasValue && i.Product != null)
-                    return i.Product.ShopId;
+                shopIdMap[item.Id] = await GetShopIdForCartItemAsync(item);
+            }
 
-                if (!string.IsNullOrEmpty(i.DesignConfig))
-                {
-                    try
-                    {
-                        using var doc = System.Text.Json.JsonDocument.Parse(i.DesignConfig);
-                        if (doc.RootElement.TryGetProperty("ShopId", out var shopIdProp) && shopIdProp.TryGetGuid(out var shopId))
-                            return shopId;
-                    }
-                    catch { }
-                }
-                return Guid.Empty;
-            });
+            var itemsByShop = selectedItems.GroupBy(i => shopIdMap[i.Id]);
 
             decimal totalCheckoutSubTotal = 0;
 
@@ -1369,22 +1344,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                 foreach (var cartItem in shopGroup)
                 {
-                    // ==========================================
-                    // ĐÃ SỬA: PHÂN NHÁNH TRỪ KHO THEO LOẠI HÀNG
-                    // ==========================================
-                    if (cartItem.ProductId.HasValue)
+                    if (cartItem.IsCustom)
                     {
-                        if (cartItem.IsCustom)
+                        if (cartItem.ProductId.HasValue)
                         {
-                            // 1. Trừ kho Base Kit (Models)
                             bool success = await _unitOfWork.Models.UpdateStockAsync(cartItem.ProductId.Value, -cartItem.Quantity);
                             if (!success)
                                 throw new InvalidOperationException($"Product '{cartItem.ProductName}' is out of stock or missing.");
                         }
-                        else
+                    }
+                    else
+                    {
+                        if (cartItem.AssembledProductId.HasValue)
                         {
-                            // 2. Trừ kho Phím ráp sẵn (AssembledProducts)
-                            var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(cartItem.ProductId.Value);
+                            var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(cartItem.AssembledProductId.Value);
                             if (assembledProduct == null)
                                 throw new InvalidOperationException($"Product '{cartItem.ProductName}' is missing.");
 
@@ -1402,6 +1375,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         Id = Guid.NewGuid(),
                         OrderId = order.Id,
                         ProductId = cartItem.ProductId,
+                        AssembledProductId = cartItem.AssembledProductId, // LƯU ĐÚNG CỘT Ở ĐÂY
                         ProductName = cartItem.ProductName,
                         ProductImage = cartItem.ProductImage,
                         UnitPrice = cartItem.UnitPrice,
@@ -1655,10 +1629,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         private async Task ProcessAssembledItemUpdateAsync(OrderItem item, int newQuantity)
         {
-            if (item.ProductId.HasValue)
+            if (item.AssembledProductId.HasValue)
             {
-                // Gọi vào bảng AssembledProducts 
-                var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(item.ProductId.Value);
+                var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(item.AssembledProductId.Value);
                 if (assembledProduct != null)
                 {
                     int stockAvailable = assembledProduct.Quantity ?? 0;
@@ -1753,27 +1726,32 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             bool hasStockIssue = false;
             bool isPriceChanged = false;
 
-            if (itemDto.ProductId.HasValue)
+            var entityItem = cartOrder.OrderItems.FirstOrDefault(x => x.Id == itemDto.OrderItemId);
+            if (entityItem != null && entityItem.AssembledProductId.HasValue)
             {
-                // Truy vấn bảng AssembledProducts thay vì Models
-                var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(itemDto.ProductId.Value);
+                var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(entityItem.AssembledProductId.Value);
                 if (assembledProduct != null)
                 {
                     int stockAvailable = assembledProduct.Quantity ?? 0;
+
+                    // NẾU TỒN KHO ÍT HƠN SỐ LƯỢNG TRONG GIỎ HÀNG
                     if (stockAvailable < itemDto.Quantity)
                     {
-                        itemDto.Note = $"Product '{assembledProduct.Name}' only has {stockAvailable} units left in stock.";
+                        itemDto.Note = $"Product '{assembledProduct.Name}' only has {stockAvailable} units left. Your cart has been updated.";
+
+                        // TỰ ĐỘNG GIẢM SỐ LƯỢNG TRONG GIỎ XUỐNG BẰNG TỒN KHO THỰC TẾ
+                        itemDto.Quantity = stockAvailable;
                         hasStockIssue = true;
                     }
 
-                    // Cập nhật lại giá trong trường hợp khi shop thay đổi giá bán Assembled Product
                     itemDto.UnitPrice = assembledProduct.Price;
-                    itemDto.TotalPrice = itemDto.UnitPrice * itemDto.Quantity;
+                    itemDto.TotalPrice = itemDto.UnitPrice * itemDto.Quantity; // Tính lại tổng tiền với số lượng mới
 
-                    var entityItem = cartOrder.OrderItems.FirstOrDefault(x => x.Id == itemDto.OrderItemId);
-                    if (entityItem != null && entityItem.TotalPrice != itemDto.TotalPrice)
+                    // LƯU LẠI SỰ THAY ĐỔI XUỐNG DATABASE
+                    if (entityItem.TotalPrice != itemDto.TotalPrice || entityItem.Quantity != itemDto.Quantity)
                     {
                         entityItem.UnitPrice = itemDto.UnitPrice;
+                        entityItem.Quantity = itemDto.Quantity;
                         entityItem.TotalPrice = itemDto.TotalPrice;
                         isPriceChanged = true;
                     }
@@ -1813,12 +1791,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             else
             {
                 // 3. Hàng Assembled Product 
-                if (item.ProductId.HasValue)
+                if (item.AssembledProductId.HasValue)
                 {
-                    // Dùng GetByIdWithDetailsAsync để lấy được danh sách ProductAssembledDetails
-                    var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(item.ProductId.Value);
-
-                    // Lấy detail đầu tiên để dò ra BaseKit
+                    var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(item.AssembledProductId.Value);
                     var detail = assembledProduct?.ProductAssembledDetails?.FirstOrDefault();
                     if (detail != null)
                     {
@@ -1832,10 +1807,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         }
         private async Task RefundItemStockAsync(OrderItem item)
         {
-            if (!item.ProductId.HasValue) return;
-
             if (item.IsCustom)
             {
+                if (!item.ProductId.HasValue) return;
                 // 1. Hoàn kho cho Base Kit
                 var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId.Value);
                 if (product != null)
@@ -1846,8 +1820,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
             else
             {
+                if (!item.AssembledProductId.HasValue) return;
                 // 2. Hoàn kho cho Assembled Product
-                var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(item.ProductId.Value);
+                var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(item.AssembledProductId.Value);
                 if (assembledProduct != null)
                 {
                     assembledProduct.Quantity = (assembledProduct.Quantity ?? 0) + item.Quantity;
@@ -1855,6 +1830,5 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
             }
         }
-
     }
 }
