@@ -94,21 +94,24 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 if (baseKit.Shop != null)
                     shopUnavailable = baseKit.Shop.Status != ShopStatus.Active || !baseKit.Shop.IsActive;
             }
-            else
+            else if (!request.IsCustom)
             {
                 if (request.ProductId == null) throw new ArgumentNullException(nameof(request.ProductId));
-                var product = await _unitOfWork.Models.GetByIdAsync(request.ProductId.Value);
-                if (product == null) throw new KeyNotFoundException("Product not found.");
 
-                // Snapshot product data
-                productId = product.Id;
-                productName = product.Name;
-                productImage = product.ThumbnailURL ?? "";
-                productPrice = product.Price;
-                productStock = product.StockQuantity;
-                productIsActive = product.IsActive;
-                if (product.Shop != null)
-                    shopUnavailable = product.Shop.Status != ShopStatus.Active || !product.Shop.IsActive;
+                var snapshot = await FetchAssembledProductSnapshotAsync(request.ProductId.Value);
+
+                // Gán snapshot vào các biến cục bộ cho Phase 2
+                productId = snapshot.Id;
+                productName = snapshot.Name;
+                productImage = snapshot.Image;
+                productPrice = snapshot.Price;
+                productStock = snapshot.Stock;
+                productIsActive = snapshot.IsActive;
+                shopUnavailable = snapshot.ShopUnavailable;
+            }
+            else
+            {
+                throw new InvalidOperationException("Invalid cart request parameters.");
             }
 
             // Validate từ snapshot (không cần entity nào nữa)
@@ -254,75 +257,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // 3. Duyệt qua từng sản phẩm trong giỏ để Validate Real-time
             foreach (var itemDto in result.OrderItems)
             {
-                // ---------------------------------------------------------
-                // CASE 1: SẢN PHẨM CUSTOM (BUILDER) - ƯU TIÊN SỐ 1
-                // ---------------------------------------------------------
-                if (itemDto.IsCustom && itemDto.OrderItemComponents != null && itemDto.OrderItemComponents.Any())
-                {
-                    decimal currentCustomTotal = 0;
+                var validationResult = await ValidateCartItemRealtimeAsync(itemDto, cartOrder);
 
-                    // A. Check giá Base Kit (nếu Kit cũng tính tiền và có ID)
-                    if (itemDto.ProductId.HasValue)
-                    {
-                        var baseKit = await _unitOfWork.Models.GetByIdAsync(itemDto.ProductId.Value);
-                        if (baseKit != null)
-                        {
-                            currentCustomTotal += baseKit.Price;
-                            // Nếu Base Kit hết hàng
-                            if (baseKit.StockQuantity < itemDto.Quantity)
-                            {
-                                itemDto.Note = $"Base Kit '{baseKit.Name}' is currently out of stock.";
-                                hasStockIssue = true;
-                            }
-                        }
-                    }
-
-                    // B. Check từng linh kiện con (Switch, Keycap...)
-                    foreach (var compDto in itemDto.OrderItemComponents)
-                    {
-                        var part = await _unitOfWork.Models.GetByIdAsync(compDto.PartId);
-
-                        if (part != null)
-                        {
-                            // Tính tổng số lượng linh kiện cần: (Số lượng mỗi phím) * (Số lượng phím đặt mua)
-                            int totalPartNeeded = compDto.Quantity * itemDto.Quantity;
-
-                            // Check Kho: Nếu kho < số cần thiết
-                            if (part.StockQuantity < totalPartNeeded)
-                            {
-                                compDto.Note = $"Only {part.StockQuantity} units are available (Required: {totalPartNeeded}).";
-                                itemDto.Note = "Some components are not available in sufficient quantity.";
-                                // Đánh dấu item cha
-                                hasStockIssue = true;
-                            }
-
-                            // Check Giá: Cập nhật giá mới nhất nếu Shop có thay đổi giá linh kiện
-                            // (Logic: Cart luôn hiển thị giá mới nhất)
-                            compDto.PartPriceSnapshot = part.Price;
-
-                            // Cộng dồn vào tổng tiền set Custom
-                            currentCustomTotal += (part.Price * compDto.Quantity);
-                        }
-                    }
-
-                    // Cập nhật lại giá tổng của món Custom này theo thời giá hiện tại
-                    itemDto.UnitPrice = currentCustomTotal;
-                    itemDto.TotalPrice = itemDto.UnitPrice * itemDto.Quantity;
-
-                    var entityItem = cartOrder.OrderItems.FirstOrDefault(x => x.Id == itemDto.OrderItemId);
-                    if (entityItem != null && entityItem.TotalPrice != itemDto.TotalPrice)
-                    {
-                        entityItem.UnitPrice = itemDto.UnitPrice;
-                        entityItem.TotalPrice = itemDto.TotalPrice;
-                        isPriceChanged = true;
-                    }
-                }
-
-                // ---------------------------------------------------------
-                // CASE 2: ASSEMBLED PRODUCT  -- ĐỂ ĐÂY CHỨ CHƯA BIẾT LÀM SAO 
-                // ---------------------------------------------------------
-                
-
+                if (validationResult.hasStockIssue) hasStockIssue = true;
+                if (validationResult.isPriceChanged) isPriceChanged = true;
             }
 
 
@@ -395,67 +333,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // ==========================================
             if (item.IsCustom)
             {
-                // 1. TRƯỜNG HỢP: ĐƠN COMMISSION (ProductId = null)
-                if (!item.ProductId.HasValue)
-                {
-                    // Commission không check kho linh kiện, giữ nguyên UnitPrice đã chốt ban đầu
-                    item.Quantity = newQuantity;
-                    item.TotalPrice = item.Quantity * item.UnitPrice;
-                }
-                // 2. TRƯỜNG HỢP: HÀNG TỪ BUILDER SESSION (Có ProductId và Components)
-                else
-                {
-                    var baseKit = await _unitOfWork.Models.GetByIdAsync(item.ProductId.Value);
-                    if (baseKit == null) throw new InvalidOperationException("Base kit not found.");
-                    if (baseKit.StockQuantity < newQuantity)
-                        throw new InvalidOperationException($"Insufficient base kit stock. Available: {baseKit.StockQuantity}");
-
-                    decimal currentCustomUnitPrice = baseKit.Price; // Khởi tạo bằng giá Base Kit mới nhất
-
-                    // Check kho và tính tổng giá các linh kiện con
-                    if (item.OrderItemComponents != null && item.OrderItemComponents.Any())
-                    {
-                        foreach (var comp in item.OrderItemComponents)
-                        {
-                            var part = await _unitOfWork.Models.GetByIdAsync(comp.PartId);
-                            if (part != null)
-                            {
-                                int totalPartNeeded = comp.Quantity * newQuantity;
-                                if (part.StockQuantity < totalPartNeeded)
-                                {
-                                    throw new InvalidOperationException($"Insufficient stock for component '{part.Name}'. Needed: {totalPartNeeded}, Available: {part.StockQuantity}");
-                                }
-
-                                // Cập nhật lại giá linh kiện phòng khi Shop đổi giá
-                                comp.PartPriceSnapshot = part.Price;
-                                currentCustomUnitPrice += (part.Price * comp.Quantity);
-                            }
-                        }
-                    }
-
-                    // Gán lại giá và tổng tiền
-                    item.UnitPrice = currentCustomUnitPrice;
-                    item.Quantity = newQuantity;
-                    item.TotalPrice = item.Quantity * item.UnitPrice;
-                }
+                await ProcessCustomItemUpdateAsync(item, newQuantity);
             }
             else
             {
-                // 3. TRƯỜNG HỢP: HÀNG THƯỜNG (Base Kit mua lẻ, linh kiện mua lẻ...)
-                if (item.ProductId.HasValue)
-                {
-                    var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId.Value);
-                    if (product != null)
-                    {
-                        if (product.StockQuantity < newQuantity)
-                            throw new InvalidOperationException($"Insufficient stock. Available: {product.StockQuantity}");
-
-                        // Update Price Realtime cho hàng thường
-                        item.UnitPrice = product.Price;
-                    }
-                }
-                item.Quantity = newQuantity;
-                item.TotalPrice = item.Quantity * item.UnitPrice;
+                await ProcessAssembledItemUpdateAsync(item, newQuantity);
             }
 
             // ==========================================
@@ -496,22 +378,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var shopItemsDict = new Dictionary<Guid, List<OrderItem>>();
             foreach (var item in selectedItems)
             {
-                Guid shopId = Guid.Empty;
-                if (item.ProductId.HasValue)
-                {
-                    var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId.Value);
-                    if (product != null) shopId = product.ShopId;
-                }
-                else if (!string.IsNullOrEmpty(item.DesignConfig))
-                {
-                    try
-                    {
-                        using var doc = System.Text.Json.JsonDocument.Parse(item.DesignConfig);
-                        if (doc.RootElement.TryGetProperty("ShopId", out var shopIdProp) && shopIdProp.TryGetGuid(out var parsedShopId))
-                            shopId = parsedShopId;
-                    }
-                    catch { }
-                }
+                // Tự động phân luồng lấy ShopId dựa vào IsCustom
+                Guid shopId = await GetShopIdForCartItemAsync(item);
 
                 if (shopId != Guid.Empty)
                 {
@@ -750,12 +618,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // Refund Stock
             foreach (var item in order.OrderItems)
             {
-                var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
-                if (product != null)
-                {
-                    product.StockQuantity += item.Quantity;
-                    //await _unitOfWork.Models.UpdateAsync(product);
-                }
+                await RefundItemStockAsync(item);
             }
             if (order.PaymentStatus == PaymentStatus.Paid)
             {
@@ -963,12 +826,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     {
                         foreach (var item in order.OrderItems)
                         {
-                            var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
-                            if (product != null)
-                            {
-                                product.StockQuantity += item.Quantity;
-                                await _unitOfWork.Models.UpdateAsync(product);
-                            }
+                            await RefundItemStockAsync(item);
                         }
                     }
 
@@ -1193,12 +1051,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 // 2. Nhả lại kho (Stock) cho Base Product
                 foreach (var item in order.OrderItems)
                 {
-                    var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
-                    if (product != null)
-                    {
-                        product.StockQuantity += item.Quantity;
-                        await _unitOfWork.Models.UpdateAsync(product);
-                    }
+                    await RefundItemStockAsync(item);
 
                     // 2.1 Nhả lại kho (Stock) cho các linh kiện rời (Nếu là hàng Custom)
                     if (item.IsCustom && item.OrderItemComponents != null)
@@ -1337,12 +1190,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // Giả sử repo đã include OrderItems
             foreach (var item in order.OrderItems)
             {
-                var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId);
-                if (product != null)
-                {
-                    product.StockQuantity += item.Quantity;
-                    await _unitOfWork.Models.UpdateAsync(product);
-                }
+                await RefundItemStockAsync(item);
             }
 
             // B. Xử lý tiền (Voucher/Refund)
@@ -1521,11 +1369,32 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                 foreach (var cartItem in shopGroup)
                 {
+                    // ==========================================
+                    // ĐÃ SỬA: PHÂN NHÁNH TRỪ KHO THEO LOẠI HÀNG
+                    // ==========================================
                     if (cartItem.ProductId.HasValue)
                     {
-                        bool success = await _unitOfWork.Models.UpdateStockAsync(cartItem.ProductId.Value, -cartItem.Quantity);
-                        if (!success)
-                            throw new InvalidOperationException($"Product '{cartItem.ProductName}' is out of stock or missing.");
+                        if (cartItem.IsCustom)
+                        {
+                            // 1. Trừ kho Base Kit (Models)
+                            bool success = await _unitOfWork.Models.UpdateStockAsync(cartItem.ProductId.Value, -cartItem.Quantity);
+                            if (!success)
+                                throw new InvalidOperationException($"Product '{cartItem.ProductName}' is out of stock or missing.");
+                        }
+                        else
+                        {
+                            // 2. Trừ kho Phím ráp sẵn (AssembledProducts)
+                            var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(cartItem.ProductId.Value);
+                            if (assembledProduct == null)
+                                throw new InvalidOperationException($"Product '{cartItem.ProductName}' is missing.");
+
+                            int currentStock = assembledProduct.Quantity ?? 0;
+                            if (currentStock < cartItem.Quantity)
+                                throw new InvalidOperationException($"Product '{cartItem.ProductName}' is out of stock.");
+
+                            assembledProduct.Quantity = currentStock - cartItem.Quantity;
+                            await _unitOfWork.AssembledProducts.UpdateAsync(assembledProduct);
+                        }
                     }
 
                     var orderItem = new OrderItem
@@ -1724,5 +1593,268 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 };
             }
         }
+        private async Task<(Guid Id, string Name, string Image, decimal Price, int Stock, bool IsActive, bool ShopUnavailable)> FetchAssembledProductSnapshotAsync(Guid productId)
+        {
+            var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(productId);
+            if (assembledProduct == null) throw new KeyNotFoundException("Assembled product not found.");
+
+            Guid id = assembledProduct.Id;
+            string name = assembledProduct.Name;
+            string image = assembledProduct.Image1 ?? "";
+            decimal price = assembledProduct.Price;
+            int stock = assembledProduct.Quantity ?? 0;
+            // AssembledProduct không có cờ IsActive, tạm thời mặc định là true
+            bool isActive = true;
+            // TODO: Hiện tại bảng AssembledProduct không chứa ShopId, tạm thời set false.
+            bool shopUnavailable = false;
+
+            return (id, name, image, price, stock, isActive, shopUnavailable);
+        }
+        private async Task ProcessCustomItemUpdateAsync(OrderItem item, int newQuantity)
+        {
+            // 1. Commission (ProductId = null)
+            if (!item.ProductId.HasValue)
+            {
+                // Khóa cứng không cho đổi số lượng đơn Commission
+                throw new InvalidOperationException("The quantity of a commission order cannot be changed. It has been fixed based on the shop's quotation.");
+            }
+            // 2. Hàng từ builder session (Có ProductId và Components)
+            else
+            {
+                var baseKit = await _unitOfWork.Models.GetByIdAsync(item.ProductId.Value);
+                if (baseKit == null) throw new InvalidOperationException("Base kit not found.");
+                if (baseKit.StockQuantity < newQuantity)
+                    throw new InvalidOperationException($"Insufficient base kit stock. Available: {baseKit.StockQuantity}");
+
+                decimal currentCustomUnitPrice = baseKit.Price;
+
+                if (item.OrderItemComponents != null && item.OrderItemComponents.Any())
+                {
+                    foreach (var comp in item.OrderItemComponents)
+                    {
+                        var part = await _unitOfWork.Models.GetByIdAsync(comp.PartId);
+                        if (part != null)
+                        {
+                            int totalPartNeeded = comp.Quantity * newQuantity;
+                            if (part.StockQuantity < totalPartNeeded)
+                            {
+                                throw new InvalidOperationException($"Insufficient stock for component '{part.Name}'. Needed: {totalPartNeeded}, Available: {part.StockQuantity}");
+                            }
+
+                            comp.PartPriceSnapshot = part.Price;
+                            currentCustomUnitPrice += (part.Price * comp.Quantity);
+                        }
+                    }
+                }
+
+                item.UnitPrice = currentCustomUnitPrice;
+                item.Quantity = newQuantity;
+                item.TotalPrice = item.Quantity * item.UnitPrice;
+            }
+        }
+
+        private async Task ProcessAssembledItemUpdateAsync(OrderItem item, int newQuantity)
+        {
+            if (item.ProductId.HasValue)
+            {
+                // Gọi vào bảng AssembledProducts 
+                var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(item.ProductId.Value);
+                if (assembledProduct != null)
+                {
+                    int stockAvailable = assembledProduct.Quantity ?? 0;
+                    if (stockAvailable < newQuantity)
+                        throw new InvalidOperationException($"Insufficient stock. Available: {stockAvailable}");
+
+                    item.UnitPrice = assembledProduct.Price;
+                }
+                else
+                {
+                    throw new InvalidOperationException("Assembled product not found.");
+                }
+            }
+            item.Quantity = newQuantity;
+            item.TotalPrice = item.Quantity * item.UnitPrice;
+        }
+        private async Task<(bool hasStockIssue, bool isPriceChanged)> ValidateCartItemRealtimeAsync(OrderItemResponse itemDto, Order cartOrder)
+        {
+            // 1. CASE 1: SẢN PHẨM CUSTOM (BUILDER)
+            if (itemDto.IsCustom && itemDto.OrderItemComponents != null && itemDto.OrderItemComponents.Any())
+            {
+                return await ValidateCustomItemRealtimeAsync(itemDto, cartOrder);
+            }
+            // 2. CASE 2: COMMISSION 
+            else if (itemDto.IsCustom && !itemDto.ProductId.HasValue)
+            {
+                // Commission đã chốt cứng giá và số lượng -> Bỏ qua, không check kho
+                return (false, false);
+            }
+            // 3. CASE 3: ASSEMBLED PRODUCT 
+            else if (!itemDto.IsCustom)
+            {
+                return await ValidateAssembledItemRealtimeAsync(itemDto, cartOrder);
+            }
+
+            return (false, false);
+        }
+
+        private async Task<(bool hasStockIssue, bool isPriceChanged)> ValidateCustomItemRealtimeAsync(OrderItemResponse itemDto, Order cartOrder)
+        {
+            bool hasStockIssue = false;
+            bool isPriceChanged = false;
+            decimal currentCustomTotal = 0;
+
+            if (itemDto.ProductId.HasValue)
+            {
+                var baseKit = await _unitOfWork.Models.GetByIdAsync(itemDto.ProductId.Value);
+                if (baseKit != null)
+                {
+                    currentCustomTotal += baseKit.Price;
+                    if (baseKit.StockQuantity < itemDto.Quantity)
+                    {
+                        itemDto.Note = $"Base Kit '{baseKit.Name}' is currently out of stock.";
+                        hasStockIssue = true;
+                    }
+                }
+            }
+
+            foreach (var compDto in itemDto.OrderItemComponents)
+            {
+                var part = await _unitOfWork.Models.GetByIdAsync(compDto.PartId);
+                if (part != null)
+                {
+                    int totalPartNeeded = compDto.Quantity * itemDto.Quantity;
+                    if (part.StockQuantity < totalPartNeeded)
+                    {
+                        compDto.Note = $"Only {part.StockQuantity} units are available (Required: {totalPartNeeded}).";
+                        itemDto.Note = "Some components are not available in sufficient quantity.";
+                        hasStockIssue = true;
+                    }
+
+                    compDto.PartPriceSnapshot = part.Price;
+                    currentCustomTotal += (part.Price * compDto.Quantity);
+                }
+            }
+
+            itemDto.UnitPrice = currentCustomTotal;
+            itemDto.TotalPrice = itemDto.UnitPrice * itemDto.Quantity;
+
+            var entityItem = cartOrder.OrderItems.FirstOrDefault(x => x.Id == itemDto.OrderItemId);
+            if (entityItem != null && entityItem.TotalPrice != itemDto.TotalPrice)
+            {
+                entityItem.UnitPrice = itemDto.UnitPrice;
+                entityItem.TotalPrice = itemDto.TotalPrice;
+                isPriceChanged = true;
+            }
+
+            return (hasStockIssue, isPriceChanged);
+        }
+        private async Task<(bool hasStockIssue, bool isPriceChanged)> ValidateAssembledItemRealtimeAsync(OrderItemResponse itemDto, Order cartOrder)
+        {
+            bool hasStockIssue = false;
+            bool isPriceChanged = false;
+
+            if (itemDto.ProductId.HasValue)
+            {
+                // Truy vấn bảng AssembledProducts thay vì Models
+                var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(itemDto.ProductId.Value);
+                if (assembledProduct != null)
+                {
+                    int stockAvailable = assembledProduct.Quantity ?? 0;
+                    if (stockAvailable < itemDto.Quantity)
+                    {
+                        itemDto.Note = $"Product '{assembledProduct.Name}' only has {stockAvailable} units left in stock.";
+                        hasStockIssue = true;
+                    }
+
+                    // Cập nhật lại giá trong trường hợp khi shop thay đổi giá bán Assembled Product
+                    itemDto.UnitPrice = assembledProduct.Price;
+                    itemDto.TotalPrice = itemDto.UnitPrice * itemDto.Quantity;
+
+                    var entityItem = cartOrder.OrderItems.FirstOrDefault(x => x.Id == itemDto.OrderItemId);
+                    if (entityItem != null && entityItem.TotalPrice != itemDto.TotalPrice)
+                    {
+                        entityItem.UnitPrice = itemDto.UnitPrice;
+                        entityItem.TotalPrice = itemDto.TotalPrice;
+                        isPriceChanged = true;
+                    }
+                }
+                else
+                {
+                    itemDto.Note = "The product does not exist or has been removed.";
+                    hasStockIssue = true;
+                }
+            }
+
+            return (hasStockIssue, isPriceChanged);
+        }
+
+        private async Task<Guid> GetShopIdForCartItemAsync(OrderItem item)
+        {
+            if (item.IsCustom)
+            {
+                // 1. Hàng Custom Builder (Có ProductId là BaseKitId)
+                if (item.ProductId.HasValue)
+                {
+                    var baseKit = await _unitOfWork.Models.GetByIdAsync(item.ProductId.Value);
+                    return baseKit?.ShopId ?? Guid.Empty;
+                }
+                // 2. Đơn Commission (Không có ProductId, ShopId lưu trong DesignConfig)
+                else if (!string.IsNullOrEmpty(item.DesignConfig))
+                {
+                    try
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(item.DesignConfig);
+                        if (doc.RootElement.TryGetProperty("ShopId", out var shopIdProp) && shopIdProp.TryGetGuid(out var parsedShopId))
+                            return parsedShopId;
+                    }
+                    catch { }
+                }
+            }
+            else
+            {
+                // 3. Hàng Assembled Product 
+                if (item.ProductId.HasValue)
+                {
+                    // Dùng GetByIdWithDetailsAsync để lấy được danh sách ProductAssembledDetails
+                    var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(item.ProductId.Value);
+
+                    // Lấy detail đầu tiên để dò ra BaseKit
+                    var detail = assembledProduct?.ProductAssembledDetails?.FirstOrDefault();
+                    if (detail != null)
+                    {
+                        var baseKit = await _unitOfWork.Models.GetByIdAsync(detail.BaseKitId);
+                        return baseKit?.ShopId ?? Guid.Empty;
+                    }
+                }
+            }
+
+            return Guid.Empty;
+        }
+        private async Task RefundItemStockAsync(OrderItem item)
+        {
+            if (!item.ProductId.HasValue) return;
+
+            if (item.IsCustom)
+            {
+                // 1. Hoàn kho cho Base Kit
+                var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId.Value);
+                if (product != null)
+                {
+                    product.StockQuantity += item.Quantity;
+                    await _unitOfWork.Models.UpdateAsync(product);
+                }
+            }
+            else
+            {
+                // 2. Hoàn kho cho Assembled Product
+                var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(item.ProductId.Value);
+                if (assembledProduct != null)
+                {
+                    assembledProduct.Quantity = (assembledProduct.Quantity ?? 0) + item.Quantity;
+                    await _unitOfWork.AssembledProducts.UpdateAsync(assembledProduct);
+                }
+            }
+        }
+
     }
 }
