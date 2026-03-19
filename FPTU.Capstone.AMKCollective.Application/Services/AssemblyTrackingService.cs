@@ -173,7 +173,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (!templates.Any()) return;
 
-            var logsToCreate = templates.Select(t => new AssemblyProgressLog
+            var logsToCreate = templates.Where(t => t.IsRequired).Select(t => new AssemblyProgressLog
             {
                 OrderItemId = orderItemId,
                 StepName = t.StepName,
