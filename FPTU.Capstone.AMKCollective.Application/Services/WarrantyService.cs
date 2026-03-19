@@ -175,7 +175,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         await _notificationService.SendNotificationAsync(shop.UserId, 
                             "New Warranty Request", 
                             $"A new warranty/return request has been created for Order #{order.Id}.", 
-                            "Warranty");
+                            "Warranty",
+                            referenceId: issueToCreate.Id.ToString(),
+                            referenceType: "OrderIssue",
+                            redirectUrl: $"/shop/warranty-requests/{issueToCreate.Id}",
+                            actorId: userId);
                     }
                 }
 
@@ -447,7 +451,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 await _notificationService.SendNotificationAsync(order.CustomerId, 
                     "Refund Successful", 
                     $"Your refund of {refundAmount:N0} for order #{order.Id} has been processed to your wallet.", 
-                    "Refund");
+                    "Warranty",
+                    referenceId: issue.Id.ToString(),
+                    referenceType: "OrderIssue",
+                    redirectUrl: $"/warranty-requests/{issue.Id}",
+                    actorId: adminId);
 
                 // ── Stock Reintegration (No Return Case) ──
                 await ReintegrateStockForIssueAsync(issue);
@@ -574,7 +582,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _notificationService.SendNotificationAsync(issue.UserId, 
                 "Refund Successful", 
                 $"Your refund of {refundAmount:N0} for order #{order.Id} has been processed to your wallet after successful return and stock reintegration.", 
-                "Refund");
+                "Warranty",
+                referenceId: issue.Id.ToString(),
+                referenceType: "OrderIssue",
+                redirectUrl: $"/warranty-requests/{issue.Id}",
+                actorId: shopOwnerId);
 
             await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
             {

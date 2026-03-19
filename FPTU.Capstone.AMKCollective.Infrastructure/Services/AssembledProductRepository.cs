@@ -58,6 +58,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .FirstOrDefaultAsync(ap => ap.Id == id);
         }
 
+        public async Task<IEnumerable<AssembledProduct>> GetByIdsAsync(IEnumerable<Guid> ids, CancellationToken ct = default)
+        {
+            return await _context.AssembledProducts
+                .AsNoTracking()
+                .Where(ap => ids.Contains(ap.Id) && !ap.IsDeleted)
+                .ToListAsync(ct);
+        }
+
         public async Task AddAsync(AssembledProduct assembledProduct)
         {
             await _context.AssembledProducts.AddAsync(assembledProduct);

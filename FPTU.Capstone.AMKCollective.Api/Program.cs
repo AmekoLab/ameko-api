@@ -14,6 +14,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.IdentityModel.Tokens.Jwt;
 using FPTU.Capstone.AMKCollective.API.Workers;
+using FPTU.Capstone.AMKCollective.Application.BackgroundServices;
 
 internal class Program
 {
@@ -157,6 +158,10 @@ internal class Program
         builder.Services.AddHostedService<OrderCancellationTimeoutWorker>();
         builder.Services.AddHostedService<FundsReleaseWorker>();
         builder.Services.AddHostedService<AbandonedOrderCleanupWorker>();
+        
+        // Social Commerce Queues
+        builder.Services.AddSingleton<INotificationQueue, NotificationQueue>();
+        builder.Services.AddHostedService<NotificationBackgroundWorker>();
 
         var app = builder.Build();
 

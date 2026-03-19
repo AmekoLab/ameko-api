@@ -10,6 +10,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<(IEnumerable<AssembledProduct> Items, int TotalCount)> GetAllPagedAsync(int pageNumber, int pageSize);
         Task<IEnumerable<AssembledProduct>> GetByShopIdAsync(Guid shopId);
         Task<AssembledProduct?> GetByIdWithDetailsAsync(Guid id);
+        Task<IEnumerable<AssembledProduct>> GetByIdsAsync(IEnumerable<Guid> ids, CancellationToken ct = default);
         Task AddAsync(AssembledProduct assembledProduct);
         Task UpdateAsync(AssembledProduct assembledProduct);
         Task DeleteAsync(AssembledProduct assembledProduct);
