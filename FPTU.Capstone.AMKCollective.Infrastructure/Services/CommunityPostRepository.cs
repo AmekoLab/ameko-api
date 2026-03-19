@@ -1,23 +1,78 @@
-﻿using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
+using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 
 namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 {
-    public class CommunityPostRepository
+    public class CommunityPostRepository : ICommunityPostRepository
     {
         private readonly ApplicationDbContext _context;
+
         public CommunityPostRepository(ApplicationDbContext context)
         {
             _context = context;
         }
 
-        public Task<IEnumerable<object>> GetCommunityPostsAsync()
+        public async Task<List<CommunityPost>> GetFeedCursorPagedAsync(DateTime? cursorDate, int? cursorId, int pageSize, CancellationToken ct = default)
         {
-            throw new NotImplementedException();
+            var query = _context.CommunityPosts
+                .Include(p => p.Attachments)
+                .Include(p => p.PostReactions)
+                .Include(p => p.PostComments)
+                .AsNoTracking();
+
+            if (cursorDate.HasValue && cursorId.HasValue)
+            {
+                var cDate = cursorDate.Value;
+                var cId = cursorId.Value;
+                query = query.Where(n =>
+                    n.CreatedAt < cDate ||
+                    (n.CreatedAt == cDate && n.Id < cId)
+                );
+            }
+
+            return await query
+                .OrderByDescending(n => n.CreatedAt)
+                .ThenByDescending(n => n.Id)
+                .Take(pageSize + 1)
+                .ToListAsync(ct);
+        }
+
+        public async Task<List<CommunityPost>> GetByIdsAsync(IEnumerable<int> ids, CancellationToken ct = default)
+        {
+            return await _context.CommunityPosts
+                .Where(p => ids.Contains(p.Id))
+                .ToListAsync(ct);
+        }
+
+        public async Task AddAsync(CommunityPost post, CancellationToken ct = default)
+        {
+            await _context.CommunityPosts.AddAsync(post, ct);
+        }
+
+        public async Task<CommunityPost?> GetByIdAsync(int id, CancellationToken ct = default)
+        {
+            return await _context.CommunityPosts
+                .Include(p => p.Attachments)
+                .Include(p => p.PostReactions)
+                .Include(p => p.PostComments)
+                .FirstOrDefaultAsync(p => p.Id == id, ct);
+        }
+
+        public void Update(CommunityPost post)
+        {
+            _context.CommunityPosts.Update(post);
+        }
+
+        public void Remove(CommunityPost post)
+        {
+            _context.CommunityPosts.Remove(post);
         }
     }
 }
