@@ -16,8 +16,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .ValueGeneratedOnAdd();
 
             builder.Property(pr => pr.Type)
+                .HasConversion<string>()
                 .IsRequired()
                 .HasMaxLength(50);
+
+            // Additional index on PostId
+            builder.HasIndex(pr => pr.PostId);
 
             // Relationships
             builder.HasOne(pr => pr.Post)

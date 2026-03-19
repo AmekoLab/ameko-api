@@ -23,7 +23,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .HasMaxLength(1000);
 
             builder.Property(n => n.Type)
+                .HasConversion<string>()
                 .HasMaxLength(50);
+
+            // Performance Indexes
+            builder.HasIndex(n => n.UserId);
+            builder.HasIndex(n => new { n.UserId, n.CreatedAt }).IsDescending(false, true);
+            builder.HasIndex(n => new { n.UserId, n.IsRead });
 
             // Relationships
             builder.HasOne(n => n.User)
