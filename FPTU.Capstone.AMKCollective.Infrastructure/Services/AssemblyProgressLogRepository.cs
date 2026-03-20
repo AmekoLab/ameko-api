@@ -46,5 +46,15 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             _context.AssemblyProgressLogs.Update(log);
         }
+
+        public void UpdateRange(IEnumerable<AssemblyProgressLog> logs)
+        {
+            _context.AssemblyProgressLogs.UpdateRange(logs);
+        }
+
+        public void Delete(AssemblyProgressLog log)
+        {
+            _context.AssemblyProgressLogs.Remove(log);
+        }
     }
 }

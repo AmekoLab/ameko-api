@@ -42,6 +42,10 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
                 return SuccessResponse("Tracking timeline initialized successfully.");
             }
+            catch (InvalidOperationException ex)
+            {
+                return ErrorResponse<object>(ex.Message);
+            }
             catch (Exception ex)
             {
                 return ServerErrorResponse<object>(ex.Message);
@@ -160,6 +164,44 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
+        /// <summary>
+        /// Xóa một bước (step) khỏi quy trình lắp ráp hiện tại.
+        /// </summary>
+        [HttpDelete("logs/{progressLogId}")]
+        [Authorize]
+        public async Task<IActionResult> DeleteProgressLog(Guid progressLogId)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var shop = await _shopService.GetMyShopAsync(userId);
+
+                if (shop == null)
+                    return ErrorResponse<object>("This account does not own a shop.");
+
+                await _trackingService.DeleteProgressLogAsync(progressLogId, shop.Id);
+
+                return SuccessResponse("Assembly step deleted successfully.");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<object>(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<object>(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return ErrorResponse<object>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
+
         #endregion
 
         #region Tracking Logs Management (For Customer & Shop Staff)
@@ -212,6 +254,10 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 var updatedLog = await _trackingService.UpdateProgressLogAsync(progressLogId, shop.Id, request);
                 return SuccessResponse(updatedLog, "Progress log updated successfully.");
             }
+            catch (InvalidOperationException ex)
+            {
+                return ErrorResponse<object>(ex.Message);
+            }
             catch (KeyNotFoundException ex)
             {
                 return NotFoundResponse<object>(ex.Message);
@@ -246,6 +292,10 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
                 var newLog = await _trackingService.AddAdhocStepAsync(orderItemId, shop.Id, request);
                 return SuccessResponse(newLog, "Adhoc step added successfully.");
+            }
+            catch (ArgumentException ex)
+            {
+                return ErrorResponse<object>(ex.Message);
             }
             catch (KeyNotFoundException ex)
             {
