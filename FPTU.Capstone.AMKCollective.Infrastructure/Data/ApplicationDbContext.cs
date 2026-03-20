@@ -52,6 +52,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data
             // Apply all configurations from assembly (includes UserConfiguration etc.)
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
 
+            modelBuilder.Entity<Follow>().HasIndex(f => f.FollowedId);
+
 
             // SEED DATA: SYSTEM BOT ACCOUNT
             var systemBotId = Guid.Parse("00000000-0000-0000-0000-000000000001");

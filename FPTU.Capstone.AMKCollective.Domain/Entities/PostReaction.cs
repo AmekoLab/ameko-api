@@ -1,4 +1,5 @@
 using System;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 
 namespace FPTU.Capstone.AMKCollective.Domain.Entities
 {
@@ -9,7 +10,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
     {
         public int PostId { get; set; }  // FK to CommunityPost (int)
         public Guid UserId { get; set; } // FK to User (Guid)
-        public string Type { get; set; } = string.Empty;
+        public ReactionType Type { get; set; }
 
         // Navigation Properties
         public virtual CommunityPost Post { get; set; } = null!;

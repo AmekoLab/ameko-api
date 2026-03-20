@@ -36,6 +36,14 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         }
 
         /// <summary>
+        /// Returns a bad request error response (non-generic)
+        /// </summary>
+        protected IActionResult ErrorResponse(string message, List<string>? errors = null)
+        {
+            return BadRequest(ApiResponse<object>.ErrorResponse(message, errors));
+        }
+
+        /// <summary>
         /// Returns a not found error response
         /// </summary>
         protected IActionResult NotFoundResponse<T>(string message = "Resource not found")

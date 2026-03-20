@@ -1,0 +1,90 @@
+using System;
+using System.Collections.Generic;
+
+namespace FPTU.Capstone.AMKCollective.Application.DTOs.Community;
+
+public class ProductPreviewDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public decimal Price { get; set; }
+    public string ImageUrl { get; set; } = string.Empty;
+    public List<string> ImageUrls { get; set; } = new();
+    public int Quantity { get; set; }
+    public bool IsAvailable => Quantity > 0;
+}
+
+public class PostFeedResponse
+{
+    public int Id { get; set; }
+    public Guid UserId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+    public Guid? AssembledProductId { get; set; }
+    
+    public List<string> AttachmentUrls { get; set; } = new();
+    public int ReactionCount { get; set; }
+    public int CommentCount { get; set; }
+    
+    public ProductPreviewDto? Product { get; set; }
+}
+
+public class CreatePostDto
+{
+    public string Title { get; set; } = string.Empty;
+    public Guid? AssembledProductId { get; set; }
+    public List<string>? AttachmentUrls { get; set; }
+}
+
+public class NotificationDto
+{
+    public int Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string? Message { get; set; }
+    public Guid? ActorId { get; set; }
+    public string Type { get; set; } = string.Empty;
+    public string? ReferenceId { get; set; }
+    public string? ReferenceType { get; set; }
+    public string? RedirectUrl { get; set; }
+    public bool IsRead { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class ReactToPostDto
+{
+    public string Type { get; set; } = "Like";
+}
+
+public class UpdatePostDto
+{
+    public string? Title { get; set; }
+    public Guid? AssembledProductId { get; set; }
+    public List<string>? AttachmentUrls { get; set; }
+}
+
+public class CreateSystemNotificationDto
+{
+    public Guid UserId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string? Message { get; set; }
+    public string? ReferenceType { get; set; }
+    public string? ReferenceId { get; set; }
+    public string? RedirectUrl { get; set; }
+}
+
+public class UpdateNotificationDto
+{
+    public string? Title { get; set; }
+    public string? Message { get; set; }
+    public bool? IsRead { get; set; }
+}
+
+public class PostReactionDetailResponse
+{
+    public Guid UserId { get; set; }
+    public string Username { get; set; } = string.Empty;
+    public string FullName { get; set; } = string.Empty;
+    public string? AvatarUrl { get; set; }
+    public string ReactionType { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+}
