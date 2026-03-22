@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
@@ -151,6 +151,12 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [SwaggerResponse(401, "Unauthorized - Bearer token required")]
         public async Task<IActionResult> ChangePassword(Guid userId, [FromBody] ChangePasswordRequest request)
         {
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId != userId && !User.IsInRole("Admin"))
+            {
+                return UnauthorizedResponse<object>("You do not have permission to change this user's password");
+            }
+
             var result = await _userService.ChangePasswordAsync(userId, request);
             if (!result.Success)
                 return ErrorResponse<object>(result.ErrorMessage);
@@ -421,7 +427,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
         {
             var result = await _userService.ForgotPasswordAsync(request);
-            if (!result.Success)
+            if (!result.Success && result.ErrorMessage != "Email not found")
                 return ErrorResponse<object>(result.ErrorMessage);
 
             return SuccessResponse(new { Message = "Password reset code sent to email" }, "Reset code sent successfully");
