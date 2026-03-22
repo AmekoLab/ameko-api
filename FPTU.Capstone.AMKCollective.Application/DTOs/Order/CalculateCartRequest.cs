@@ -8,8 +8,8 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
 {
     public class CalculateCartRequest
     {
-        // 1. Danh sách ID của các món hàng (OrderItem) được người dùng TICK CHỌN để thanh toán
-        public List<Guid> SelectedOrderItemIds { get; set; } = new List<Guid>();
+        // 1. Danh sách ID của các món hàng (CartItem) được người dùng TICK CHỌN để thanh toán
+        public List<Guid> SelectedOrderItemIds { get; set; } = new List<Guid>(); //SelectedCartItemIds
 
         // 2. Mã giảm giá của Hệ Thống/Sàn (Nếu khách có chọn)
         public string? AppliedSystemVoucherCode { get; set; }

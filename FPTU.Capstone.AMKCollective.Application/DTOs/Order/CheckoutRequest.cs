@@ -21,7 +21,8 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
         public string SuccessUrl { get; set; } = string.Empty;
         public string CancelUrl { get; set; } = string.Empty;
         public List<Guid> SelectedOrderItemIds { get; set; } = new List<Guid>();
-
+        public string? AppliedSystemVoucherCode { get; set; }
+        public Dictionary<Guid, string>? AppliedShopVoucherCodes { get; set; }
         public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.CreditCard;
     }
 }
