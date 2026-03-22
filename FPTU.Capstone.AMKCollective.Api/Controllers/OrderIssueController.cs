@@ -88,6 +88,10 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
                 return SuccessResponse(result, "Shop issues retrieved successfully.");
             }
+            catch (UnauthorizedAccessException ex)
+            {
+                return ErrorResponse<object>(ex.Message);
+            }
             catch (Exception ex)
             {
                 return ServerErrorResponse<object>(ex.Message);
@@ -143,6 +147,47 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             catch (UnauthorizedAccessException ex)
             {
                 return ErrorResponse<object>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Withdraw a Cancellation Request (Customer View)
+        /// Description: Allows a customer to cancel their own cancellation request if they change their mind.
+        /// </summary>
+        [HttpPost("{id}/cancel-request")]
+        public async Task<IActionResult> CancelIssueRequest(Guid id)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                await _orderIssueService.CancelIssueRequestAsync(userId, id);
+                return SuccessResponse<object>(null, "Issue request cancelled successfully.");
+            }
+            catch (Exception ex)
+            {
+                // (Bắt các Exception tương tự như code cũ)
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Get All Issues (Admin View)
+        /// Description: Retrieves a paginated list of ALL issues across the platform for Admin monitoring.
+        /// </summary>
+        [HttpGet("admin")]
+        // [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetAllIssuesForAdmin([FromQuery] OrderIssueFilterRequest request)
+        {
+            try
+            {
+                // Ở API của Admin, ta không cần lấy UserId để check nữa, gọi thẳng Service
+                var result = await _orderIssueService.GetAllIssuesForAdminAsync(request);
+
+                return SuccessResponse(result, "All platform issues retrieved successfully.");
             }
             catch (Exception ex)
             {

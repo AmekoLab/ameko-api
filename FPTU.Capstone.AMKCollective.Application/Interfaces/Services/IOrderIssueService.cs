@@ -14,10 +14,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<PaginatedResult<OrderIssueResponse>> GetMyIssuesAsync(Guid userId, OrderIssueFilterRequest request, CancellationToken token = default);
 
         // 2. Shop
-        Task<PaginatedResult<OrderIssueResponse>> GetShopIssuesAsync(Guid shopId, OrderIssueFilterRequest request, CancellationToken token = default);
+        Task<PaginatedResult<OrderIssueResponse>> GetShopIssuesAsync(Guid userId, OrderIssueFilterRequest request, CancellationToken token = default);
 
-        // 3.
+
         Task<OrderIssueResponse> GetIssueDetailAsync(Guid userId, Guid issueId, CancellationToken token = default);
         Task<List<OrderIssueLogResponse>> GetIssueLogsAsync(Guid userId, Guid issueId, CancellationToken token = default);
+
+        Task CancelIssueRequestAsync(Guid userId, Guid issueId, CancellationToken token = default);
+        Task<PaginatedResult<OrderIssueResponse>> GetAllIssuesForAdminAsync(OrderIssueFilterRequest request, CancellationToken token = default);
     }
 }

@@ -20,7 +20,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return await _context.OrderIssues
                 .Include(oi => oi.Logs)
                 .Include(oi => oi.Order)
-                    .ThenInclude(o => o.Shop) // [Fix #4] Thêm ThenInclude Shop để security check không bị null
+                    .ThenInclude(o => o.Shop)
                 .Include(oi => oi.User)
                 .FirstOrDefaultAsync(oi => oi.Id == id && !oi.IsDeleted, token);
         }
