@@ -11,6 +11,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues
         public Guid OrderId { get; set; }
         public string Reason { get; set; } = string.Empty; 
         public string? Description { get; set; } 
-        public string? EvidenceUrl { get; set; } 
+        //public string? EvidenceUrl { get; set; } 
     }
 }
