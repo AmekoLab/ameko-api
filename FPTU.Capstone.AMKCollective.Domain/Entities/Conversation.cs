@@ -2,14 +2,14 @@ using System;
 
 namespace FPTU.Capstone.AMKCollective.Domain.Entities
 {
-    public class Conversation : BaseEntity
+    public class Conversation : BaseEntityInt
     {
-        public Guid UserOneId { get; set; }
-        public Guid UserTwoId { get; set; }
+        public string? Name { get; set; }
+        public string? Image { get; set; }
+        public bool IsRestricted { get; set; } = false;
 
-        // Navigation Properties
-        public virtual User UserOne { get; set; } = null!;
-        public virtual User UserTwo { get; set; } = null!;
-        public virtual ICollection<Message> Messages { get; set; } = new List<Message>();
+        // Relationship
+        public virtual ICollection<UserConversation> UserConversations { get; set; } =
+            new List<UserConversation>();
     }
 }

@@ -11,19 +11,19 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.ToTable("Conversations");
             builder.HasKey(c => c.Id);
 
-            // Relationships
-            builder.HasOne(c => c.UserOne)
-                .WithMany(u => u.ConversationsAsUserOne)
-                .HasForeignKey(c => c.UserOneId)
-                .OnDelete(DeleteBehavior.Restrict);
+            builder.Property(c => c.Id)
+                .ValueGeneratedOnAdd();
 
-            builder.HasOne(c => c.UserTwo)
-                .WithMany(u => u.ConversationsAsUserTwo)
-                .HasForeignKey(c => c.UserTwoId)
-                .OnDelete(DeleteBehavior.Restrict);
+            builder.Property(c => c.Name)
+                .HasMaxLength(255);
 
-            // Unique constraint: Only one conversation between two users
-            builder.HasIndex(c => new { c.UserOneId, c.UserTwoId }).IsUnique();
+            builder.Property(c => c.Image)
+                .HasMaxLength(1000);
+
+            builder.HasMany(c => c.UserConversations)
+                .WithOne(uc => uc.Conversation)
+                .HasForeignKey(uc => uc.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }

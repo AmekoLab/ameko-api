@@ -80,15 +80,20 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .HasForeignKey(f => f.ToUserId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Conversation relationships
-            builder.HasMany(u => u.ConversationsAsUserOne)
-                .WithOne(c => c.UserOne)
-                .HasForeignKey(c => c.UserOneId)
+            // Chat relationships (participant model)
+            builder.HasMany(u => u.UserConversations)
+                .WithOne(uc => uc.User)
+                .HasForeignKey(uc => uc.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.HasMany(u => u.MessageRecipients)
+                .WithOne(mr => mr.User)
+                .HasForeignKey(mr => mr.UserId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            builder.HasMany(u => u.ConversationsAsUserTwo)
-                .WithOne(c => c.UserTwo)
-                .HasForeignKey(c => c.UserTwoId)
+            builder.HasMany(u => u.MessagesCreated)
+                .WithOne(m => m.Sender)
+                .HasForeignKey(m => m.SenderId)
                 .OnDelete(DeleteBehavior.Restrict);
         }
     }
