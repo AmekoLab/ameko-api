@@ -196,6 +196,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
 
     // 4. Map OrderItems (Giữ nguyên)
                 .ForMember(dest => dest.OrderItems, opt => opt.MapFrom(src => src.OrderItems))
+
+                .ForMember(dest => dest.HasCancelRequest, opt => opt.MapFrom(src =>
+                    src.OrderIssues != null && src.OrderIssues.Any(oi =>
+                    oi.IsDeleted == false &&
+                    oi.Type == OrderIssueType.CancelRequest &&
+                    (oi.Status == OrderIssueStatus.Pending || oi.Status == OrderIssueStatus.InProgress)
+                    )
+                ))
                 .ReverseMap();
 
             // =========================================================

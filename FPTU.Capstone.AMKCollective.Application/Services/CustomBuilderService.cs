@@ -251,7 +251,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (selectedOption.Component.StockQuantity < qtyNeeded)
             {
-                throw new InvalidOperationException($"Linh kiện '{selectedOption.Component.Name}' hiện đã hết hàng (Còn lại: {selectedOption.Component.StockQuantity}, Cần: {qtyNeeded}). Vui lòng chọn linh kiện khác.");
+                throw new InvalidOperationException($"Component '{selectedOption.Component.Name}' is currently out of stock (Available: {selectedOption.Component.StockQuantity}, Required: {qtyNeeded}). Please choose another component.");
             }
 
             // 6. Xóa các bước phía sau (Nếu user quay lại sửa bước cũ -> clear các bước sau để chọn lại)

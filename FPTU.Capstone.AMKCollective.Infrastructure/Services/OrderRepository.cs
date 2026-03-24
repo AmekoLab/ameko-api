@@ -22,6 +22,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<Order?> GetByIdAsync(Guid id, CancellationToken token = default)
         {
             return await _context.Orders
+                .Include(o => o.OrderIssues)
                 .Include(o => o.Shop) 
                 .Include(o => o.Customer) 
                 .Include(o => o.OrderItems)
@@ -36,6 +37,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             var query = _context.Orders
                         .AsNoTracking()
+                        .Include(o => o.OrderIssues)
                         .Include(o => o.Shop)
                         .Include(o => o.OrderItems)
                         .ThenInclude(oi => oi.Product)
@@ -165,6 +167,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<IEnumerable<Order>> GetShopOrdersAsync(Guid shopId, OrderStatus? status, int page, int size, CancellationToken token = default)
         {
             var query = _context.Orders
+                .Include(o => o.OrderIssues)
                 .Include(o => o.OrderItems) 
                 .AsNoTracking() 
                 .Where(o => o.ShopId == shopId);
@@ -249,7 +252,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<Order?> GetOrderDetailByIdAsync(Guid orderId)
         {
             return await _context.Orders
-                .AsSplitQuery() 
+                .AsSplitQuery()
+                .Include(o => o.OrderIssues)
                 .Include(o => o.Shop) 
                 .Include(o => o.OrderGroup) 
                 .Include(o => o.OrderItems.Where(oi => !oi.IsDeleted))
