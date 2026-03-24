@@ -238,10 +238,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<CheckoutResponse> CheckoutAsync(Guid userId, CheckoutRequest request, CancellationToken token = default)
         {
             var cart = await _unitOfWork.Carts.GetCartByUserIdAsync(userId);
-            if (cart == null || !cart.CartItems.Any()) throw new InvalidOperationException("Giỏ hàng đang trống.");
+            if (cart == null || !cart.CartItems.Any()) throw new InvalidOperationException("Your cart is empty.");
 
             var selectedItems = cart.CartItems.Where(i => request.SelectedOrderItemIds.Contains(i.Id)).ToList();
-            if (!selectedItems.Any()) throw new InvalidOperationException("Không có sản phẩm nào được chọn.");
+            if (!selectedItems.Any()) throw new InvalidOperationException("No items have been selected.");
 
             string successUrl = string.IsNullOrEmpty(request.SuccessUrl) ? _frontendUrls.PaymentSuccessPath : request.SuccessUrl;
             string cancelUrl = string.IsNullOrEmpty(request.CancelUrl) ? _frontendUrls.PaymentCancelPath : request.CancelUrl;
@@ -1569,7 +1569,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.BuilderSessionId!.Value);
             if (session == null) throw new KeyNotFoundException("Builder session not found.");
-            if (session.CurrentStep != "complete") throw new InvalidOperationException("Builder session chưa hoàn tất.");
+            if (session.CurrentStep != "complete") throw new InvalidOperationException("The builder session is not completed.");
 
             var baseKit = await _unitOfWork.Models.GetByIdAsync(session.BaseKitId);
             if (baseKit == null || !baseKit.IsActive) throw new InvalidOperationException("Product is inactive or not found.");
@@ -1783,7 +1783,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     if (mappedItem.IsCustom && mappedItem.ProductId.HasValue)
                     {
                         bool success = await _unitOfWork.Models.UpdateStockAsync(mappedItem.ProductId.Value, -mappedItem.Quantity);
-                        if (!success) throw new InvalidOperationException($"Sản phẩm '{mappedItem.ProductName}' đã hết hàng.");
+                        if (!success) throw new InvalidOperationException($"Product '{mappedItem.ProductName}' is out of stock.");
                     }
                     else if (!mappedItem.IsCustom && mappedItem.AssembledProductId.HasValue)
                     {
