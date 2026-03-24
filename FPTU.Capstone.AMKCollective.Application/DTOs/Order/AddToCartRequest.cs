@@ -11,7 +11,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
         public Guid? ProductId { get; set; }
         public int Quantity { get; set; }
         public bool IsCustom { get; set; } = false;
-        public List<Guid>? CustomComponentIds { get; set; }
+        //public List<Guid>? CustomComponentIds { get; set; }
         public Guid? BuilderSessionId { get; set; }
     }
 }

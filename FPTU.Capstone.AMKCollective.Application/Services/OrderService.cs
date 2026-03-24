@@ -147,7 +147,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 .ToList();
             if (!selectedItems.Any()) return response;
 
-            // 1. Tái sử dụng Helper ở Giai đoạn 2 để tính giá Real-time cho các món được tick
+            // 1. Tính giá Real-time cho các món được tick
             var mappedItems = new List<OrderItemResponse>();
             foreach (var item in selectedItems)
             {
@@ -159,6 +159,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             decimal totalCartSubTotal = 0;
             decimal totalShippingFee = 0;
             decimal totalShopDiscount = 0;
+
+            // Biến cờ check xem khách có đang xài nhiều mã không (Dùng cho cả Shop và System)
+            bool isStacking = !string.IsNullOrEmpty(request.AppliedSystemVoucherCode) && request.AppliedShopVoucherCodes?.Any() == true;
 
             foreach (var group in shopGroups)
             {
@@ -177,26 +180,34 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     !string.IsNullOrEmpty(shopVoucherCode))
                 {
                     var sv = await _unitOfWork.Vouchers.GetByCodeAsync(shopVoucherCode);
-                    if (sv == null) shopVoucherError = "Voucher không tồn tại.";
-                    else if (sv.Status != VoucherStatus.Active) shopVoucherError = "Voucher không khả dụng.";
-                    else if (shopSubTotal < sv.MinOrderValue) shopVoucherError = $"Đơn tối thiểu {sv.MinOrderValue:N0} VND.";
+                    if (sv == null)
+                    {
+                        shopVoucherError = "Voucher not found.";
+                    }
                     else
                     {
-                        shopDiscount = sv.DiscountType == DiscountType.FixedAmount ? sv.Value : (shopSubTotal * sv.Value / 100);
-                        if (sv.MaxDiscountAmount.HasValue && shopDiscount > sv.MaxDiscountAmount.Value) shopDiscount = sv.MaxDiscountAmount.Value;
-                        if (shopDiscount > shopSubTotal) shopDiscount = shopSubTotal;
+                        // GỌI HELPER KIỂM TRA BẢO MẬT & NGHIỆP VỤ Ở ĐÂY
+                        shopVoucherError = await ValidateVoucherStrictAsync(userId, sv, shopSubTotal, isStacking);
+
+                        // NẾU KHÔNG CÓ LỖI (null) THÌ MỚI BẮT ĐẦU TÍNH TIỀN GIẢM GIÁ
+                        if (shopVoucherError == null)
+                        {
+                            shopDiscount = sv.DiscountType == DiscountType.FixedAmount ? sv.Value : (shopSubTotal * sv.Value / 100);
+                            if (sv.MaxDiscountAmount.HasValue && shopDiscount > sv.MaxDiscountAmount.Value) shopDiscount = sv.MaxDiscountAmount.Value;
+                            if (shopDiscount > shopSubTotal) shopDiscount = shopSubTotal;
+                        }
                     }
                 }
 
                 response.ShopPreviews.Add(new ShopCartPreviewDto
                 {
                     ShopId = shopId,
-                    ShopName = shop?.ShopName ?? "Shop Hệ Thống",
+                    ShopName = shop?.ShopName ?? "Shop",
                     SubTotal = shopSubTotal,
                     ShippingFee = shopShippingFee,
                     ShopDiscountAmount = shopDiscount,
                     TotalAmount = Math.Max(0, shopSubTotal + shopShippingFee - shopDiscount),
-                    IncludedOrderItemIds = items.Select(x => x.OrderItemId).ToList(), // FE lấy ID này để biết món nào thuộc bill nào
+                    IncludedOrderItemIds = items.Select(x => x.OrderItemId).ToList(),
                     ShopVoucherError = shopVoucherError
                 });
 
@@ -211,14 +222,21 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (!string.IsNullOrEmpty(request.AppliedSystemVoucherCode))
             {
                 var sysV = await _unitOfWork.Vouchers.GetByCodeAsync(request.AppliedSystemVoucherCode);
-                if (sysV == null) systemVoucherError = "Voucher không tồn tại.";
-                else if (sysV.Status != VoucherStatus.Active) systemVoucherError = "Voucher không khả dụng.";
-                else if (totalCartSubTotal < sysV.MinOrderValue) systemVoucherError = $"Đơn tối thiểu {sysV.MinOrderValue:N0} VND.";
+                if (sysV == null)
+                {
+                    systemVoucherError = "Voucher not found.";
+                }
                 else
                 {
-                    systemDiscount = sysV.DiscountType == DiscountType.FixedAmount ? sysV.Value : (totalCartSubTotal * sysV.Value / 100);
-                    if (sysV.MaxDiscountAmount.HasValue && systemDiscount > sysV.MaxDiscountAmount.Value) systemDiscount = sysV.MaxDiscountAmount.Value;
-                    if (systemDiscount > totalCartSubTotal) systemDiscount = totalCartSubTotal;
+                    systemVoucherError = await ValidateVoucherStrictAsync(userId, sysV, totalCartSubTotal, isStacking);
+
+                    // NẾU KHÔNG CÓ LỖI (null) THÌ MỚI BẮT ĐẦU TÍNH TIỀN GIẢM GIÁ
+                    if (systemVoucherError == null)
+                    {
+                        systemDiscount = sysV.DiscountType == DiscountType.FixedAmount ? sysV.Value : (totalCartSubTotal * sysV.Value / 100);
+                        if (sysV.MaxDiscountAmount.HasValue && systemDiscount > sysV.MaxDiscountAmount.Value) systemDiscount = sysV.MaxDiscountAmount.Value;
+                        if (systemDiscount > totalCartSubTotal) systemDiscount = totalCartSubTotal;
+                    }
                 }
             }
 
@@ -738,15 +756,105 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 throw new KeyNotFoundException("Order not found.");
 
             // 3. Validate quyền (Security Check)
-            // Người xem phải là người đặt đơn hàng đó
             if (order.CustomerId != userId)
             {
                 throw new UnauthorizedAccessException("You are not authorized to view this order.");
             }
 
-            // 4. Map sang DTO
-            // Đảm bảo MappingProfile đã map Order -> OrderResponse
+            // 4. Map sang DTO cơ bản
             var response = _mapper.Map<OrderResponse>(order);
+
+            // 5. ENRICH DỮ LIỆU: Nạp thêm tên linh kiện, hình ảnh, giá và ShopId cho từng món hàng
+            foreach (var itemResponse in response.OrderItems)
+            {
+                // Lấy lại Item gốc từ Database để lấy DesignConfig nếu cần
+                var dbItem = order.OrderItems.FirstOrDefault(x => x.Id == itemResponse.OrderItemId);
+
+                // A. HÀNG CUSTOM BUILD
+                if (itemResponse.IsCustom && itemResponse.ProductId.HasValue)
+                {
+                    var baseKit = await _unitOfWork.Models.GetByIdAsync(itemResponse.ProductId.Value);
+                    if (baseKit != null)
+                    {
+                        if (itemResponse.ShopId == Guid.Empty) itemResponse.ShopId = baseKit.ShopId;
+                        if (string.IsNullOrEmpty(itemResponse.ProductImage)) itemResponse.ProductImage = baseKit.ThumbnailURL;
+                    }
+
+                    // Lấy Tên và Hình ảnh cho từng linh kiện từ bảng Models
+                    if (itemResponse.OrderItemComponents != null && itemResponse.OrderItemComponents.Any())
+                    {
+                        foreach (var comp in itemResponse.OrderItemComponents)
+                        {
+                            var partInfo = await _unitOfWork.Models.GetByIdAsync(comp.PartId);
+                            if (partInfo != null)
+                            {
+                                comp.PartName = partInfo.Name;
+                                comp.PartImageUrl = partInfo.ThumbnailURL;
+                                // Ưu tiên giá lúc mua, nếu đang bằng 0 thì lấy giá hiện tại của Model
+                                if (comp.PartPriceSnapshot == 0) comp.PartPriceSnapshot = partInfo.Price;
+                            }
+                        }
+                    }
+                }
+                // B. HÀNG THƯỜNG (Assembled Product)
+                else if (!itemResponse.IsCustom && itemResponse.AssembledProductId.HasValue)
+                {
+                    var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(itemResponse.AssembledProductId.Value);
+                    if (assembledProduct != null)
+                    {
+                        // Đi đường vòng lấy ShopId nếu bị rỗng
+                        var firstDetail = assembledProduct.ProductAssembledDetails?.FirstOrDefault();
+                        var targetModelId = firstDetail?.BaseKitId ?? firstDetail?.ComponentId;
+                        if (targetModelId.HasValue)
+                        {
+                            var relatedModel = await _unitOfWork.Models.GetByIdAsync(targetModelId.Value);
+                            if (relatedModel != null && itemResponse.ShopId == Guid.Empty)
+                                itemResponse.ShopId = relatedModel.ShopId;
+                        }
+
+                        // Tự động bung chi tiết linh kiện của phím lắp sẵn ra cho FE hiển thị
+                        if (assembledProduct.ProductAssembledDetails != null)
+                        {
+                            itemResponse.OrderItemComponents = new List<OrderItemComponentDto>();
+                            foreach (var detail in assembledProduct.ProductAssembledDetails)
+                            {
+                                var partId = detail.ComponentId != Guid.Empty ? detail.ComponentId : detail.BaseKitId;
+                                itemResponse.OrderItemComponents.Add(new OrderItemComponentDto
+                                {
+                                    PartId = partId,
+                                    PartName = detail.Component?.Name ?? detail.BaseKit?.Name ?? "Assembly component",
+                                    PartPriceSnapshot = detail.Component?.Price ?? detail.BaseKit?.Price ?? 0,
+                                    PartImageUrl = detail.Component?.ThumbnailURL ?? detail.BaseKit?.ThumbnailURL ?? "",
+                                    Quantity = detail.Quantity
+                                });
+                            }
+                        }
+                    }
+                }
+                // C. HÀNG COMMISSION (Báo giá Shop)
+                else if (itemResponse.IsCustom && !itemResponse.ProductId.HasValue && !itemResponse.AssembledProductId.HasValue)
+                {
+                    if (dbItem != null && !string.IsNullOrEmpty(dbItem.DesignConfig))
+                    {
+                        try
+                        {
+                            using var doc = System.Text.Json.JsonDocument.Parse(dbItem.DesignConfig);
+                            var root = doc.RootElement;
+                            if (root.TryGetProperty("Title", out var titleProp)) itemResponse.ProductName = titleProp.GetString() ?? "Custom Request";
+                            if (root.TryGetProperty("Image", out var imgProp)) itemResponse.ProductImage = imgProp.GetString() ?? "";
+                            if (root.TryGetProperty("ShopId", out var shopIdProp)) itemResponse.ShopId = shopIdProp.GetGuid();
+                        }
+                        catch { /* Bỏ qua lỗi Parse */ }
+                    }
+                }
+
+                // 🟢 Cập nhật Tên Shop nếu thiếu
+                if (itemResponse.ShopId != Guid.Empty && (string.IsNullOrEmpty(itemResponse.ShopName) || itemResponse.ShopName == "N/A"))
+                {
+                    var shop = await _unitOfWork.Shops.GetByIdAsync(itemResponse.ShopId);
+                    itemResponse.ShopName = shop?.ShopName ?? "Shop";
+                }
+            }
 
             return response;
         }
@@ -1641,6 +1749,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             string name = string.Empty;
             string image = string.Empty;
             Guid shopId = Guid.Empty;
+            string shopName = string.Empty;
             var componentsDto = new List<OrderItemComponentDto>();
 
             if (item.IsCustom && item.ProductId.HasValue)
@@ -1652,7 +1761,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     name = $"{baseKit.Name} (Custom Build)";
                     image = baseKit.ThumbnailURL ?? "";
                     shopId = baseKit.ShopId;
-
                     // Hàm riêng parse JSON linh kiện cộng giá
                     currentPrice += ParseCustomBuilderPrice(item.DesignConfig, componentsDto);
                 }
@@ -1674,7 +1782,48 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         var relatedModel = await _unitOfWork.Models.GetByIdAsync(targetModelId.Value);
                         shopId = relatedModel?.ShopId ?? Guid.Empty;
                     }
+                    if (assembledProduct.ProductAssembledDetails != null && assembledProduct.ProductAssembledDetails.Any())
+                    {
+                        foreach (var detail in assembledProduct.ProductAssembledDetails)
+                        {
+                            var partId = detail.ComponentId != Guid.Empty ? detail.ComponentId : detail.BaseKitId;
+
+                            componentsDto.Add(new OrderItemComponentDto
+                            {
+                                PartId = partId,
+                                PartName = detail.Component?.Name ?? detail.BaseKit?.Name ?? "Assembly component",
+                                PartPriceSnapshot = detail.Component?.Price ?? detail.BaseKit?.Price ?? 0,
+                                PartImageUrl = detail.Component?.ThumbnailURL ?? detail.BaseKit?.ThumbnailURL ?? "",
+                                Quantity = detail.Quantity > 0 ? detail.Quantity : 1
+                            });
+                        }
+                    }
                 }
+            }
+            else if (item.IsCustom && !item.ProductId.HasValue && !item.AssembledProductId.HasValue)
+            {
+                if (!string.IsNullOrEmpty(item.DesignConfig))
+                {
+                    try
+                    {
+                        using var doc = JsonSerializer.Deserialize<JsonDocument>(item.DesignConfig);
+                        var root = doc.RootElement;
+                        if (root.TryGetProperty("Price", out var priceProp)) currentPrice = priceProp.GetDecimal();
+                        if (root.TryGetProperty("Title", out var titleProp)) name = titleProp.GetString() ?? "Custom Request";
+                        if (root.TryGetProperty("Image", out var imgProp)) image = imgProp.GetString() ?? "";
+                        if (root.TryGetProperty("ShopId", out var shopIdProp)) shopId = shopIdProp.GetGuid();
+                    }
+                    catch { /* Bỏ qua lỗi Parse */ }
+                }
+            }
+            if (shopId != Guid.Empty)
+            {
+                var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
+                shopName = shop?.ShopName ?? "Shop";
+            }
+            else
+            {
+                shopName = "Shop";
             }
 
             return new OrderItemResponse
@@ -1689,6 +1838,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 TotalPrice = currentPrice * item.Quantity,
                 IsCustom = item.IsCustom,
                 ShopId = shopId,
+                ShopName = shopName,
                 OrderItemComponents = componentsDto
             };
         }
@@ -1828,6 +1978,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         private async Task ApplyVouchersToCheckoutAsync(Guid userId, OrderGroup group, CheckoutRequest request, decimal totalCheckoutSubTotal)
         {
+            bool isStacking = !string.IsNullOrEmpty(request.AppliedSystemVoucherCode) && request.AppliedShopVoucherCodes?.Any() == true;
+
+            // 1. Áp dụng Shop Voucher
             foreach (var order in group.Orders)
             {
                 decimal shopDiscount = 0;
@@ -1835,13 +1988,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     request.AppliedShopVoucherCodes.TryGetValue(order.ShopId.Value, out var shopCode))
                 {
                     var sv = await _unitOfWork.Vouchers.GetByCodeAsync(shopCode);
-                    if (sv != null && sv.Status == VoucherStatus.Active && order.SubTotal >= sv.MinOrderValue)
+                    if (sv != null)
                     {
+                        // Gọi Helper kiểm tra. Bị lỗi là chặn luôn không cho Checkout
+                        string? error = await ValidateVoucherStrictAsync(userId, sv, order.SubTotal, isStacking);
+                        if (error != null) throw new InvalidOperationException($"Lỗi áp mã {shopCode}: {error}");
+
                         shopDiscount = sv.DiscountType == DiscountType.FixedAmount ? sv.Value : (order.SubTotal * sv.Value / 100);
                         if (sv.MaxDiscountAmount.HasValue && shopDiscount > sv.MaxDiscountAmount.Value) shopDiscount = sv.MaxDiscountAmount.Value;
                         if (shopDiscount > order.SubTotal) shopDiscount = order.SubTotal;
 
-                        // Đã sửa: Dùng DiscountApplied và xóa bỏ UsedAt
                         await _unitOfWork.VoucherUsageLogs.AddAsync(new VoucherUsageLog
                         {
                             UserId = userId,
@@ -1856,11 +2012,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 order.DiscountAmount = shopDiscount;
             }
 
+            // 2. Áp dụng System Voucher
             if (!string.IsNullOrEmpty(request.AppliedSystemVoucherCode))
             {
                 var sysV = await _unitOfWork.Vouchers.GetByCodeAsync(request.AppliedSystemVoucherCode);
-                if (sysV != null && sysV.Status == VoucherStatus.Active && totalCheckoutSubTotal >= sysV.MinOrderValue)
+                if (sysV != null)
                 {
+                    // Gọi Helper kiểm tra
+                    string? error = await ValidateVoucherStrictAsync(userId, sysV, totalCheckoutSubTotal, isStacking);
+                    if (error != null) throw new InvalidOperationException($"Lỗi áp mã {request.AppliedSystemVoucherCode}: {error}");
+
                     decimal totalSysDiscount = sysV.DiscountType == DiscountType.FixedAmount ? sysV.Value : (totalCheckoutSubTotal * sysV.Value / 100);
                     if (sysV.MaxDiscountAmount.HasValue && totalSysDiscount > sysV.MaxDiscountAmount.Value) totalSysDiscount = sysV.MaxDiscountAmount.Value;
                     if (totalSysDiscount > totalCheckoutSubTotal) totalSysDiscount = totalCheckoutSubTotal;
@@ -1869,8 +2030,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     _unitOfWork.Vouchers.Update(sysV);
 
                     decimal remainingDiscount = totalSysDiscount;
-
-                    // Đã sửa: Convert ICollection sang List để có thể dùng Index [i]
                     var orderList = group.Orders.ToList();
                     for (int i = 0; i < orderList.Count; i++)
                     {
@@ -1887,7 +2046,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             order.SystemDiscountAmount = appliedToThisOrder;
                             remainingDiscount -= appliedToThisOrder;
 
-                            // Đã sửa: Dùng DiscountApplied và xóa bỏ UsedAt
                             await _unitOfWork.VoucherUsageLogs.AddAsync(new VoucherUsageLog
                             {
                                 UserId = userId,
@@ -1900,6 +2058,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
             }
 
+            // 3. Tính toán Tổng Tiền Group
             decimal totalGroupAmount = 0;
             foreach (var order in group.Orders)
             {
@@ -1907,6 +2066,41 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 totalGroupAmount += order.TotalAmount;
             }
             group.TotalGroupAmount = totalGroupAmount;
+        }
+
+        private async Task<string?> ValidateVoucherStrictAsync(Guid userId, Voucher voucher, decimal subTotalToCheck, bool isStackingAttempt)
+        {
+            if (voucher.Status != VoucherStatus.Active) return "Voucher is not available.";
+
+            // 1. Check Ngày tháng
+            if (DateTime.UtcNow < voucher.StartDate || DateTime.UtcNow > voucher.EndDate)
+                return "The voucher has expired or is not yet valid.";
+
+            // 2. Check Giới hạn tổng của Hệ thống
+            if (voucher.UsedCount >= voucher.UsageLimit)
+                return "The voucher has reached its usage limit.";
+
+            // 3. Check Mã riêng tư (Negotiation / Compensation)
+            if (voucher.TargetUserId.HasValue && voucher.TargetUserId.Value != userId)
+                return "This voucher is not applicable to you.";
+
+            // 4. Check Số tiền tối thiểu
+            if (subTotalToCheck < voucher.MinOrderValue)
+                return $"Minimum order value: {voucher.MinOrderValue:N0} VND.";
+
+            // 5. Check Cờ Stackable (Nếu khách đang cố xài cả mã Shop và mã Sàn)
+            if (isStackingAttempt && !voucher.IsStackable)
+                return $"Voucher '{voucher.Code}' cannot be combined with other vouchers.";
+
+            // 6. Check Giới hạn Cá nhân (Max Uses Per User)
+            if (voucher.MaxUsesPerUser.HasValue)
+            {
+                int userUsage = await _unitOfWork.VoucherUsageLogs.CountUsageByUserAndVoucherAsync(userId, voucher.Id, Guid.Empty);
+                if (userUsage >= voucher.MaxUsesPerUser.Value)
+                    return "You have reached the usage limit for this voucher.";
+            }
+
+            return null; // Null nghĩa là hợp lệ (Pass hết)
         }
     }
 }

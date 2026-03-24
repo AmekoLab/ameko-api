@@ -196,7 +196,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (quote.ExpiredAt < DateTime.UtcNow)
                 return (false, null, "This quotation has expired and cannot be finalized.");
 
-            // Load request via CommissionRequests to get ALL quotes fully populated
             var request = await _unitOfWork.CommissionRequests.GetByIdAsync(quote.CommissionRequestId);
             if (request == null) return (false, null, "Commission request not found.");
 
@@ -205,24 +204,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (request.Status == CommissionStatus.Completed)
                 return (false, null, "This request has already been finalized with another shop.");
 
-            // [Fix #1] Check quote phải đang ở trạng thái PendingUserDecision — tránh accept quote đã Revoked/Rejected
             if (quote.Status != QuoteStatus.PendingUserDecision)
                 return (false, null, "This quotation is no longer available for acceptance.");
 
-            // [Fix #4] Transaction safety: tất cả entity changes (quote, request, otherQuotes, Order)
-            // đều nằm trong cùng 1 UnitOfWork. CommitAsync() là điểm commit DUY NHẤT.
-            // Nếu AddAsync(Order) throw exception trước khi CommitAsync() → không có gì được lưu.
-            // 1. Cập nhật commission statuses — EF change tracking handles these automatically
+            // 1. Cập nhật statuses
             quote.Status = QuoteStatus.Accepted;
             request.Status = CommissionStatus.Completed;
 
             foreach (var otherQuote in request.Quotes.Where(q => q.Id != quoteId))
                 otherQuote.Status = QuoteStatus.Rejected;
 
-            // 2. Build OrderItem data — reuse quote.Shop (already tracked) to avoid loading
-            //    extra tracked entities that can interfere with the change tracker
+            // 2. Gói toàn bộ dữ liệu Commission vào JSON
             var shopName = quote.Shop?.ShopName ?? "N/A";
-            decimal totalPrice = quote.QuotedPrice * request.Quantity;
             string firstImage = !string.IsNullOrEmpty(request.ReferenceImages)
                 ? request.ReferenceImages.Split(',')[0].Trim()
                 : "";
@@ -230,76 +223,42 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var commissionConfig = new
             {
                 Type = "Commission",
+                RequestId = request.Id,
+                QuoteId = quote.Id,
                 ShopId = quote.ShopId,
                 ShopName = shopName,
-                Description = request.Description
+                Title = $"Custom Request: {request.Title}",
+                Image = firstImage,
+                Price = quote.QuotedPrice,
+                Description = request.Description,
+                Notes = quote.ShopNotes
             };
 
-            // 3. Load cart with AsNoTracking to avoid tracking conflicts with the commission entities
-            //    above (same pattern used in AddToCartAsync)
-            var existingCart = await _unitOfWork.Orders.GetCartOnlyAsync(userId);
-
-            if (existingCart == null)
+            // 3. Tìm hoặc tạo Giỏ hàng (Cart)
+            var cart = await _unitOfWork.Carts.GetCartByUserIdAsync(userId);
+            if (cart == null)
             {
-                // No cart yet — INSERT new Order + OrderItem together
-                var newCart = new Order
-                {
-                    Id = Guid.NewGuid(),
-                    CustomerId = userId,
-                    OrderStatus = OrderStatus.InCart,
-                    PaymentStatus = PaymentStatus.Pending,
-                    SubTotal = totalPrice,
-                    TotalAmount = totalPrice,
-                };
-                var orderItem = new OrderItem
-                {
-                    Id = Guid.NewGuid(),
-                    OrderId = newCart.Id,
-                    ProductId = null,
-                    AssembledProductId = null,
-                    ProductName = $"Custom Request: {request.Title}",
-                    ProductImage = firstImage,
-                    Quantity = request.Quantity,
-                    UnitPrice = quote.QuotedPrice,
-                    TotalPrice = totalPrice,
-                    IsCustom = true,
-                    DesignConfig = JsonSerializer.Serialize(commissionConfig),
-                    Notes = quote.ShopNotes
-                };
-                newCart.OrderItems.Add(orderItem);
-                await _unitOfWork.Orders.AddAsync(newCart);
-
+                cart = new Cart { CustomerId = userId, CreatedAt = DateTime.UtcNow };
+                await _unitOfWork.Carts.AddAsync(cart);
                 await _unitOfWork.CommitAsync();
-                return (true, newCart.Id, string.Empty);
             }
-            else
+
+            // 4. Thêm item vào CartItem
+            var cartItem = new CartItem
             {
-                // Cart exists — INSERT new OrderItem + UPDATE totals via stub (no tracked Order entity)
-                var orderItem = new OrderItem
-                {
-                    Id = Guid.NewGuid(),
-                    OrderId = existingCart.Id,
-                    ProductId = null,
-                    AssembledProductId = null,
-                    ProductName = $"Custom Request: {request.Title}",
-                    ProductImage = firstImage,
-                    Quantity = request.Quantity,
-                    UnitPrice = quote.QuotedPrice,
-                    TotalPrice = totalPrice,
-                    IsCustom = true,
-                    DesignConfig = JsonSerializer.Serialize(commissionConfig),
-                    Notes = quote.ShopNotes
-                };
-                await _unitOfWork.Orders.AddOrderItemAsync(orderItem);
+                CartId = cart.Id,
+                ProductId = null, // Commission không trỏ tới Model cứng
+                AssembledProductId = null,
+                Quantity = request.Quantity,
+                IsCustom = true,
+                DesignConfig = JsonSerializer.Serialize(commissionConfig)
+            };
 
-                // GetCartOnlyAsync already filtered IsDeleted, so sum directly
-                decimal newTotal = existingCart.OrderItems.Sum(i => i.TotalPrice) + totalPrice;
-                _unitOfWork.Orders.UpdateCartTotal(existingCart.Id, newTotal);
+            await _unitOfWork.CartItems.AddAsync(cartItem);
+            await _unitOfWork.CommitAsync();
 
-                await _unitOfWork.CommitAsync();
-                return (true, existingCart.Id, string.Empty);
-            }
-        }
+            return (true, cart.Id, string.Empty);
+        }      
 
         public async Task<(bool Success, string ErrorMessage)> RevokeQuoteAsync(Guid shopUserId, Guid quoteId)
         {
