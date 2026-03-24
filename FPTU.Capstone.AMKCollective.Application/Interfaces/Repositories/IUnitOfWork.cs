@@ -30,6 +30,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         IWithdrawalRequestRepository WithdrawalRequests { get; }
         ITransactionRepository Transactions{ get; }
         IPostReactionRepository PostReactions { get; }
+        IConversationRepository Conversations { get; }
+        IMessageRepository Messages { get; }
         ICartRepository Carts { get; }
         ICartItemRepository CartItems { get; }
         Task CommitAsync();
