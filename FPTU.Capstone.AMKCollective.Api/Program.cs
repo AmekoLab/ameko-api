@@ -31,8 +31,8 @@ internal class Program
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
 
-        // Configure SignalR with unlimited message size (for large file uploads)
-        builder.Services.AddSignalR(options => { options.MaximumReceiveMessageSize = null; });
+        // Configure SignalR with bounded payload size for safer realtime messaging.
+        builder.Services.AddSignalR(options => { options.MaximumReceiveMessageSize = 64 * 1024; });
 
         // Register AutoMapper
         builder.Services.AddAutoMapper(typeof(MappingProfile).Assembly);
@@ -71,6 +71,21 @@ internal class Program
                     ClockSkew = TimeSpan.Zero,
                     RoleClaimType = "role",
                     NameClaimType = "nameid",     
+                };
+
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = context =>
+                    {
+                        var accessToken = context.Request.Query["access_token"];
+                        var path = context.HttpContext.Request.Path;
+                        if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hub"))
+                        {
+                            context.Token = accessToken;
+                        }
+
+                        return Task.CompletedTask;
+                    }
                 };
             });
 
