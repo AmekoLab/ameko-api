@@ -639,6 +639,94 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return (true, newCommission.Id, string.Empty);
         }
 
+        public async Task<BuilderStepResponse> AddExtraPartToSessionAsync(BuilderAddonRequest request)
+        {
+            // 1. Lấy Session hiện tại
+            var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.SessionId);
+            if (session == null) throw new KeyNotFoundException("Session expired or not found");
+
+            // 2. Lấy thông tin linh kiện mua thêm từ DB (Dùng Models vì là sản phẩm lẻ)
+            var extraPart = await _unitOfWork.Models.GetByIdAsync(request.ComponentId);
+            if (extraPart == null) throw new KeyNotFoundException("The additional component does not exist.");
+
+            // Kiểm tra tồn kho của linh kiện lẻ
+            if (extraPart.StockQuantity < request.Quantity)
+                throw new InvalidOperationException($"Insufficient stock quantity (Available: {extraPart.StockQuantity}).");
+
+            // 3. Phục hồi Dictionary từ JSON
+            var currentSelection = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson)
+                                   ?? new Dictionary<string, SelectedPartResponse>();
+
+            // 4. Tạo Key riêng biệt cho món Add-on này để không đè lên quy trình chính
+            string addonKey = $"addon_{Guid.NewGuid()}";
+
+            // Nối vị trí vào Tên sản phẩm để khi xuất Bill, Thợ ráp biết khách muốn gắn ở đâu
+            string displayName = string.IsNullOrWhiteSpace(request.PositionNote)
+                ? extraPart.Name
+                : $"{extraPart.Name} (Mounting position: {request.PositionNote})";
+
+            // 5. Thêm vào Session
+            currentSelection[addonKey] = new SelectedPartResponse
+            {
+                Id = extraPart.Id,
+                Name = displayName,
+                Price = extraPart.Price,
+                ThumbnailUrl = extraPart.ThumbnailURL ?? "",
+                Quantity = request.Quantity,
+
+                // Mấy trường này không dùng cho luồng Add-on lẻ nên để rỗng
+                KitDesignOptionId = Guid.Empty,
+                LayerImageUrl = "",
+                NextStepFilterRule = ""
+            };
+
+            // 6. Tính toán lại tổng tiền giỏ hàng
+            decimal newTotal = session.BaseKit.Price;
+            foreach (var item in currentSelection.Values)
+            {
+                newTotal += (item.Price * item.Quantity);
+            }
+
+            session.TotalPrice = newTotal;
+            session.SelectedItemsJson = JsonSerializer.Serialize(currentSelection);
+
+            await _unitOfWork.BuilderSessions.UpdateSessionAsync(session);
+            await _unitOfWork.CommitAsync();
+
+            // 7. Trả về cấu trúc Builder cũ, giữ nguyên trang khách đang đứng
+            return await GetExistingSessionAsync(session.Id, session.CurrentStep);
+        }
+
+        public async Task<BuilderStepResponse> RemoveExtraPartFromSessionAsync(Guid sessionId, string addonKey)
+        {
+            var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(sessionId);
+            if (session == null) throw new KeyNotFoundException("Session expired or not found");
+
+            var currentSelection = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson)
+                                   ?? new Dictionary<string, SelectedPartResponse>();
+
+            // Kiểm tra và xóa Addon nếu tồn tại
+            if (currentSelection.ContainsKey(addonKey))
+            {
+                currentSelection.Remove(addonKey);
+
+                // Tính lại tiền
+                decimal newTotal = session.BaseKit.Price;
+                foreach (var item in currentSelection.Values)
+                {
+                    newTotal += (item.Price * item.Quantity);
+                }
+                session.TotalPrice = newTotal;
+                session.SelectedItemsJson = JsonSerializer.Serialize(currentSelection);
+
+                await _unitOfWork.BuilderSessions.UpdateSessionAsync(session);
+                await _unitOfWork.CommitAsync();
+            }
+
+            // Trả về Session mới nhất để FE cập nhật lại giao diện
+            return await GetExistingSessionAsync(session.Id, session.CurrentStep);
+        }
+
         // --- HELPER FUNCTIONS ---
 
         // 1. Logic thứ tự các bước (Hard-code)

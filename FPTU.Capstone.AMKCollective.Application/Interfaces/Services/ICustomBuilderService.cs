@@ -32,5 +32,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<BuilderStepResponse> GetExistingSessionAsync(Guid sessionId, string? requestStep = null);
         Task<List<BuilderSessionSummaryResponse>> GetUserSessionsAsync(Guid userId);
         Task<Guid> CreateSessionFromOrderAsync(Guid orderItemId, Guid userId);
+        Task<BuilderStepResponse> AddExtraPartToSessionAsync(BuilderAddonRequest request);
+        Task<BuilderStepResponse> RemoveExtraPartFromSessionAsync(Guid sessionId, string addonKey);
     }
 }
