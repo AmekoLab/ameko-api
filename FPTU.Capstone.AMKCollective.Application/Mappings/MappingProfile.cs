@@ -3,6 +3,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct;
 using FPTU.Capstone.AMKCollective.Application.DTOs.AssemblyTracking;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Chat;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Commission;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Follow;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
@@ -41,6 +42,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.Role, opt => opt.Ignore());
 
             CreateMap<UpdateProfileRequest, User>();
+
+            //==================CHAT=======================//
+            CreateMap<Message, ChatMessageResponse>()
+                // ConversationId comes from query context, not Message entity.
+                .ForMember(dest => dest.ConversationId, opt => opt.Ignore());
+            //==================CHAT=======================//
 
             //==================FOLLOW=======================//
             CreateMap<FollowRequest, Follow>();

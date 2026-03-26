@@ -189,5 +189,306 @@ namespace FPTU.Capstone.AMKCollective.Tests
             Assert.False(result.Success);
             Assert.Contains("Username already exists", result.ErrorMessage);
         }
+
+        [Fact]
+        public async Task LoginAsync_WithUserNotFound_ReturnsNull()
+        {
+            var mockUnitOfWork = new Mock<IUnitOfWork>();
+            mockUnitOfWork.Setup(u => u.Users.GetByEmailAsync("missing@test.com")).ReturnsAsync((User?)null);
+
+            var service = CreateUserService(
+                mockUnitOfWork.Object,
+                new Mock<IEmailService>().Object,
+                new Mock<IMapper>().Object,
+                new Mock<ITokenService>().Object);
+
+            var result = await service.LoginAsync(new LoginRequest { Email = "missing@test.com", Password = "123" });
+
+            Assert.Null(result);
+        }
+
+        [Fact]
+        public async Task RegisterAsync_WithExistingEmail_ReturnsFail()
+        {
+            var mockUnitOfWork = new Mock<IUnitOfWork>();
+            mockUnitOfWork.Setup(u => u.Users.GetByUsernameAsync("newuser")).ReturnsAsync((User?)null);
+            mockUnitOfWork.Setup(u => u.Users.GetByEmailAsync("exists@test.com"))
+                .ReturnsAsync(new User { Email = "exists@test.com", Username = "exists" });
+
+            var service = CreateUserService(
+                mockUnitOfWork.Object,
+                new Mock<IEmailService>().Object,
+                new Mock<IMapper>().Object,
+                new Mock<ITokenService>().Object);
+
+            var result = await service.RegisterAsync(new RegisterRequest
+            {
+                Username = "newuser",
+                Email = "exists@test.com",
+                Password = "password123",
+                FirstName = "A",
+                LastName = "B",
+                Role = RoleType.Customer
+            });
+
+            Assert.False(result.Success);
+            Assert.Contains("Email already exists", result.ErrorMessage);
+        }
+
+        [Fact]
+        public async Task ChangePasswordAsync_WithUserNotFound_ReturnsFail()
+        {
+            var userId = Guid.NewGuid();
+            var mockUnitOfWork = new Mock<IUnitOfWork>();
+            mockUnitOfWork.Setup(u => u.Users.GetByIdAsync(userId)).ReturnsAsync((User?)null);
+
+            var service = CreateUserService(
+                mockUnitOfWork.Object,
+                new Mock<IEmailService>().Object,
+                new Mock<IMapper>().Object,
+                new Mock<ITokenService>().Object);
+
+            var result = await service.ChangePasswordAsync(userId, new ChangePasswordRequest
+            {
+                OldPassword = "old",
+                NewPassword = "new",
+                ConfirmNewPassword = "new"
+            });
+
+            Assert.False(result.Success);
+            Assert.Equal("User not found", result.ErrorMessage);
+        }
+
+        [Fact]
+        public async Task ChangePasswordAsync_WithWrongOldPassword_ReturnsFail()
+        {
+            var userId = Guid.NewGuid();
+            var user = new User
+            {
+                Id = userId,
+                Username = "john",
+                Email = "john@test.com",
+                HashedPassword = CreatePasswordHash("correctOld")
+            };
+
+            var mockUnitOfWork = new Mock<IUnitOfWork>();
+            mockUnitOfWork.Setup(u => u.Users.GetByIdAsync(userId)).ReturnsAsync(user);
+
+            var service = CreateUserService(
+                mockUnitOfWork.Object,
+                new Mock<IEmailService>().Object,
+                new Mock<IMapper>().Object,
+                new Mock<ITokenService>().Object);
+
+            var result = await service.ChangePasswordAsync(userId, new ChangePasswordRequest
+            {
+                OldPassword = "wrongOld",
+                NewPassword = "new",
+                ConfirmNewPassword = "new"
+            });
+
+            Assert.False(result.Success);
+            Assert.Equal("Invalid old password", result.ErrorMessage);
+            mockUnitOfWork.Verify(u => u.Users.RemoveAllRefreshTokensAsync(It.IsAny<Guid>()), Times.Never);
+            mockUnitOfWork.Verify(u => u.CommitAsync(), Times.Never);
+        }
+
+        [Fact]
+        public async Task ChangePasswordAsync_WithValidOldPassword_UpdatesPasswordAndRevokesTokens()
+        {
+            var userId = Guid.NewGuid();
+            var user = new User
+            {
+                Id = userId,
+                Username = "john",
+                Email = "john@test.com",
+                HashedPassword = CreatePasswordHash("oldPassword")
+            };
+
+            var mockUnitOfWork = new Mock<IUnitOfWork>();
+            mockUnitOfWork.Setup(u => u.Users.GetByIdAsync(userId)).ReturnsAsync(user);
+            mockUnitOfWork.Setup(u => u.Users.UpdateAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
+            mockUnitOfWork.Setup(u => u.Users.RemoveAllRefreshTokensAsync(userId)).Returns(Task.CompletedTask);
+            mockUnitOfWork.Setup(u => u.CommitAsync()).Returns(Task.CompletedTask);
+
+            var service = CreateUserService(
+                mockUnitOfWork.Object,
+                new Mock<IEmailService>().Object,
+                new Mock<IMapper>().Object,
+                new Mock<ITokenService>().Object);
+
+            var result = await service.ChangePasswordAsync(userId, new ChangePasswordRequest
+            {
+                OldPassword = "oldPassword",
+                NewPassword = "newPassword",
+                ConfirmNewPassword = "newPassword"
+            });
+
+            Assert.True(result.Success);
+            Assert.NotEqual(CreatePasswordHash("oldPassword"), user.HashedPassword);
+            mockUnitOfWork.Verify(u => u.Users.RemoveAllRefreshTokensAsync(userId), Times.Once);
+            mockUnitOfWork.Verify(u => u.Users.UpdateAsync(user), Times.Once);
+            mockUnitOfWork.Verify(u => u.CommitAsync(), Times.Once);
+        }
+
+        [Fact]
+        public async Task RefreshTokenAsync_WhenUserNotFound_ReturnsFail()
+        {
+            var userId = Guid.NewGuid();
+            var mockUnitOfWork = new Mock<IUnitOfWork>();
+            mockUnitOfWork.Setup(u => u.Users.GetUserWithRefreshTokensAsync(userId)).ReturnsAsync((User?)null);
+
+            var service = CreateUserService(
+                mockUnitOfWork.Object,
+                new Mock<IEmailService>().Object,
+                new Mock<IMapper>().Object,
+                new Mock<ITokenService>().Object);
+
+            var result = await service.RefreshTokenAsync(userId, new RefreshTokenRequest { RefreshToken = "any" });
+
+            Assert.Null(result.Response);
+            Assert.Equal("User not found", result.ErrorMessage);
+        }
+
+        [Fact]
+        public async Task RefreshTokenAsync_WhenInvalidToken_ReturnsFail()
+        {
+            var userId = Guid.NewGuid();
+            var user = new User
+            {
+                Id = userId,
+                Username = "john",
+                Email = "john@test.com",
+                RefreshTokens = new List<RefreshToken>()
+            };
+
+            var existingRaw = "valid_refresh";
+            var existingHash = CreatePasswordHash(existingRaw).Split(':');
+            user.RefreshTokens.Add(new RefreshToken
+            {
+                UserId = userId,
+                TokenSalt = existingHash[0],
+                TokenHash = existingHash[1]
+            });
+
+            var mockUnitOfWork = new Mock<IUnitOfWork>();
+            mockUnitOfWork.Setup(u => u.Users.GetUserWithRefreshTokensAsync(userId)).ReturnsAsync(user);
+
+            var service = CreateUserService(
+                mockUnitOfWork.Object,
+                new Mock<IEmailService>().Object,
+                new Mock<IMapper>().Object,
+                new Mock<ITokenService>().Object);
+
+            var result = await service.RefreshTokenAsync(userId, new RefreshTokenRequest { RefreshToken = "wrong" });
+
+            Assert.Null(result.Response);
+            Assert.Equal("Invalid Refresh Token", result.ErrorMessage);
+        }
+
+        [Fact]
+        public async Task RefreshTokenAsync_WithValidToken_ReturnsNewTokenAndRefreshToken()
+        {
+            var userId = Guid.NewGuid();
+            var user = new User
+            {
+                Id = userId,
+                Username = "john",
+                Email = "john@test.com",
+                RefreshTokens = new List<RefreshToken>()
+            };
+
+            var existingRaw = "valid_refresh";
+            var existingHash = CreatePasswordHash(existingRaw).Split(':');
+            user.RefreshTokens.Add(new RefreshToken
+            {
+                UserId = userId,
+                TokenSalt = existingHash[0],
+                TokenHash = existingHash[1]
+            });
+
+            var mockUnitOfWork = new Mock<IUnitOfWork>();
+            mockUnitOfWork.Setup(u => u.Users.GetUserWithRefreshTokensAsync(userId)).ReturnsAsync(user);
+            mockUnitOfWork.Setup(u => u.Users.AddRefreshTokenAsync(It.IsAny<RefreshToken>())).Returns(Task.CompletedTask);
+            mockUnitOfWork.Setup(u => u.CommitAsync()).Returns(Task.CompletedTask);
+
+            var mockTokenService = new Mock<ITokenService>();
+            mockTokenService.Setup(t => t.CreateToken(user)).Returns("new_jwt");
+
+            var service = CreateUserService(
+                mockUnitOfWork.Object,
+                new Mock<IEmailService>().Object,
+                new Mock<IMapper>().Object,
+                mockTokenService.Object);
+
+            var result = await service.RefreshTokenAsync(userId, new RefreshTokenRequest { RefreshToken = existingRaw });
+
+            Assert.NotNull(result.Response);
+            Assert.Equal("new_jwt", result.Response!.Token);
+            Assert.False(string.IsNullOrWhiteSpace(result.Response.RefreshToken));
+            Assert.Equal(string.Empty, result.ErrorMessage);
+            Assert.Empty(user.RefreshTokens);
+
+            mockUnitOfWork.Verify(u => u.Users.AddRefreshTokenAsync(It.IsAny<RefreshToken>()), Times.Once);
+            mockUnitOfWork.Verify(u => u.CommitAsync(), Times.Once);
+        }
+
+        [Fact]
+        public async Task LogoutAsync_WithMatchingRefreshToken_RemovesTokenAndCommits()
+        {
+            var userId = Guid.NewGuid();
+            var user = new User
+            {
+                Id = userId,
+                Username = "john",
+                Email = "john@test.com",
+                RefreshTokens = new List<RefreshToken>()
+            };
+
+            var existingRaw = "raw_logout_token";
+            var hashParts = CreatePasswordHash(existingRaw).Split(':');
+            user.RefreshTokens.Add(new RefreshToken
+            {
+                UserId = userId,
+                TokenSalt = hashParts[0],
+                TokenHash = hashParts[1]
+            });
+
+            var mockUnitOfWork = new Mock<IUnitOfWork>();
+            mockUnitOfWork.Setup(u => u.Users.GetUserWithRefreshTokensAsync(userId)).ReturnsAsync(user);
+            mockUnitOfWork.Setup(u => u.CommitAsync()).Returns(Task.CompletedTask);
+
+            var service = CreateUserService(
+                mockUnitOfWork.Object,
+                new Mock<IEmailService>().Object,
+                new Mock<IMapper>().Object,
+                new Mock<ITokenService>().Object);
+
+            var result = await service.LogoutAsync(userId, new LogoutRequest { RefreshToken = existingRaw });
+
+            Assert.True(result.Success);
+            Assert.Equal(string.Empty, result.ErrorMessage);
+            Assert.Empty(user.RefreshTokens);
+            mockUnitOfWork.Verify(u => u.CommitAsync(), Times.Once);
+        }
+
+        [Fact]
+        public async Task LogoutAsync_WhenUserNotFound_ReturnsFail()
+        {
+            var userId = Guid.NewGuid();
+            var mockUnitOfWork = new Mock<IUnitOfWork>();
+            mockUnitOfWork.Setup(u => u.Users.GetUserWithRefreshTokensAsync(userId)).ReturnsAsync((User?)null);
+
+            var service = CreateUserService(
+                mockUnitOfWork.Object,
+                new Mock<IEmailService>().Object,
+                new Mock<IMapper>().Object,
+                new Mock<ITokenService>().Object);
+
+            var result = await service.LogoutAsync(userId, new LogoutRequest { RefreshToken = "any" });
+
+            Assert.False(result.Success);
+            Assert.Equal("User not found", result.ErrorMessage);
+        }
     }
 }
