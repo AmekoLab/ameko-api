@@ -36,6 +36,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         private IWithdrawalRequestRepository? _withdrawalRequests;
         private ITransactionRepository? _transactions;
         private IPostReactionRepository? _postReactions;
+        private IPostCommentRepository? _postComments;
         public UnitOfWork(ApplicationDbContext context)
         {
             _context = context;
@@ -71,6 +72,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public IWithdrawalRequestRepository WithdrawalRequests => _withdrawalRequests ??= new WithdrawalRequestRepository(_context);
         public ITransactionRepository Transactions => _transactions ??= new TransactionRepository(_context);
         public IPostReactionRepository PostReactions => _postReactions ??= new PostReactionRepository(_context);
+        public IPostCommentRepository PostComments => _postComments ??= new PostCommentRepository(_context);
 
         public async Task CommitAsync()
         {

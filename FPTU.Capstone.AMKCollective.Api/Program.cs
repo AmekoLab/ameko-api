@@ -29,6 +29,7 @@ internal class Program
         builder.Services.AddControllers();
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
+        builder.Services.AddMemoryCache();
 
         // Register AutoMapper
         builder.Services.AddAutoMapper(typeof(MappingProfile).Assembly);

@@ -9,6 +9,8 @@ using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Application.BackgroundServices;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
+using FPTU.Capstone.AMKCollective.Application.Exceptions;
+using Microsoft.Extensions.Configuration;
 
 namespace FPTU.Capstone.AMKCollective.Application.Services
 {
@@ -17,15 +19,21 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IPostEnricher _postEnricher;
         private readonly INotificationQueue _notificationQueue;
+        private readonly IContentModerationService _moderationService;
+        private readonly IConfiguration _configuration;
 
         public CommunityService(
             IUnitOfWork unitOfWork,
             IPostEnricher postEnricher,
-            INotificationQueue notificationQueue)
+            INotificationQueue notificationQueue,
+            IContentModerationService moderationService,
+            IConfiguration configuration)
         {
             _unitOfWork = unitOfWork;
             _postEnricher = postEnricher;
             _notificationQueue = notificationQueue;
+            _moderationService = moderationService;
+            _configuration = configuration;
         }
 
         public async Task<CursorPagedResult<PostFeedResponse>> GetFeedAsync(string? cursor, int pageSize, CancellationToken cancellationToken)
@@ -33,7 +41,52 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var decodedCursor = CursorHelper.DecodeCursor(cursor);
             var posts = await _unitOfWork.CommunityPosts.GetFeedCursorPagedAsync(decodedCursor?.CreatedAt, decodedCursor?.Id, pageSize, cancellationToken);
             
-            var responseItems = posts.Select(p => new PostFeedResponse
+            return await MapPostsToFeedResponse(posts, pageSize, cancellationToken);
+        }
+
+        public async Task<CursorPagedResult<PostFeedResponse>> GetPostsByUserIdAsync(Guid userId, string? cursor, int pageSize, CancellationToken cancellationToken = default)
+        {
+            var decodedCursor = CursorHelper.DecodeCursor(cursor);
+            var posts = await _unitOfWork.CommunityPosts.GetByUserIdCursorPagedAsync(userId, decodedCursor?.CreatedAt, decodedCursor?.Id, pageSize, cancellationToken);
+            
+            return await MapPostsToFeedResponse(posts, pageSize, cancellationToken);
+        }
+
+        private async Task<CursorPagedResult<CommentResponse>> MapCommentsToResponse(List<PostComment> comments, int pageSize)
+        {
+            var responseItems = comments.Select(c => new CommentResponse
+            {
+                Id = c.Id,
+                UserId = c.UserId,
+                Username = c.User?.Username ?? "Unknown",
+                FullName = c.User != null ? $"{c.User.FirstName} {c.User.LastName}" : "Unknown",
+                AvatarUrl = c.User?.Image,
+                Content = c.Content,
+                CreatedAt = c.CreatedAt
+            }).ToList();
+
+            bool hasMore = responseItems.Count > pageSize;
+            var itemsToReturn = responseItems.Take(pageSize).ToList();
+
+            string? nextCursor = null;
+            if (itemsToReturn.Any() && hasMore)
+            {
+                var lastItem = itemsToReturn.Last();
+                nextCursor = CursorHelper.EncodeCursor(lastItem.CreatedAt, lastItem.Id);
+            }
+
+            return new CursorPagedResult<CommentResponse>
+            {
+                Items = itemsToReturn,
+                HasMore = hasMore,
+                NextCursor = nextCursor
+            };
+        }
+
+
+        private async Task<CursorPagedResult<PostFeedResponse>> MapPostsToFeedResponse(List<CommunityPost> posts, int pageSize, CancellationToken cancellationToken)
+        {
+            var responseItems = posts.Take(pageSize + 1).Select(p => new PostFeedResponse
             {
                 Id = p.Id,
                 UserId = p.UserId,
@@ -55,7 +108,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 nextCursor = CursorHelper.EncodeCursor(lastItem.CreatedAt, lastItem.Id);
             }
 
-            // Enrich product data
             await _postEnricher.EnrichAsync(itemsToReturn, cancellationToken);
 
             return new CursorPagedResult<PostFeedResponse>
@@ -68,10 +120,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<PostFeedResponse> CreatePostAsync(Guid userId, CreatePostDto request, CancellationToken cancellationToken)
         {
+            var sanitizedTitle = await _moderationService.ProcessContentAsync(userId, request.Title, "Post", 0, cancellationToken);
+            
             var post = new CommunityPost
             {
                 UserId = userId,
-                Title = request.Title,
+                Title = sanitizedTitle,
                 AssembledProductId = request.AssembledProductId,
             };
 
@@ -86,7 +140,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommunityPosts.AddAsync(post, cancellationToken);
             await _unitOfWork.CommitAsync();
 
-            // Queue background notification strictly replacing Task.Run
             var notificationItem = new NotificationDispatchItem
             {
                 ActorId = userId,
@@ -139,7 +192,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (post == null) throw new KeyNotFoundException("Post not found");
             if (post.UserId != userId) throw new UnauthorizedAccessException("You are not authorized to update this post");
 
-            if (request.Title != null) post.Title = request.Title;
+            if (request.Title != null)
+            {
+                post.Title = await _moderationService.ProcessContentAsync(userId, request.Title, "Post", 0, cancellationToken);
+            }
+
             if (request.AssembledProductId.HasValue) post.AssembledProductId = request.AssembledProductId;
             
             if (request.AttachmentUrls != null)
@@ -176,7 +233,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (existingReaction == null)
             {
-                // Case 1: No existing reaction -> create new
                 var reaction = new PostReaction
                 {
                     PostId = postId,
@@ -185,7 +241,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 };
                 await _unitOfWork.PostReactions.AddAsync(reaction, cancellationToken);
 
-                // Notification to post owner
                 if (post.UserId != userId)
                 {
                     var notificationItem = new NotificationDispatchItem
@@ -201,17 +256,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
             else if (existingReaction.Type == type)
             {
-                // Case 2: Same reaction type clicked again -> remove reaction (toggle off)
                 _unitOfWork.PostReactions.Remove(existingReaction);
             }
             else
             {
-                // Case 3: Different reaction type -> update existing reaction
                 existingReaction.Type = type;
                 _unitOfWork.PostReactions.Update(existingReaction);
-
-                // Optional: Update notification or send new one? 
-                // Usually just updating the reaction type doesn't need a new notification if one was already sent.
             }
 
             await _unitOfWork.CommitAsync();
@@ -230,6 +280,58 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 ReactionType = r.Type.ToString(),
                 CreatedAt = r.CreatedAt
             });
+        }
+
+        public async Task<CommentResponse> AddCommentAsync(int postId, Guid userId, CreateCommentDto request, CancellationToken cancellationToken = default)
+        {
+            // Rate limit check (using the unified service)
+            int limit = _configuration.GetValue<int>("SecuritySettings:MaxCommentsPerMinute", 20);
+            var sanitizedContent = await _moderationService.ProcessContentAsync(userId, request.Content, "Comment", limit, cancellationToken);
+
+            var post = await _unitOfWork.CommunityPosts.GetByIdAsync(postId, cancellationToken);
+            if (post == null) throw new KeyNotFoundException("Post not found");
+
+            var comment = new PostComment
+            {
+                PostId = postId,
+                UserId = userId,
+                Content = sanitizedContent
+            };
+
+            await _unitOfWork.PostComments.AddAsync(comment, cancellationToken);
+            await _unitOfWork.CommitAsync();
+
+            if (post.UserId != userId)
+            {
+                await _notificationQueue.QueueNotificationAsync(new NotificationDispatchItem
+                {
+                    ActorId = userId,
+                    Type = FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType.Comment,
+                    ReferenceId = postId.ToString(),
+                    ReferenceType = NotificationReferenceHelper.TypePost,
+                    RedirectUrl = $"/posts/{postId}"
+                });
+            }
+
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+
+            return new CommentResponse
+            {
+                Id = comment.Id,
+                UserId = userId,
+                Username = user?.Username ?? "Unknown",
+                FullName = user != null ? $"{user.FirstName} {user.LastName}" : "Unknown",
+                AvatarUrl = user?.Image,
+                Content = comment.Content,
+                CreatedAt = comment.CreatedAt
+            };
+        }
+
+        public async Task<CursorPagedResult<CommentResponse>> GetPostCommentsAsync(int postId, string? cursor, int pageSize, CancellationToken cancellationToken = default)
+        {
+            var decodedCursor = CursorHelper.DecodeCursor(cursor);
+            var comments = await _unitOfWork.PostComments.GetByPostIdCursorPagedAsync(postId, decodedCursor?.CreatedAt, decodedCursor?.Id, pageSize, cancellationToken);
+            return await MapCommentsToResponse(comments, pageSize);
         }
     }
 }
