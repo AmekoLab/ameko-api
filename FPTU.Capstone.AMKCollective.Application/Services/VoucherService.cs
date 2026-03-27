@@ -73,11 +73,33 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         }
 
         // 2. Create Negotiation Voucher - For shop to finalize deals
-        public async Task<VoucherResponse> CreateNegotiationVoucherAsync(Guid shopId, Guid targetUserId, decimal discountAmount, decimal minOrderValue)
+        public async Task<VoucherResponse> CreateNegotiationVoucherAsync(Guid userId, Guid targetUserId, decimal discountAmount, decimal minOrderValue)
         {
             // Generate random code: NEGO_ + 8 random characters
             string code = "NEGO_" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
 
+            // Kiểm tra quyền và lấy ShopId chuẩn xác
+            var currentUser = await _unitOfWork.Users.GetByIdAsync(userId);
+            if (currentUser == null)
+            {
+                throw new UnauthorizedAccessException("User not found or session is invalid.");
+            }
+            bool isAdmin = currentUser?.Role?.Name == RoleType.Admin;
+
+            var scope = VoucherScope.Shop;
+            Guid? actualShopId = null;
+
+            if (isAdmin)
+            {
+                scope = VoucherScope.System;
+            }
+            else
+            {
+                var myShop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+                actualShopId = myShop?.Id;
+            }
+
+            // 2. Khởi tạo Voucher
             var voucher = new Voucher
             {
                 Code = code,
@@ -95,8 +117,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 UsedCount = 0,
                 Status = VoucherStatus.Active,
 
-                CreatorId = shopId,
+                CreatorId = userId, 
                 TargetUserId = targetUserId, // Only this customer can use
+
+                Scope = scope,
+                ShopId = actualShopId,
 
                 // Negotiation: can only stack with Compensation voucher
                 IsStackable = true,
@@ -106,17 +131,38 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Vouchers.AddAsync(voucher);
             await _unitOfWork.CommitAsync();
 
-            var creator = await _unitOfWork.Users.GetByIdAsync(shopId); 
-            voucher.Creator = creator;
+            voucher.Creator = currentUser;
             return _mapper.Map<VoucherResponse>(voucher);
         }
 
         // 3. Create Compensation Voucher - For system/shop cancellations
-        public async Task<VoucherResponse> CreateCompensationVoucherAsync(Guid shopId, Guid targetUserId, decimal refundAmount)
+        public async Task<VoucherResponse> CreateCompensationVoucherAsync(Guid userId, Guid targetUserId, decimal refundAmount)
         {
             // Generate code: REFUND_ + ...
             string code = "REFUND_" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
 
+            // 1. Kiểm tra quyền và lấy ShopId chuẩn xác
+            var currentUser = await _unitOfWork.Users.GetByIdAsync(userId);
+            if (currentUser == null)
+            {
+                throw new UnauthorizedAccessException("User not found or session is invalid.");
+            }
+            bool isAdmin = currentUser?.Role?.Name == RoleType.Admin;
+
+            var scope = VoucherScope.Shop;
+            Guid? actualShopId = null;
+
+            if (isAdmin)
+            {
+                scope = VoucherScope.System;
+            }
+            else
+            {
+                var myShop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+                actualShopId = myShop?.Id;
+            }
+
+            // 2. Khởi tạo Voucher
             var voucher = new Voucher
             {
                 Code = code,
@@ -129,13 +175,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 MinOrderValue = 0, // No minimum order value, can be used on any order
 
                 StartDate = DateTime.UtcNow,
-                EndDate = DateTime.UtcNow.AddMonths(_voucherSettings.CompensationValidityMonths), 
+                EndDate = DateTime.UtcNow.AddMonths(_voucherSettings.CompensationValidityMonths),
                 UsageLimit = 1,
                 UsedCount = 0,
                 Status = VoucherStatus.Active,
 
-                CreatorId = shopId, // Shop or Admin responsible for creation
+                CreatorId = userId,
                 TargetUserId = targetUserId,
+                Scope = scope,
+                ShopId = actualShopId,
 
                 // Compensation: can stack with all other voucher types
                 IsStackable = true,
@@ -145,6 +193,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Vouchers.AddAsync(voucher);
             await _unitOfWork.CommitAsync();
 
+            voucher.Creator = currentUser;
             return _mapper.Map<VoucherResponse>(voucher);
         }
 
@@ -684,7 +733,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 // Skip if usage limit is reached
                 if (v.UsedCount >= v.UsageLimit) continue;
+                if (v.MaxUsesPerUser.HasValue)
+                {
+                    // Đếm số lần user đã dùng mã này trong bảng VoucherUsageLogs
+                    int userUsage = await _unitOfWork.VoucherUsageLogs.CountUsageByUserAndVoucherAsync(userId, v.Id, Guid.Empty);
 
+                    // Nếu đã dùng bằng hoặc vượt quá số lượt cho phép -> Đá văng khỏi danh sách hiển thị
+                    if (userUsage >= v.MaxUsesPerUser.Value)
+                        continue;
+                }
                 // A. System/Platform Vouchers (Admin created OR Compensation)
                 if (v.Scope == VoucherScope.System || v.Type == VoucherType.Compensation)
                 {
@@ -695,15 +752,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     }
                 }
                 // B. Shop Specific Vouchers
-                else if (v.Scope == VoucherScope.Shop && userToShopMap.TryGetValue(v.CreatorId, out var mappedShopId))
+                else if (v.Scope == VoucherScope.Shop && v.ShopId.HasValue)
                 {
-                    // Check against SPECIFIC Shop SubTotal
-                    if (shopSubTotals.ContainsKey(mappedShopId) && shopSubTotals[mappedShopId] >= v.MinOrderValue)
+                    Guid shopIdOfVoucher = v.ShopId.Value;
+                    if (shopSubTotals.ContainsKey(shopIdOfVoucher) && shopSubTotals[shopIdOfVoucher] >= v.MinOrderValue)
                     {
-                        if (!shopVouchersDict.ContainsKey(mappedShopId))
-                            shopVouchersDict[mappedShopId] = new List<Domain.Entities.Voucher>();
+                        if (!shopVouchersDict.ContainsKey(shopIdOfVoucher))
+                        {
+                            shopVouchersDict[shopIdOfVoucher] = new List<Domain.Entities.Voucher>();
+                        }
 
-                        shopVouchersDict[mappedShopId].Add(v);
+                        shopVouchersDict[shopIdOfVoucher].Add(v);
                     }
                 }
             }
@@ -890,6 +949,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     throw new InvalidOperationException(
                         $"UsageLimit ({request.UsageLimit.Value}) cannot be less than the number of times already used ({voucher.UsedCount}).");
                 voucher.UsageLimit = request.UsageLimit.Value;
+            }
+            if (request.MaxUsesPerUser.HasValue)
+            {
+                voucher.MaxUsesPerUser = request.MaxUsesPerUser.Value;
             }
             if (request.Status.HasValue) voucher.Status = request.Status.Value;
 
