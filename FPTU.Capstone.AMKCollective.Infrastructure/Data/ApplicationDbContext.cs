@@ -29,7 +29,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data
         public DbSet<Follow> Follows { get; set; } = null!;
         public DbSet<Feedback> Feedbacks { get; set; } = null!;
         public DbSet<Conversation> Conversations { get; set; } = null!;
+        public DbSet<UserConversation> UserConversations { get; set; } = null!;
         public DbSet<Message> Messages { get; set; } = null!;
+        public DbSet<MessageRecipient> MessageRecipients { get; set; } = null!;
         public DbSet<Notification> Notifications { get; set; } = null!;
         public DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
         public DbSet<CommunityPost> CommunityPosts { get; set; } = null!;
@@ -55,6 +57,56 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
 
             modelBuilder.Entity<Follow>().HasIndex(f => f.FollowedId);
+
+            modelBuilder.Entity<UserConversation>()
+                .HasOne(uc => uc.User)
+                .WithMany(u => u.UserConversations)
+                .HasForeignKey(uc => uc.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<UserConversation>()
+                .HasOne(uc => uc.Conversation)
+                .WithMany(c => c.UserConversations)
+                .HasForeignKey(uc => uc.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<UserConversation>()
+                .HasIndex(uc => new { uc.UserId, uc.ConversationId })
+                .IsUnique();
+
+            modelBuilder.Entity<Message>()
+                .HasOne(m => m.Sender)
+                .WithMany(u => u.MessagesCreated)
+                .HasForeignKey(m => m.SenderId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Message>()
+                .HasOne(m => m.ParentMessage)
+                .WithMany(m => m.Replies)
+                .HasForeignKey(m => m.ParentMessageId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<MessageRecipient>()
+                .HasOne(mr => mr.User)
+                .WithMany(u => u.MessageRecipients)
+                .HasForeignKey(mr => mr.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<MessageRecipient>()
+                .HasOne(mr => mr.UserConversation)
+                .WithMany(uc => uc.MessageRecipients)
+                .HasForeignKey(mr => mr.UserConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<MessageRecipient>()
+                .HasOne(mr => mr.Message)
+                .WithMany(m => m.MessageRecipients)
+                .HasForeignKey(mr => mr.MessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<MessageRecipient>()
+                .HasIndex(mr => new { mr.UserConversationId, mr.MessageId })
+                .IsUnique();
 
 
             // SEED DATA: SYSTEM BOT ACCOUNT

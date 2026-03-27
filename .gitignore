@@ -20,6 +20,10 @@ logs/
 TestResults/
 coverage/
 
+# Node.js dependencies
+node_modules/
+**/node_modules/
+
 # Environment & secrets
 .env
 *.env
