@@ -108,6 +108,7 @@ internal class Program
             options.AddPolicy("AllowFrontend", policy =>
             {
                 policy.WithOrigins(allowedOrigins)
+                      .AllowCredentials()
                       .AllowAnyHeader()
                       .AllowAnyMethod();
             });
