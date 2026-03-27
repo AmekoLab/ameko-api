@@ -43,5 +43,6 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public virtual ICollection<VoucherUsageLog> VoucherUsageLogs { get; set; } = new List<VoucherUsageLog>();
         
         public virtual ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
+        public virtual ICollection<OrderIssue> OrderIssues { get; set; } = new List<OrderIssue>();
     }
 }

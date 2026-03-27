@@ -14,5 +14,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task AddAsync(AssemblyProgressLog log);
         Task AddRangeAsync(IEnumerable<AssemblyProgressLog> logs);
         void Update(AssemblyProgressLog log);
+        void UpdateRange(IEnumerable<AssemblyProgressLog> logs);
+        void Delete(AssemblyProgressLog log);
     }
 }

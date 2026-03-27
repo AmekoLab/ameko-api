@@ -15,6 +15,7 @@ using System.Text;
 using System.IdentityModel.Tokens.Jwt;
 using FPTU.Capstone.AMKCollective.API.Workers;
 using FPTU.Capstone.AMKCollective.Application.BackgroundServices;
+using FPTU.Capstone.AMKCollective.Infrastructure.Hubs;
 
 internal class Program
 {
@@ -30,6 +31,9 @@ internal class Program
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
         builder.Services.AddMemoryCache();
+
+        // Configure SignalR with bounded payload size for safer realtime messaging.
+        builder.Services.AddSignalR(options => { options.MaximumReceiveMessageSize = 64 * 1024; });
 
         // Register AutoMapper
         builder.Services.AddAutoMapper(typeof(MappingProfile).Assembly);
@@ -68,6 +72,21 @@ internal class Program
                     ClockSkew = TimeSpan.Zero,
                     RoleClaimType = "role",
                     NameClaimType = "nameid",     
+                };
+
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = context =>
+                    {
+                        var accessToken = context.Request.Query["access_token"];
+                        var path = context.HttpContext.Request.Path;
+                        if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hub"))
+                        {
+                            context.Token = accessToken;
+                        }
+
+                        return Task.CompletedTask;
+                    }
                 };
             });
 
@@ -122,7 +141,7 @@ internal class Program
             {
                 Title = "ameko-api",
                 Version = "v1",
-                Description = "Api document for Ameko System"
+                Description = "Api document for AmekoLab System"
             });
 
             opt.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -179,7 +198,7 @@ internal class Program
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();
-        //app.MapHub<RealTimeHub>("/hub");
+        app.MapHub<RealTimeHub>("/hub");
 
         app.Run();
     }

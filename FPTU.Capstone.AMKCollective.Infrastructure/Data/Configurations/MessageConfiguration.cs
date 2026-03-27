@@ -19,16 +19,24 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .IsRequired()
                 .HasColumnType("text");
 
-            // Relationships
-            builder.HasOne(m => m.Conversation)
-                .WithMany(c => c.Messages)
-                .HasForeignKey(m => m.ConversationId)
-                .OnDelete(DeleteBehavior.Cascade);
+            builder.Property(m => m.AttachmentUrl)
+                .HasMaxLength(1000);
 
+            // Relationships
             builder.HasOne(m => m.Sender)
-                .WithMany(u => u.SentMessages)
+                .WithMany(u => u.MessagesCreated)
                 .HasForeignKey(m => m.SenderId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            builder.HasOne(m => m.ParentMessage)
+                .WithMany(m => m.Replies)
+                .HasForeignKey(m => m.ParentMessageId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.HasMany(m => m.MessageRecipients)
+                .WithOne(mr => mr.Message)
+                .HasForeignKey(mr => mr.MessageId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }

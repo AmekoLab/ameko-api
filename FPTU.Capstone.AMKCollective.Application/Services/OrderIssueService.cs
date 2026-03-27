@@ -1,8 +1,10 @@
 ﻿using AutoMapper;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
-using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
+using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -55,10 +57,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         }
 
         // 3. Shop lấy danh sách khiếu nại cần xử lý
-        public async Task<PaginatedResult<OrderIssueResponse>> GetShopIssuesAsync(Guid shopId, OrderIssueFilterRequest request, CancellationToken token = default)
+        public async Task<PaginatedResult<OrderIssueResponse>> GetShopIssuesAsync(Guid userId, OrderIssueFilterRequest request, CancellationToken token = default)
         {
+            var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+            if (shop == null)
+            {
+                // Quăng lỗi để Controller bắt
+                throw new UnauthorizedAccessException("You do not have a registered shop.");
+            }
             var (items, totalCount) = await _unitOfWork.OrderIssues.GetShopIssuesPaginatedAsync(
-                shopId, request.Status, request.PageNumber, request.PageSize);
+                shop.Id, request.Status, request.PageNumber, request.PageSize);
 
             var mappedItems = _mapper.Map<List<OrderIssueResponse>>(items);
 
@@ -91,6 +99,44 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             var logs = await _unitOfWork.OrderIssueLogs.GetByOrderIssueIdAsync(issueId);
             return _mapper.Map<List<OrderIssueLogResponse>>(logs);
+        }
+
+        public async Task CancelIssueRequestAsync(Guid userId, Guid issueId, CancellationToken token = default)
+        {
+            var issue = await _unitOfWork.OrderIssues.GetByIdAsync(issueId, token);
+            if (issue == null) throw new KeyNotFoundException("Order issue not found.");
+
+            if (issue.UserId != userId)
+                throw new UnauthorizedAccessException("You don't have permission to cancel this issue request.");
+
+            if (issue.Status != OrderIssueStatus.Pending && issue.Status != OrderIssueStatus.InProgress)
+                throw new InvalidOperationException($"Cannot cancel issue at current status ({issue.Status}). It has already been processed.");
+            issue.Status = OrderIssueStatus.CancelledByUser;
+            issue.UpdatedAt = DateTime.UtcNow;
+            var log = new OrderIssueLog
+            {
+                Id = Guid.NewGuid(),
+                OrderIssueId = issue.Id,
+                ActionById = userId,
+                ActionByRole = RoleType.Customer,
+                Action = OrderIssueAction.UserCancel, 
+                Comment = "Customer cancelled the issue request.",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _unitOfWork.OrderIssueLogs.AddAsync(log);
+            _unitOfWork.OrderIssues.Update(issue);
+            await _unitOfWork.CommitAsync();
+        }
+
+        public async Task<PaginatedResult<OrderIssueResponse>> GetAllIssuesForAdminAsync(OrderIssueFilterRequest request, CancellationToken token = default)
+        {
+            var (items, totalCount) = await _unitOfWork.OrderIssues.GetAllPagedAsync(
+                request.Status, request.PageNumber, request.PageSize, token);
+
+            var mappedItems = _mapper.Map<List<OrderIssueResponse>>(items);
+
+            return new PaginatedResult<OrderIssueResponse>(mappedItems, totalCount, request.PageNumber, request.PageSize);
         }
     }
 }

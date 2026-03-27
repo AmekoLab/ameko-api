@@ -25,6 +25,8 @@ namespace FPTU.Capstone.AMKCollective.Domain.Enums
 
         Returned = 7, //Shop đã nhận được hàng
 
-        Completed = 8 //Hoàn tất (Đã hoàn tiền/Voucher/Đổi hàng)
+        Completed = 8, //Hoàn tất (Đã hoàn tiền/Voucher/Đổi hàng)
+
+        CancelledByUser = 9 // Khách hàng tự rút lại/hủy yêu cầu
     }
 }

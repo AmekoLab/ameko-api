@@ -20,7 +20,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<AssemblyProgressLogResponse> UpdateProgressLogAsync(Guid progressLogId, Guid shopId, UpdateAssemblyProgressRequest request);
         Task<AssemblyProgressLogResponse> AddAdhocStepAsync(Guid orderItemId, Guid shopId, AddAdhocStepRequest request);
 
-        // Hàm gọi nội bộ (Trigger)
         Task GenerateTrackingLogsForOrderItemAsync(Guid orderItemId, Guid shopId);
+        Task DeleteProgressLogAsync(Guid progressLogId, Guid shopId);
     }
 }

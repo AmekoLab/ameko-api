@@ -97,7 +97,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<AssemblyProgressLogResponse> UpdateProgressLogAsync(Guid progressLogId, Guid shopId, UpdateAssemblyProgressRequest request)
         {
             var log = await _unitOfWork.AssemblyProgressLogs.GetByIdAsync(progressLogId)
-                ?? throw new KeyNotFoundException("Không tìm thấy bước tiến trình này.");
+                ?? throw new KeyNotFoundException("Process step not found.");
 
             var orderItem = await _unitOfWork.Orders.GetOrderItemByIdAsync(log.OrderItemId)
                 ?? throw new KeyNotFoundException("Order item not found.");
@@ -108,6 +108,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (order.ShopId != shopId)
                 throw new UnauthorizedAccessException("You do not own the shop handling this order.");
 
+            if (log.Status == AssemblyStepStatus.Completed)
+            {
+                throw new InvalidOperationException("This step has been completed and can no longer be modified.");
+            }
             log.Status = request.Status;
             log.Note = request.Note;
 
@@ -122,6 +126,52 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 using var stream = request.MediaFile.OpenReadStream();
                 string uploadedUrl = await _storageService.UploadAsync(stream, request.MediaFile.FileName, "tracking");
                 log.MediaUrl = uploadedUrl;
+            }
+
+            if (request.Status == AssemblyStepStatus.Completed)
+            {
+                // 1. Lấy tất cả các bước của OrderItem HIỆN TẠI
+                var currentItemLogs = await _unitOfWork.AssemblyProgressLogs.GetLogsByOrderItemIdAsync(log.OrderItemId);
+
+                // Kiểm tra xem OrderItem này đã hoàn thành toàn bộ quy trình chưa?
+                bool isCurrentItemCompleted = currentItemLogs
+                    .Where(x => x.Id != log.Id)
+                    .All(x => x.Status == AssemblyStepStatus.Completed);
+
+                if (isCurrentItemCompleted)
+                {
+                    // 2. KIỂM TRA CẤP ĐỘ ORDER: Xem toàn bộ các OrderItem trong đơn hàng đã ráp xong chưa?
+                    var allItemsInOrder = order.OrderItems;
+                    bool isEntireOrderAssembled = true;
+
+                    foreach (var item in allItemsInOrder)
+                    {
+                        var itemLogs = await _unitOfWork.AssemblyProgressLogs.GetLogsByOrderItemIdAsync(item.Id);
+
+                        // Chỉ kiểm tra những OrderItem CÓ quy trình lắp ráp
+                        if (itemLogs.Any())
+                        {
+                            // Xem item này đã xong chưa
+                            bool isItemDone = itemLogs.All(x =>
+                                x.Id == log.Id ? request.Status == AssemblyStepStatus.Completed
+                                               : x.Status == AssemblyStepStatus.Completed);
+
+                            if (!isItemDone)
+                            {
+                                isEntireOrderAssembled = false;
+                                break; // 1 item chưa xong là thoát vòng lặp, Order chưa thể hoàn thành
+                            }
+                        }
+                    }
+
+                    // 3. Nếu tất cả các bàn phím trong đơn hàng đều đã ráp xong -> Update Order
+                    if (isEntireOrderAssembled)
+                    {
+                        // Thay OrderStatus.Assembled bằng Enum thực tế của bạn
+                         order.OrderStatus = OrderStatus.Completed; 
+                        // _unitOfWork.Orders.Update(order);
+                    }
+                }
             }
 
             _unitOfWork.AssemblyProgressLogs.Update(log);
@@ -141,6 +191,25 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (order.ShopId != shopId)
                 throw new UnauthorizedAccessException("You do not own the shop handling this order.");
 
+            var existingLogs = (await _unitOfWork.AssemblyProgressLogs.GetLogsByOrderItemIdAsync(orderItemId)).ToList();
+
+            // 1. Kiểm tra chống gap (lỗ hổng thứ tự)
+            int maxStepOrder = existingLogs.Any() ? existingLogs.Max(x => x.StepOrder) : 0;
+            if (request.StepOrder > maxStepOrder + 1)
+            {
+                throw new ArgumentException($"Invalid StepOrder. To maintain continuity, the maximum allowed value is currently {maxStepOrder + 1}.");
+            }
+
+            // 2. Đẩy các step phía sau lên 1 đơn vị nếu chèn vào giữa
+            var logsToShift = existingLogs.Where(x => x.StepOrder >= request.StepOrder).ToList();
+            if (logsToShift.Any())
+            {
+                foreach (var existingLog in logsToShift)
+                {
+                    existingLog.StepOrder++;
+                }
+                _unitOfWork.AssemblyProgressLogs.UpdateRange(logsToShift);
+            }
             var log = new AssemblyProgressLog
             {
                 OrderItemId = orderItemId,
@@ -165,10 +234,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         #endregion
 
-        #region Internal Triggers
+        #region  Triggers
 
         public async Task GenerateTrackingLogsForOrderItemAsync(Guid orderItemId, Guid shopId)
         {
+            var existingLogs = await _unitOfWork.AssemblyProgressLogs.GetLogsByOrderItemIdAsync(orderItemId);
+            if (existingLogs.Any())
+            {
+                throw new InvalidOperationException("The assembly process for this product has already been initialized.");
+            }
+
             var templates = await _unitOfWork.AssemblyStepTemplates.GetTemplatesByShopIdAsync(shopId);
 
             if (!templates.Any()) return;
@@ -185,6 +260,43 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
         }
 
+        #endregion
+        #region  Delete step in timeline
+        public async Task DeleteProgressLogAsync(Guid progressLogId, Guid shopId)
+        {
+            var log = await _unitOfWork.AssemblyProgressLogs.GetByIdAsync(progressLogId)
+                ?? throw new KeyNotFoundException("Process step not found.");
+
+            var orderItem = await _unitOfWork.Orders.GetOrderItemByIdAsync(log.OrderItemId)
+                ?? throw new KeyNotFoundException("Order item not found.");
+
+            var order = await _unitOfWork.Orders.GetByIdAsync(orderItem.OrderId)
+                ?? throw new KeyNotFoundException("Order not found.");
+
+            // Author
+            if (order.ShopId != shopId)
+                throw new UnauthorizedAccessException("You do not have permission to delete this order step.");
+
+            // Cannot delete completed step
+            if (log.Status == AssemblyStepStatus.Completed)
+                throw new InvalidOperationException("Cannot delete a completed step.");
+
+            // Kéo lùi StepOrder của các bước phía sau
+            var existingLogs = await _unitOfWork.AssemblyProgressLogs.GetLogsByOrderItemIdAsync(log.OrderItemId);
+            var logsToShiftBack = existingLogs.Where(x => x.StepOrder > log.StepOrder).ToList();
+
+            if (logsToShiftBack.Any())
+            {
+                foreach (var existingLog in logsToShiftBack)
+                {
+                    existingLog.StepOrder--;
+                }
+                _unitOfWork.AssemblyProgressLogs.UpdateRange(logsToShiftBack);
+            }
+            _unitOfWork.AssemblyProgressLogs.Delete(log);
+
+            await _unitOfWork.CommitAsync();
+        }
         #endregion
     }
 }

@@ -3,6 +3,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct;
 using FPTU.Capstone.AMKCollective.Application.DTOs.AssemblyTracking;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Chat;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Commission;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Follow;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
@@ -41,6 +42,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.Role, opt => opt.Ignore());
 
             CreateMap<UpdateProfileRequest, User>();
+
+            //==================CHAT=======================//
+            CreateMap<Message, ChatMessageResponse>()
+                // ConversationId comes from query context, not Message entity.
+                .ForMember(dest => dest.ConversationId, opt => opt.Ignore());
+            //==================CHAT=======================//
 
             //==================FOLLOW=======================//
             CreateMap<FollowRequest, Follow>();
@@ -196,6 +203,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
 
     // 4. Map OrderItems (Giữ nguyên)
                 .ForMember(dest => dest.OrderItems, opt => opt.MapFrom(src => src.OrderItems))
+
+                .ForMember(dest => dest.HasCancelRequest, opt => opt.MapFrom(src =>
+                    src.OrderIssues != null && src.OrderIssues.Any(oi =>
+                    oi.IsDeleted == false &&
+                    oi.Type == OrderIssueType.CancelRequest &&
+                    (oi.Status == OrderIssueStatus.Pending || oi.Status == OrderIssueStatus.InProgress)
+                    )
+                ))
                 .ReverseMap();
 
             // =========================================================

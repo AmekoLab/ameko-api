@@ -523,5 +523,78 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
             return SuccessResponse(result.CommissionRequestId!.Value, "Your custom request has been successfully submitted to the shop for quotation."); // [Fix #5]
         }
+
+        /// <summary>
+        /// [USER] Thêm linh kiện mua lẻ (Add-on) vào Bàn phím ảo.
+        /// </summary>
+        /// <remarks>
+        /// FE gọi API này khi khách hàng click chọn 1 phím lẻ (hoặc 1 cụm phím) trên Bàn phím ảo để đổi Switch/Keycap.
+        /// Việc thêm này không làm ảnh hưởng đến luồng chọn Case -> Plate gốc, mà chỉ cộng thêm tiền và ghi chú vị trí.
+        /// </remarks>
+        /// <param name="sessionId">ID của phiên build hiện tại</param>
+        /// <param name="request">Chứa ComponentId (ID của phím lẻ), Số lượng, và Vị trí (VD: WASD)</param>
+        [HttpPost("session/{sessionId}/add-addon")]
+        [Authorize]
+        [SwaggerOperation(
+            Summary = "Add Custom Individual Part (Add-on)",
+            Description = "Adds specific parts like single switches or artisan keycaps to a builder session based on virtual keyboard interactions."
+        )]
+        [SwaggerResponse(200, "Add-on added successfully", typeof(ApiResponse<BuilderStepResponse>))]
+        [SwaggerResponse(400, "Not enough stock or invalid data")]
+        [SwaggerResponse(404, "Session or Component not found")]
+        public async Task<IActionResult> AddExtraPart(Guid sessionId, [FromBody] BuilderAddonRequest request)
+        {
+            try
+            {
+                // Đảm bảo SessionId trong đường dẫn (route) khớp với body gửi lên
+                request.SessionId = sessionId;
+
+                var result = await _service.AddExtraPartToSessionAsync(request);
+                return SuccessResponse(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<string>(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Bắt lỗi không đủ số lượng tồn kho
+                return ErrorResponse<string>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error adding extra part for Session {SessionId}", sessionId);
+                return ServerErrorResponse<string>("An error occurred while adding the extra part.");
+            }
+        }
+
+        /// <summary>
+        /// [USER] Xóa một linh kiện lẻ (Add-on) khỏi Bàn phím ảo.
+        /// </summary>
+        /// <remarks>
+        /// FE gọi API này khi khách hàng muốn Hủy custom ở cái nút đó (trả về switch base mặc định).
+        /// </remarks>
+        [HttpDelete("session/{sessionId}/remove-addon/{addonKey}")]
+        [Authorize]
+        [SwaggerOperation(Summary = "Remove Custom Individual Part (Add-on)")]
+        [SwaggerResponse(200, "Add-on removed successfully", typeof(ApiResponse<BuilderStepResponse>))]
+        [SwaggerResponse(404, "Session not found")]
+        public async Task<IActionResult> RemoveExtraPart(Guid sessionId, string addonKey)
+        {
+            try
+            {
+                var result = await _service.RemoveExtraPartFromSessionAsync(sessionId, addonKey);
+                return SuccessResponse(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<string>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error removing extra part {AddonKey} from Session {SessionId}", addonKey, sessionId);
+                return ServerErrorResponse<string>("An error occurred while removing the extra part.");
+            }
+        }
     }
 }

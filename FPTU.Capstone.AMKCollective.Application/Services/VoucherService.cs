@@ -73,11 +73,33 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         }
 
         // 2. Create Negotiation Voucher - For shop to finalize deals
-        public async Task<VoucherResponse> CreateNegotiationVoucherAsync(Guid shopId, Guid targetUserId, decimal discountAmount, decimal minOrderValue)
+        public async Task<VoucherResponse> CreateNegotiationVoucherAsync(Guid userId, Guid targetUserId, decimal discountAmount, decimal minOrderValue)
         {
             // Generate random code: NEGO_ + 8 random characters
             string code = "NEGO_" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
 
+            // Kiểm tra quyền và lấy ShopId chuẩn xác
+            var currentUser = await _unitOfWork.Users.GetByIdAsync(userId);
+            if (currentUser == null)
+            {
+                throw new UnauthorizedAccessException("User not found or session is invalid.");
+            }
+            bool isAdmin = currentUser?.Role?.Name == RoleType.Admin;
+
+            var scope = VoucherScope.Shop;
+            Guid? actualShopId = null;
+
+            if (isAdmin)
+            {
+                scope = VoucherScope.System;
+            }
+            else
+            {
+                var myShop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+                actualShopId = myShop?.Id;
+            }
+
+            // 2. Khởi tạo Voucher
             var voucher = new Voucher
             {
                 Code = code,
@@ -95,8 +117,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 UsedCount = 0,
                 Status = VoucherStatus.Active,
 
-                CreatorId = shopId,
+                CreatorId = userId, 
                 TargetUserId = targetUserId, // Only this customer can use
+
+                Scope = scope,
+                ShopId = actualShopId,
 
                 // Negotiation: can only stack with Compensation voucher
                 IsStackable = true,
@@ -106,17 +131,38 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Vouchers.AddAsync(voucher);
             await _unitOfWork.CommitAsync();
 
-            var creator = await _unitOfWork.Users.GetByIdAsync(shopId); 
-            voucher.Creator = creator;
+            voucher.Creator = currentUser;
             return _mapper.Map<VoucherResponse>(voucher);
         }
 
         // 3. Create Compensation Voucher - For system/shop cancellations
-        public async Task<VoucherResponse> CreateCompensationVoucherAsync(Guid shopId, Guid targetUserId, decimal refundAmount)
+        public async Task<VoucherResponse> CreateCompensationVoucherAsync(Guid userId, Guid targetUserId, decimal refundAmount)
         {
             // Generate code: REFUND_ + ...
             string code = "REFUND_" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
 
+            // 1. Kiểm tra quyền và lấy ShopId chuẩn xác
+            var currentUser = await _unitOfWork.Users.GetByIdAsync(userId);
+            if (currentUser == null)
+            {
+                throw new UnauthorizedAccessException("User not found or session is invalid.");
+            }
+            bool isAdmin = currentUser?.Role?.Name == RoleType.Admin;
+
+            var scope = VoucherScope.Shop;
+            Guid? actualShopId = null;
+
+            if (isAdmin)
+            {
+                scope = VoucherScope.System;
+            }
+            else
+            {
+                var myShop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+                actualShopId = myShop?.Id;
+            }
+
+            // 2. Khởi tạo Voucher
             var voucher = new Voucher
             {
                 Code = code,
@@ -129,13 +175,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 MinOrderValue = 0, // No minimum order value, can be used on any order
 
                 StartDate = DateTime.UtcNow,
-                EndDate = DateTime.UtcNow.AddMonths(_voucherSettings.CompensationValidityMonths), 
+                EndDate = DateTime.UtcNow.AddMonths(_voucherSettings.CompensationValidityMonths),
                 UsageLimit = 1,
                 UsedCount = 0,
                 Status = VoucherStatus.Active,
 
-                CreatorId = shopId, // Shop or Admin responsible for creation
+                CreatorId = userId,
                 TargetUserId = targetUserId,
+                Scope = scope,
+                ShopId = actualShopId,
 
                 // Compensation: can stack with all other voucher types
                 IsStackable = true,
@@ -145,6 +193,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Vouchers.AddAsync(voucher);
             await _unitOfWork.CommitAsync();
 
+            voucher.Creator = currentUser;
             return _mapper.Map<VoucherResponse>(voucher);
         }
 
@@ -563,31 +612,80 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var response = new ApplicableVoucherResponse();
 
-            // 1. Get current cart
-            var cartOrder = await _unitOfWork.Orders.GetOrderByStatusAsync(userId, OrderStatus.InCart);
-            if (cartOrder == null || !cartOrder.OrderItems.Any())
+            // 1. LẤY GIỎ HÀNG TỪ BẢNG MỚI
+            var cart = await _unitOfWork.Carts.GetCartByUserIdAsync(userId);
+            if (cart == null || !cart.CartItems.Any())
                 return response;
 
-            // 2. Calculate SubTotal for each Shop and Total Cart
+            // 2. TÍNH TOÁN SUBTOTAL CHO TỪNG SHOP VÀ TỔNG GIỎ HÀNG
             decimal cartSubTotal = 0;
             var shopSubTotals = new Dictionary<Guid, decimal>(); // Key: ShopId
-
-            // Dictionary để map giữa UserId của chủ shop và ShopId
             var userToShopMap = new Dictionary<Guid, Guid>(); // Key: UserId (CreatorId), Value: ShopId
 
-            var cartItems = cartOrder.OrderItems.Where(i => !i.IsDeleted).ToList();
-
-            foreach (var item in cartItems)
+            foreach (var item in cart.CartItems)
             {
                 Guid shopId = Guid.Empty;
+                decimal currentPrice = 0;
 
-                // 1. Hàng thường & Builder (Có ProductId)
-                if (item.ProductId.HasValue)
+                // A. Hàng Custom Build
+                if (item.IsCustom && item.ProductId.HasValue)
                 {
-                    var product = await _unitOfWork.Models.GetByIdAsync(item.ProductId.Value);
-                    if (product != null) shopId = product.ShopId;
+                    var baseKit = await _unitOfWork.Models.GetByIdAsync(item.ProductId.Value);
+                    if (baseKit != null)
+                    {
+                        shopId = baseKit.ShopId;
+                        currentPrice = baseKit.Price;
+
+                        // Giải mã JSON lấy giá linh kiện cộng dồn
+                        if (!string.IsNullOrEmpty(item.DesignConfig))
+                        {
+                            try
+                            {
+                                using var doc = System.Text.Json.JsonDocument.Parse(item.DesignConfig);
+                                if (doc.RootElement.TryGetProperty("SelectedItemsJson", out var selectedItemsProp))
+                                {
+                                    var selectedItemsStr = selectedItemsProp.GetString();
+                                    if (!string.IsNullOrEmpty(selectedItemsStr))
+                                    {
+                                        using var partsDoc = System.Text.Json.JsonDocument.Parse(selectedItemsStr);
+                                        foreach (var part in partsDoc.RootElement.EnumerateObject())
+                                        {
+                                            var partObj = part.Value;
+                                            decimal partPrice = 0;
+                                            int partQty = 1;
+
+                                            if (partObj.TryGetProperty("Price", out var priceProp)) partPrice = priceProp.GetDecimal();
+                                            if (partObj.TryGetProperty("Quantity", out var qtyProp)) partQty = qtyProp.GetInt32();
+                                            if (partQty <= 0) partQty = 1;
+
+                                            currentPrice += (partPrice * partQty);
+                                        }
+                                    }
+                                }
+                            }
+                            catch { /* Bỏ qua lỗi Parse */ }
+                        }
+                    }
                 }
-                // 2. Hàng Commission (Lấy ShopId từ DesignConfig)
+                // B. Hàng Thường (Assembled Product)
+                else if (!item.IsCustom && item.AssembledProductId.HasValue)
+                {
+                    var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(item.AssembledProductId.Value);
+                    if (assembledProduct != null)
+                    {
+                        currentPrice = assembledProduct.Price;
+
+                        // Đi đường vòng để lấy ShopId
+                        var firstDetail = assembledProduct.ProductAssembledDetails?.FirstOrDefault();
+                        var targetModelId = firstDetail?.BaseKitId ?? firstDetail?.ComponentId;
+                        if (targetModelId.HasValue)
+                        {
+                            var relatedModel = await _unitOfWork.Models.GetByIdAsync(targetModelId.Value);
+                            shopId = relatedModel?.ShopId ?? Guid.Empty;
+                        }
+                    }
+                }
+                // C. Hàng Commission (Giữ nguyên luồng fallback cũ của dự án)
                 else if (!string.IsNullOrEmpty(item.DesignConfig))
                 {
                     try
@@ -595,18 +693,23 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         using var doc = System.Text.Json.JsonDocument.Parse(item.DesignConfig);
                         if (doc.RootElement.TryGetProperty("ShopId", out var shopIdProp) && shopIdProp.TryGetGuid(out var parsedShopId))
                             shopId = parsedShopId;
+
+                        if (doc.RootElement.TryGetProperty("Price", out var priceProp) && priceProp.TryGetDecimal(out var parsedPrice))
+                            currentPrice = parsedPrice;
                     }
                     catch { /* Ignore parse error */ }
                 }
 
-                // Tính tổng tiền cho Shop
-                if (shopId != Guid.Empty)
+                decimal itemTotalPrice = currentPrice * item.Quantity;
+
+                // Tích luỹ giá trị vào Shop và Tổng Giỏ Hàng
+                if (shopId != Guid.Empty && itemTotalPrice > 0)
                 {
                     if (!shopSubTotals.ContainsKey(shopId))
                     {
                         shopSubTotals[shopId] = 0;
 
-                        // Lấy thông tin Shop để liên kết UserId với ShopId
+                        // Lấy thông tin Shop để liên kết UserId (CreatorId của Voucher) với ShopId
                         var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
                         if (shop != null)
                         {
@@ -614,8 +717,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         }
                     }
 
-                    shopSubTotals[shopId] += item.TotalPrice;
-                    cartSubTotal += item.TotalPrice;
+                    shopSubTotals[shopId] += itemTotalPrice;
+                    cartSubTotal += itemTotalPrice;
                 }
             }
 
@@ -630,7 +733,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 // Skip if usage limit is reached
                 if (v.UsedCount >= v.UsageLimit) continue;
+                if (v.MaxUsesPerUser.HasValue)
+                {
+                    // Đếm số lần user đã dùng mã này trong bảng VoucherUsageLogs
+                    int userUsage = await _unitOfWork.VoucherUsageLogs.CountUsageByUserAndVoucherAsync(userId, v.Id, Guid.Empty);
 
+                    // Nếu đã dùng bằng hoặc vượt quá số lượt cho phép -> Đá văng khỏi danh sách hiển thị
+                    if (userUsage >= v.MaxUsesPerUser.Value)
+                        continue;
+                }
                 // A. System/Platform Vouchers (Admin created OR Compensation)
                 if (v.Scope == VoucherScope.System || v.Type == VoucherType.Compensation)
                 {
@@ -641,15 +752,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     }
                 }
                 // B. Shop Specific Vouchers
-                else if (v.Scope == VoucherScope.Shop && userToShopMap.TryGetValue(v.CreatorId, out var mappedShopId))
+                else if (v.Scope == VoucherScope.Shop && v.ShopId.HasValue)
                 {
-                    // Check against SPECIFIC Shop SubTotal (sử dụng mappedShopId)
-                    if (shopSubTotals[mappedShopId] >= v.MinOrderValue)
+                    Guid shopIdOfVoucher = v.ShopId.Value;
+                    if (shopSubTotals.ContainsKey(shopIdOfVoucher) && shopSubTotals[shopIdOfVoucher] >= v.MinOrderValue)
                     {
-                        if (!shopVouchersDict.ContainsKey(mappedShopId))
-                            shopVouchersDict[mappedShopId] = new List<Domain.Entities.Voucher>();
+                        if (!shopVouchersDict.ContainsKey(shopIdOfVoucher))
+                        {
+                            shopVouchersDict[shopIdOfVoucher] = new List<Domain.Entities.Voucher>();
+                        }
 
-                        shopVouchersDict[mappedShopId].Add(v);
+                        shopVouchersDict[shopIdOfVoucher].Add(v);
                     }
                 }
             }
@@ -661,7 +774,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 response.ShopVoucherGroups.Add(new ShopVoucherGroupResponse
                 {
-                    ShopId = kvp.Key, // kvp.Key lúc này chính xác là ShopId
+                    ShopId = kvp.Key,
                     Vouchers = _mapper.Map<List<VoucherResponse>>(kvp.Value)
                 });
             }
@@ -836,6 +949,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     throw new InvalidOperationException(
                         $"UsageLimit ({request.UsageLimit.Value}) cannot be less than the number of times already used ({voucher.UsedCount}).");
                 voucher.UsageLimit = request.UsageLimit.Value;
+            }
+            if (request.MaxUsesPerUser.HasValue)
+            {
+                voucher.MaxUsesPerUser = request.MaxUsesPerUser.Value;
             }
             if (request.Status.HasValue) voucher.Status = request.Status.Value;
 

@@ -34,7 +34,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
 
             // Relationships
             builder.HasOne(oi => oi.Order)
-                .WithMany()
+                .WithMany(o => o.OrderIssues)
                 .HasForeignKey(oi => oi.OrderId)
                 .OnDelete(DeleteBehavior.Restrict);
 

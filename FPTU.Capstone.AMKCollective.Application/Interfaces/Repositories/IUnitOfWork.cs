@@ -31,6 +31,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         ITransactionRepository Transactions{ get; }
         IPostReactionRepository PostReactions { get; }
         IPostCommentRepository PostComments { get; }
+        IConversationRepository Conversations { get; }
+        IMessageRepository Messages { get; }
+        ICartRepository Carts { get; }
+        ICartItemRepository CartItems { get; }
         Task CommitAsync();
         void Rollback();
         /// <summary>

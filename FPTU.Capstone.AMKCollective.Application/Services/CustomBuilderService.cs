@@ -251,7 +251,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (selectedOption.Component.StockQuantity < qtyNeeded)
             {
-                throw new InvalidOperationException($"Linh kiện '{selectedOption.Component.Name}' hiện đã hết hàng (Còn lại: {selectedOption.Component.StockQuantity}, Cần: {qtyNeeded}). Vui lòng chọn linh kiện khác.");
+                throw new InvalidOperationException($"Component '{selectedOption.Component.Name}' is currently out of stock (Available: {selectedOption.Component.StockQuantity}, Required: {qtyNeeded}). Please choose another component.");
             }
 
             // 6. Xóa các bước phía sau (Nếu user quay lại sửa bước cũ -> clear các bước sau để chọn lại)
@@ -637,6 +637,90 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
 
             return (true, newCommission.Id, string.Empty);
+        }
+
+        public async Task<BuilderStepResponse> AddExtraPartToSessionAsync(BuilderAddonRequest request)
+        {
+            // 1. Lấy Session hiện tại
+            var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.SessionId);
+            if (session == null) throw new KeyNotFoundException("Session expired or not found");
+
+            // Phục hồi Dictionary từ JSON
+            var currentSelection = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson)
+                                   ?? new Dictionary<string, SelectedPartResponse>();
+
+            // 2. Vòng lặp xử lý từng món lẻ FE gửi lên
+            foreach (var item in request.Items)
+            {
+                var extraPart = await _unitOfWork.Models.GetByIdAsync(item.ComponentId);
+                if (extraPart == null) continue; // Bỏ qua nếu ko tìm thấy
+
+                if (extraPart.StockQuantity < item.Quantity)
+                    throw new InvalidOperationException($"The part '{extraPart.Name}' is out of stock.");
+
+                string addonKey = $"addon_{Guid.NewGuid()}";
+                string displayName = string.IsNullOrWhiteSpace(item.PositionNote)
+                    ? extraPart.Name
+                    : $"{extraPart.Name} (Mounting position: {item.PositionNote})";
+
+                currentSelection[addonKey] = new SelectedPartResponse
+                {
+                    Id = extraPart.Id,
+                    Name = displayName,
+                    Price = extraPart.Price,
+                    ThumbnailUrl = extraPart.ThumbnailURL ?? "",
+                    Quantity = item.Quantity,
+                    KitDesignOptionId = Guid.Empty,
+                    LayerImageUrl = "",
+                    NextStepFilterRule = ""
+                };
+            }
+
+            // 3. Tính toán lại tổng tiền giỏ hàng sau khi đã thêm đủ món
+            decimal newTotal = session.BaseKit.Price;
+            foreach (var item in currentSelection.Values)
+            {
+                newTotal += (item.Price * item.Quantity);
+            }
+
+            // 4. Lưu lại
+            session.TotalPrice = newTotal;
+            session.SelectedItemsJson = JsonSerializer.Serialize(currentSelection);
+
+            await _unitOfWork.BuilderSessions.UpdateSessionAsync(session);
+            await _unitOfWork.CommitAsync();
+
+            return await GetExistingSessionAsync(session.Id, session.CurrentStep);
+        }
+
+        public async Task<BuilderStepResponse> RemoveExtraPartFromSessionAsync(Guid sessionId, string addonKey)
+        {
+            var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(sessionId);
+            if (session == null) throw new KeyNotFoundException("Session expired or not found");
+
+            var currentSelection = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson)
+                                   ?? new Dictionary<string, SelectedPartResponse>();
+
+            // Kiểm tra và xóa Addon nếu tồn tại
+            if (currentSelection.ContainsKey(addonKey))
+            {
+                currentSelection.Remove(addonKey);
+
+                // Tính lại tiền
+                decimal newTotal = session.BaseKit.Price;
+                foreach (var item in currentSelection.Values)
+                {
+                    newTotal += (item.Price * item.Quantity);
+                }
+                session.TotalPrice = newTotal;
+                session.SelectedItemsJson = JsonSerializer.Serialize(currentSelection);
+
+                await _unitOfWork.BuilderSessions.UpdateSessionAsync(session);
+                await _unitOfWork.CommitAsync();
+            }
+
+            // Trả về Session mới nhất để FE cập nhật lại giao diện
+            return await GetExistingSessionAsync(session.Id, session.CurrentStep);
         }
 
         // --- HELPER FUNCTIONS ---

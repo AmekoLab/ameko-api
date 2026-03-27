@@ -248,6 +248,87 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.ToTable("BuilderSessions", (string)null);
                 });
 
+            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Cart", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.ToTable("Carts", (string)null);
+                });
+
+            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.CartItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("AssembledProductId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("CartId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("DesignConfig")
+                        .HasColumnType("longtext");
+
+                    b.Property<bool>("IsCustom")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<Guid?>("ProductId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssembledProductId");
+
+                    b.HasIndex("CartId");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("CartItems", (string)null);
+                });
+
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Category", b =>
                 {
                     b.Property<Guid>("Id")
@@ -510,9 +591,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Conversation", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
@@ -520,8 +603,19 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("Image")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsRestricted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
@@ -529,18 +623,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("char(36)");
 
-                    b.Property<Guid>("UserOneId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid>("UserTwoId")
-                        .HasColumnType("char(36)");
-
                     b.HasKey("Id");
-
-                    b.HasIndex("UserTwoId");
-
-                    b.HasIndex("UserOneId", "UserTwoId")
-                        .IsUnique();
 
                     b.ToTable("Conversations", (string)null);
                 });
@@ -699,12 +782,57 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("AttachmentUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<Guid>("ConversationId")
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CreatedBy")
                         .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsPinned")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("MessageType")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ParentMessageId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("SenderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParentMessageId");
+
+                    b.HasIndex("SenderId");
+
+                    b.ToTable("Messages", (string)null);
+                });
+
+            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.MessageRecipient", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
@@ -718,8 +846,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Property<bool>("IsRead")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<Guid>("SenderId")
-                        .HasColumnType("char(36)");
+                    b.Property<int>("MessageId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("MessageReaction")
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
@@ -727,13 +858,22 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("char(36)");
 
+                    b.Property<int>("UserConversationId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("ConversationId");
+                    b.HasIndex("MessageId");
 
-                    b.HasIndex("SenderId");
+                    b.HasIndex("UserId");
 
-                    b.ToTable("Messages", (string)null);
+                    b.HasIndex("UserConversationId", "MessageId")
+                        .IsUnique();
+
+                    b.ToTable("MessageRecipients");
                 });
 
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Model", b =>
@@ -1915,6 +2055,51 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.UserConversation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ConversationId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsOwner")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId");
+
+                    b.HasIndex("UserId", "ConversationId")
+                        .IsUnique();
+
+                    b.ToTable("UserConversations");
+                });
+
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Voucher", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2252,6 +2437,42 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Cart", b =>
+                {
+                    b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.User", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
+                });
+
+            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.CartItem", b =>
+                {
+                    b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.AssembledProduct", "AssembledProduct")
+                        .WithMany()
+                        .HasForeignKey("AssembledProductId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.Cart", "Cart")
+                        .WithMany("CartItems")
+                        .HasForeignKey("CartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.Model", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("AssembledProduct");
+
+                    b.Navigation("Cart");
+
+                    b.Navigation("Product");
+                });
+
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Category", b =>
                 {
                     b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.Category", "Parent")
@@ -2328,25 +2549,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Conversation", b =>
-                {
-                    b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.User", "UserOne")
-                        .WithMany("ConversationsAsUserOne")
-                        .HasForeignKey("UserOneId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.User", "UserTwo")
-                        .WithMany("ConversationsAsUserTwo")
-                        .HasForeignKey("UserTwoId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("UserOne");
-
-                    b.Navigation("UserTwo");
-                });
-
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Feedback", b =>
                 {
                     b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.User", "FromUser")
@@ -2414,21 +2616,47 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Message", b =>
                 {
-                    b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.Conversation", "Conversation")
-                        .WithMany("Messages")
-                        .HasForeignKey("ConversationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                    b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.Message", "ParentMessage")
+                        .WithMany("Replies")
+                        .HasForeignKey("ParentMessageId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.User", "Sender")
-                        .WithMany("SentMessages")
+                        .WithMany("MessagesCreated")
                         .HasForeignKey("SenderId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("Conversation");
+                    b.Navigation("ParentMessage");
 
                     b.Navigation("Sender");
+                });
+
+            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.MessageRecipient", b =>
+                {
+                    b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.Message", "Message")
+                        .WithMany("MessageRecipients")
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.UserConversation", "UserConversation")
+                        .WithMany("MessageRecipients")
+                        .HasForeignKey("UserConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.User", "User")
+                        .WithMany("MessageRecipients")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Message");
+
+                    b.Navigation("User");
+
+                    b.Navigation("UserConversation");
                 });
 
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Model", b =>
@@ -2500,7 +2728,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.OrderIssue", b =>
                 {
                     b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.Order", "Order")
-                        .WithMany()
+                        .WithMany("OrderIssues")
                         .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -2720,6 +2948,25 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Navigation("Role");
                 });
 
+            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.UserConversation", b =>
+                {
+                    b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.Conversation", "Conversation")
+                        .WithMany("UserConversations")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.User", "User")
+                        .WithMany("UserConversations")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Voucher", b =>
                 {
                     b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.User", "Creator")
@@ -2806,6 +3053,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Navigation("ProductAssembledDetails");
                 });
 
+            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Cart", b =>
+                {
+                    b.Navigation("CartItems");
+                });
+
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Category", b =>
                 {
                     b.Navigation("Models");
@@ -2829,7 +3081,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Conversation", b =>
                 {
-                    b.Navigation("Messages");
+                    b.Navigation("UserConversations");
+                });
+
+            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Message", b =>
+                {
+                    b.Navigation("MessageRecipients");
+
+                    b.Navigation("Replies");
                 });
 
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Model", b =>
@@ -2844,6 +3103,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Order", b =>
                 {
                     b.Navigation("Feedbacks");
+
+                    b.Navigation("OrderIssues");
 
                     b.Navigation("OrderItems");
 
@@ -2899,10 +3160,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
                     b.Navigation("CommunityPosts");
 
-                    b.Navigation("ConversationsAsUserOne");
-
-                    b.Navigation("ConversationsAsUserTwo");
-
                     b.Navigation("CreatedVouchers");
 
                     b.Navigation("CustomerOrders");
@@ -2910,6 +3167,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Navigation("Followers");
 
                     b.Navigation("Following");
+
+                    b.Navigation("MessageRecipients");
+
+                    b.Navigation("MessagesCreated");
 
                     b.Navigation("Notifications");
 
@@ -2929,15 +3190,20 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
                     b.Navigation("SentFeedbacks");
 
-                    b.Navigation("SentMessages");
-
                     b.Navigation("ShopProfile");
+
+                    b.Navigation("UserConversations");
 
                     b.Navigation("VoucherUsageLogs");
 
                     b.Navigation("Wallet");
 
                     b.Navigation("WithdrawalRequests");
+                });
+
+            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.UserConversation", b =>
+                {
+                    b.Navigation("MessageRecipients");
                 });
 
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Voucher", b =>
