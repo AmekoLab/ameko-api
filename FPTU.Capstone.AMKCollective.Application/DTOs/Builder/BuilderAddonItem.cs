@@ -6,9 +6,10 @@ using System.Threading.Tasks;
 
 namespace FPTU.Capstone.AMKCollective.Application.DTOs.Builder
 {
-    public class BuilderAddonRequest
+    public class BuilderAddonItem
     {
-        public Guid SessionId { get; set; }
-        public List<BuilderAddonItem> Items { get; set; } = new();
+        public Guid ComponentId { get; set; }
+        public int Quantity { get; set; } = 1;
+        public string PositionNote { get; set; } = string.Empty;
     }
 }

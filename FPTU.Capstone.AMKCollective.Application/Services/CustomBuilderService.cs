@@ -645,55 +645,51 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.SessionId);
             if (session == null) throw new KeyNotFoundException("Session expired or not found");
 
-            // 2. Lấy thông tin linh kiện mua thêm từ DB (Dùng Models vì là sản phẩm lẻ)
-            var extraPart = await _unitOfWork.Models.GetByIdAsync(request.ComponentId);
-            if (extraPart == null) throw new KeyNotFoundException("The additional component does not exist.");
-
-            // Kiểm tra tồn kho của linh kiện lẻ
-            if (extraPart.StockQuantity < request.Quantity)
-                throw new InvalidOperationException($"Insufficient stock quantity (Available: {extraPart.StockQuantity}).");
-
-            // 3. Phục hồi Dictionary từ JSON
+            // Phục hồi Dictionary từ JSON
             var currentSelection = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson)
                                    ?? new Dictionary<string, SelectedPartResponse>();
 
-            // 4. Tạo Key riêng biệt cho món Add-on này để không đè lên quy trình chính
-            string addonKey = $"addon_{Guid.NewGuid()}";
-
-            // Nối vị trí vào Tên sản phẩm để khi xuất Bill, Thợ ráp biết khách muốn gắn ở đâu
-            string displayName = string.IsNullOrWhiteSpace(request.PositionNote)
-                ? extraPart.Name
-                : $"{extraPart.Name} (Mounting position: {request.PositionNote})";
-
-            // 5. Thêm vào Session
-            currentSelection[addonKey] = new SelectedPartResponse
+            // 2. Vòng lặp xử lý từng món lẻ FE gửi lên
+            foreach (var item in request.Items)
             {
-                Id = extraPart.Id,
-                Name = displayName,
-                Price = extraPart.Price,
-                ThumbnailUrl = extraPart.ThumbnailURL ?? "",
-                Quantity = request.Quantity,
+                var extraPart = await _unitOfWork.Models.GetByIdAsync(item.ComponentId);
+                if (extraPart == null) continue; // Bỏ qua nếu ko tìm thấy
 
-                // Mấy trường này không dùng cho luồng Add-on lẻ nên để rỗng
-                KitDesignOptionId = Guid.Empty,
-                LayerImageUrl = "",
-                NextStepFilterRule = ""
-            };
+                if (extraPart.StockQuantity < item.Quantity)
+                    throw new InvalidOperationException($"The part '{extraPart.Name}' is out of stock.");
 
-            // 6. Tính toán lại tổng tiền giỏ hàng
+                string addonKey = $"addon_{Guid.NewGuid()}";
+                string displayName = string.IsNullOrWhiteSpace(item.PositionNote)
+                    ? extraPart.Name
+                    : $"{extraPart.Name} (Mounting position: {item.PositionNote})";
+
+                currentSelection[addonKey] = new SelectedPartResponse
+                {
+                    Id = extraPart.Id,
+                    Name = displayName,
+                    Price = extraPart.Price,
+                    ThumbnailUrl = extraPart.ThumbnailURL ?? "",
+                    Quantity = item.Quantity,
+                    KitDesignOptionId = Guid.Empty,
+                    LayerImageUrl = "",
+                    NextStepFilterRule = ""
+                };
+            }
+
+            // 3. Tính toán lại tổng tiền giỏ hàng sau khi đã thêm đủ món
             decimal newTotal = session.BaseKit.Price;
             foreach (var item in currentSelection.Values)
             {
                 newTotal += (item.Price * item.Quantity);
             }
 
+            // 4. Lưu lại
             session.TotalPrice = newTotal;
             session.SelectedItemsJson = JsonSerializer.Serialize(currentSelection);
 
             await _unitOfWork.BuilderSessions.UpdateSessionAsync(session);
             await _unitOfWork.CommitAsync();
 
-            // 7. Trả về cấu trúc Builder cũ, giữ nguyên trang khách đang đứng
             return await GetExistingSessionAsync(session.Id, session.CurrentStep);
         }
 
