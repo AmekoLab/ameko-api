@@ -10,6 +10,7 @@ using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Community;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
+using FPTU.Capstone.AMKCollective.Application.Exceptions;
 
 namespace FPTU.Capstone.AMKCollective.Api.Controllers
 {
@@ -34,7 +35,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [HttpGet("posts/feed")]
         [AllowAnonymous]
         [SwaggerOperation(Summary = "Get Community Feed", Description = "Retrieves the global community posts feed using cursor-based pagination.")]
-        [SwaggerResponse(200, "Successfully retrieved feed", typeof(CursorPagedResult<PostFeedResponse>))]
+        [SwaggerResponse(200, "Successfully retrieved feed", typeof(ApiResponse<CursorPagedResult<PostFeedResponse>>))]
         public async Task<IActionResult> GetFeed([FromQuery] string? cursor, [FromQuery] int pageSize = 20, CancellationToken cancellationToken = default)
         {
             var feed = await _communityService.GetFeedAsync(cursor, pageSize, cancellationToken);
@@ -50,7 +51,8 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [HttpPost("posts")]
         [Authorize]
         [SwaggerOperation(Summary = "Create Community Post", Description = "Creates a new community post optionally linking to an assembled product.")]
-        [SwaggerResponse(200, "Post created successfully", typeof(PostFeedResponse))]
+        [SwaggerResponse(200, "Post created successfully", typeof(ApiResponse<PostFeedResponse>))]
+        [SwaggerResponse(400, "Moderation failed", typeof(ApiResponse<ModerationResult>))]
         [SwaggerResponse(401, "Unauthorized")]
         public async Task<IActionResult> CreatePost([FromBody] CreatePostDto request, CancellationToken cancellationToken = default)
         {
@@ -65,7 +67,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [HttpGet("posts/{id}")]
         [AllowAnonymous]
         [SwaggerOperation(Summary = "Get Post by ID", Description = "Retrieves details of a specific community post.")]
-        [SwaggerResponse(200, "Successfully retrieved post", typeof(PostFeedResponse))]
+        [SwaggerResponse(200, "Successfully retrieved post", typeof(ApiResponse<PostFeedResponse>))]
         [SwaggerResponse(404, "Post not found")]
         public async Task<IActionResult> GetPostById(int id, CancellationToken cancellationToken = default)
         {
@@ -79,7 +81,8 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [HttpPut("posts/{id}")]
         [Authorize]
         [SwaggerOperation(Summary = "Update Post", Description = "Updates an existing community post. Only the owner can update.")]
-        [SwaggerResponse(200, "Post updated successfully", typeof(PostFeedResponse))]
+        [SwaggerResponse(200, "Post updated successfully", typeof(ApiResponse<PostFeedResponse>))]
+        [SwaggerResponse(400, "Moderation failed", typeof(ApiResponse<ModerationResult>))]
         [SwaggerResponse(401, "Unauthorized")]
         [SwaggerResponse(404, "Post not found")]
         public async Task<IActionResult> UpdatePost(int id, [FromBody] UpdatePostDto request, CancellationToken cancellationToken = default)
@@ -113,7 +116,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             Guid userId = GetCurrentUserId();
             if (!Enum.TryParse<ReactionType>(request.Type, true, out var reactionType))
             {
-                return ErrorResponse("Invalid reaction type");
+                return ErrorResponse<string>("Invalid reaction type");
             }
 
             await _communityService.ReactToPostAsync(postId, userId, reactionType, cancellationToken);
@@ -123,11 +126,50 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [HttpGet("posts/{postId}/reactions")]
         [AllowAnonymous]
         [SwaggerOperation(Summary = "Get Post Reactions", Description = "Retrieves a detailed list of reactions for a specific post.")]
-        [SwaggerResponse(200, "Successfully retrieved reactions", typeof(IEnumerable<PostReactionDetailResponse>))]
+        [SwaggerResponse(200, "Successfully retrieved reactions", typeof(ApiResponse<IEnumerable<PostReactionDetailResponse>>))]
         public async Task<IActionResult> GetPostReactions(int postId, CancellationToken cancellationToken = default)
         {
             var reactions = await _communityService.GetPostReactionsAsync(postId, cancellationToken);
             return SuccessResponse(reactions);
+        }
+
+        [HttpGet("users/{userId}/posts")]
+        [AllowAnonymous]
+        [SwaggerOperation(Summary = "Get User Posts", Description = "Retrieves all posts created by a specific user.")]
+        [SwaggerResponse(200, "Successfully retrieved user posts", typeof(ApiResponse<CursorPagedResult<PostFeedResponse>>))]
+        public async Task<IActionResult> GetUserPosts(Guid userId, [FromQuery] string? cursor, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
+        {
+            var results = await _communityService.GetPostsByUserIdAsync(userId, cursor, pageSize, cancellationToken);
+            return SuccessResponse(results);
+        }
+
+        [HttpPost("posts/{postId}/comments")]
+        [Authorize]
+        [SwaggerOperation(Summary = "Add Comment", Description = "Adds a new comment to a post. Subject to moderation and rate limiting (20/min).")]
+        [SwaggerResponse(200, "Comment added successfully", typeof(ApiResponse<CommentResponse>))]
+        [SwaggerResponse(400, "Moderation failed", typeof(ApiResponse<ModerationResult>))]
+        public async Task<IActionResult> AddComment(int postId, [FromBody] CreateCommentDto request, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                Guid userId = GetCurrentUserId();
+                var comment = await _communityService.AddCommentAsync(postId, userId, request, cancellationToken);
+                return SuccessResponse(comment, "Comment added successfully");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
+        }
+
+        [HttpGet("posts/{postId}/comments")]
+        [AllowAnonymous]
+        [SwaggerOperation(Summary = "Get Post Comments", Description = "Retrieves all comments for a specific post.")]
+        [SwaggerResponse(200, "Successfully retrieved comments", typeof(ApiResponse<CursorPagedResult<CommentResponse>>))]
+        public async Task<IActionResult> GetPostComments(int postId, [FromQuery] string? cursor, [FromQuery] int pageSize = 5, CancellationToken cancellationToken = default)
+        {
+            var results = await _communityService.GetPostCommentsAsync(postId, cursor, pageSize, cancellationToken);
+            return SuccessResponse(results);
         }
     }
 }

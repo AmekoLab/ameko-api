@@ -30,6 +30,7 @@ internal class Program
         builder.Services.AddControllers();
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
+        builder.Services.AddMemoryCache();
 
         // Configure SignalR with bounded payload size for safer realtime messaging.
         builder.Services.AddSignalR(options => { options.MaximumReceiveMessageSize = 64 * 1024; });
@@ -108,6 +109,7 @@ internal class Program
             options.AddPolicy("AllowFrontend", policy =>
             {
                 policy.WithOrigins(allowedOrigins)
+                      .AllowCredentials()
                       .AllowAnyHeader()
                       .AllowAnyMethod();
             });

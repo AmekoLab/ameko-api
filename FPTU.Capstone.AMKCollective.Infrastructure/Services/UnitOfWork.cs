@@ -36,10 +36,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         private IWithdrawalRequestRepository? _withdrawalRequests;
         private ITransactionRepository? _transactions;
         private IPostReactionRepository? _postReactions;
+        private IPostCommentRepository? _postComments;
+
         private IConversationRepository? _conversations;
         private IMessageRepository? _messages;
         private ICartRepository? _carts;
         private ICartItemRepository? _cartItems;
+
         public UnitOfWork(ApplicationDbContext context)
         {
             _context = context;
@@ -75,8 +78,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public IWithdrawalRequestRepository WithdrawalRequests => _withdrawalRequests ??= new WithdrawalRequestRepository(_context);
         public ITransactionRepository Transactions => _transactions ??= new TransactionRepository(_context);
         public IPostReactionRepository PostReactions => _postReactions ??= new PostReactionRepository(_context);
+        public IPostCommentRepository PostComments => _postComments ??= new PostCommentRepository(_context);
+
         public IConversationRepository Conversations => _conversations ??= new ConversationRepository(_context);
         public IMessageRepository Messages => _messages ??= new MessageRepository(_context);
+
 
         public ICartRepository Carts => _carts ??= new CartRepository(_context);
         public ICartItemRepository CartItems => _cartItems ??= new CartItemRepository(_context);

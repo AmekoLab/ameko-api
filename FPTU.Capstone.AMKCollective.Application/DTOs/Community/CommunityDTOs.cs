@@ -88,3 +88,19 @@ public class PostReactionDetailResponse
     public string ReactionType { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
 }
+
+public class CreateCommentDto
+{
+    public string Content { get; set; } = string.Empty;
+}
+
+public class CommentResponse
+{
+    public int Id { get; set; }
+    public Guid UserId { get; set; }
+    public string Username { get; set; } = string.Empty;
+    public string FullName { get; set; } = string.Empty;
+    public string? AvatarUrl { get; set; }
+    public string Content { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+}

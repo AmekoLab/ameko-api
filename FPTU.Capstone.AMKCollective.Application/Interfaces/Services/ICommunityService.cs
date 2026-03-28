@@ -15,5 +15,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task DeletePostAsync(int id, Guid userId, CancellationToken cancellationToken = default);
         Task ReactToPostAsync(int postId, Guid userId, FPTU.Capstone.AMKCollective.Domain.Enums.ReactionType type, CancellationToken cancellationToken = default);
         Task<IEnumerable<PostReactionDetailResponse>> GetPostReactionsAsync(int postId, CancellationToken cancellationToken = default);
+        Task<CursorPagedResult<PostFeedResponse>> GetPostsByUserIdAsync(Guid userId, string? cursor, int pageSize, CancellationToken cancellationToken = default);
+        Task<CommentResponse> AddCommentAsync(int postId, Guid userId, CreateCommentDto request, CancellationToken cancellationToken = default);
+        Task<CursorPagedResult<CommentResponse>> GetPostCommentsAsync(int postId, string? cursor, int pageSize, CancellationToken cancellationToken = default);
     }
 }

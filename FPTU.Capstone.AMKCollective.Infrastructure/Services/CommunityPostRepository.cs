@@ -44,6 +44,38 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .ToListAsync(ct);
         }
 
+        public async Task<List<CommunityPost>> GetByUserIdAsync(Guid userId, CancellationToken ct = default)
+        {
+            return await _context.CommunityPosts
+                .Where(p => p.UserId == userId)
+                .OrderByDescending(p => p.CreatedAt)
+                .Include(p => p.Attachments)
+                .Include(p => p.PostReactions)
+                .Include(p => p.PostComments)
+                .ToListAsync(ct);
+        }
+
+        public async Task<List<CommunityPost>> GetByUserIdCursorPagedAsync(Guid userId, DateTime? createdAt, int? id, int pageSize, CancellationToken ct = default)
+        {
+            var query = _context.CommunityPosts
+                .Where(p => p.UserId == userId)
+                .AsQueryable();
+
+            if (createdAt.HasValue && id.HasValue)
+            {
+                query = query.Where(p => p.CreatedAt < createdAt.Value || (p.CreatedAt == createdAt.Value && p.Id < id.Value));
+            }
+
+            return await query
+                .OrderByDescending(p => p.CreatedAt)
+                .ThenByDescending(p => p.Id)
+                .Take(pageSize + 1)
+                .Include(p => p.Attachments)
+                .Include(p => p.PostReactions)
+                .Include(p => p.PostComments)
+                .ToListAsync(ct);
+        }
+
         public async Task<List<CommunityPost>> GetByIdsAsync(IEnumerable<int> ids, CancellationToken ct = default)
         {
             return await _context.CommunityPosts
