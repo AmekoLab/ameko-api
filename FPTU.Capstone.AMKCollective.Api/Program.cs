@@ -32,8 +32,16 @@ internal class Program
         builder.Services.AddSwaggerGen();
         builder.Services.AddMemoryCache();
 
+        #region SignalR Configuration
         // Configure SignalR with bounded payload size for safer realtime messaging.
-        builder.Services.AddSignalR(options => { options.MaximumReceiveMessageSize = 64 * 1024; });
+        builder.Services.AddSignalR(options => { options.MaximumReceiveMessageSize = 64 * 1024; })
+            // Configure JSON serialization for SignalR to use camelCase, aligning with frontend conventions.
+            .AddJsonProtocol(options =>
+            {
+                // Use camelCase for JSON payloads to align with JavaScript conventions on the frontend.
+                options.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+            });
+        #endregion
 
         // Register AutoMapper
         builder.Services.AddAutoMapper(typeof(MappingProfile).Assembly);
