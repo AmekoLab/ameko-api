@@ -215,7 +215,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                                 var shopProfile = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
                                 if (shopProfile != null)
                                 {
-                                    shopPendingSales.Add((shopProfile.UserId, order.Id, order.TotalAmount));
+                                    decimal shopRevenue = order.TotalAmount + order.SystemDiscountAmount;
+                                    shopPendingSales.Add((shopProfile.UserId, order.Id, shopRevenue));
                                 }
                             }
                         }

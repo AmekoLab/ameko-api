@@ -8,11 +8,13 @@ using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -29,9 +31,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly OrderSettings _orderSettings;
         private readonly FrontendUrls _frontendUrls;
         private readonly SystemSettings _systemSettings;
+        private readonly IVnPayService _vnPayService;
+        private readonly IHttpContextAccessor _httpContextAccessor;
 
         public OrderService(IUnitOfWork unitOfWork, IMapper mapper, IPaymentService paymentService, IVoucherService voucher, IWalletService wallet, IOptions<OrderSettings> orderOptions,
-        IOptions<FrontendUrls> urlOptions, IOptions<SystemSettings> systemSettings)
+        IOptions<FrontendUrls> urlOptions, IOptions<SystemSettings> systemSettings, IVnPayService vnPayService, IHttpContextAccessor httpContextAccessor)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
@@ -41,6 +45,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _orderSettings = orderOptions.Value;
             _frontendUrls = urlOptions.Value;
             _systemSettings = systemSettings.Value;
+            _vnPayService = vnPayService;
+            _httpContextAccessor = httpContextAccessor;
         }
 
         // =================================================================
@@ -301,19 +307,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
                 else
                 {
-                    var checkoutSessionRequest = new FPTU.Capstone.AMKCollective.Application.DTOs.Payment.CreateCheckoutSessionRequest
-                    {
-                        OrderGroupId = orderGroup.Id,
-                        SuccessUrl = successUrl,
-                        CancelUrl = cancelUrl
-                    };
+                    string paymentUrl = await GeneratePaymentUrlAsync(
+                orderGroup.Id, request.PaymentMethod, successUrl, cancelUrl, userId, token);
 
-                    var checkoutSession = await _paymentService.CreateCheckoutSessionAsync(checkoutSessionRequest, token);
                     return new CheckoutResponse
                     {
                         OrderGroupId = orderGroup.Id,
                         TotalAmount = orderGroup.TotalGroupAmount,
-                        PaymentUrl = checkoutSession.PaymentUrl
+                        PaymentUrl = paymentUrl
                     };
                 }
             });
@@ -572,6 +573,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     if (isOrderPaid)
                     {
                         decimal cashPaidAmount = order.TotalAmount;
+                        decimal shopReceivedAmount = order.TotalAmount + order.SystemDiscountAmount; // Tiền Sàn đã ghi nhận cho Shop
 
                         // BƯỚC 3.2.1: Hoàn 100% tiền thật vào Ví Khách Hàng
                         await _walletService.RefundToWalletAsync(
@@ -585,7 +587,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         await _walletService.DeductFundsForRefundAsync(
                             realActionUserId,
                             order.Id,
-                            cashPaidAmount,
+                            shopReceivedAmount,
                             isCompleted
                         );
 
@@ -714,6 +716,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 {
                     order.PaymentStatus = PaymentStatus.Paid;
                     order.OrderStatus = OrderStatus.Processing; // Đẩy đơn đi tiếp
+                    if (order.ShopId.HasValue)
+                    {
+                        var shopProfile = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+                        if (shopProfile != null)
+                        {
+                            // công thức: Bù lại tiền System Voucher cho Shop
+                            decimal shopRevenue = order.TotalAmount + order.SystemDiscountAmount;
+                            await _walletService.AddPendingSalesToWalletAsync(shopProfile.UserId, order.Id, shopRevenue);
+                        }
+                    }
                 }
 
                 //_unitOfWork.OrderGroups.Update(orderGroup);
@@ -728,21 +740,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
             else
             {
-                // Mặc định hoặc khách vẫn muốn dùng Stripe
-                var paymentRequest = new CreateCheckoutSessionRequest
-                {
-                    OrderGroupId = orderGroup.Id,
-                    SuccessUrl = successUrl,
-                    CancelUrl = cancelUrl
-                };
-
-                var paymentRes = await _paymentService.CreateCheckoutSessionAsync(paymentRequest, token);
+                string paymentUrl = await GeneratePaymentUrlAsync(
+            orderGroup.Id, request.PaymentMethod, successUrl, cancelUrl, userId, token);
 
                 return new CheckoutResponse
                 {
                     OrderGroupId = orderGroup.Id,
                     TotalAmount = orderGroup.TotalGroupAmount,
-                    PaymentUrl = paymentRes.PaymentUrl
+                    PaymentUrl = paymentUrl
                 };
             }
         }
@@ -1095,6 +1100,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 order.PaymentStatus = PaymentStatus.Paid;
                 order.OrderStatus = OrderStatus.Processing;
+                if (order.ShopId.HasValue)
+                {
+                    var shopProfile = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+                    if (shopProfile != null)
+                    {
+                        // Công thức chuẩn: Bù lại tiền System Voucher cho Shop
+                        decimal shopRevenue = order.TotalAmount + order.SystemDiscountAmount;
+                        await _walletService.AddPendingSalesToWalletAsync(shopProfile.UserId, order.Id, shopRevenue);
+                    }
+                }
             }
 
             //_unitOfWork.OrderGroups.Update(orderGroup);
@@ -2101,6 +2116,34 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             return null; // Null nghĩa là hợp lệ (Pass hết)
+        }
+
+        private async Task<string> GeneratePaymentUrlAsync(
+    Guid orderGroupId,
+    PaymentMethod paymentMethod,
+    string successUrl,
+    string cancelUrl,
+    Guid userId,
+    CancellationToken token = default) // Đã bỏ HttpContext ở đây
+        {
+            var paymentRequest = new CreateCheckoutSessionRequest
+            {
+                OrderGroupId = orderGroupId,
+                SuccessUrl = successUrl,
+                CancelUrl = cancelUrl
+            };
+
+            if (paymentMethod == PaymentMethod.VnPay)
+            {
+                // Tự động lấy HttpContext từ hệ thống
+                var context = _httpContextAccessor.HttpContext;
+                return await _vnPayService.CreatePaymentUrlAsync(paymentRequest, userId, context);
+            }
+            else // Mặc định là Stripe
+            {
+                var session = await _paymentService.CreateCheckoutSessionAsync(paymentRequest, token);
+                return session.PaymentUrl; // Trả về dạng string
+            }
         }
     }
 }

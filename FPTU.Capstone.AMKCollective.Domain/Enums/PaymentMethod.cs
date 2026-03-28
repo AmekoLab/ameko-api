@@ -9,6 +9,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Enums
     public enum PaymentMethod
     {
         CreditCard = 0,
-        Wallet = 1       
+        Wallet = 1,
+        VnPay = 2
     }
 }
