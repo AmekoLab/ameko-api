@@ -37,7 +37,8 @@ internal class Program
 
         // Register AutoMapper
         builder.Services.AddAutoMapper(typeof(MappingProfile).Assembly);
-
+        // Register IHttpContextAccessor to access HttpContext in services 
+        builder.Services.AddHttpContextAccessor();
         // Add DbContext to the container (for EF Core migrations)
         var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
         var serverVersion = new MySqlServerVersion(new Version(8, 0, 36));
