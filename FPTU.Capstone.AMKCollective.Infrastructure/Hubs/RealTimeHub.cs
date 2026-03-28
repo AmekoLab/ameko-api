@@ -87,8 +87,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Hubs
                 throw new HubException("Unauthorized.");
             }
 
-            var message = await _chatService.SendMessageAsync(currentUserId.Value, request);
-            await Clients.Group(BuildConversationGroupName(message.ConversationId)).SendAsync("messageReceived", message);
+            await _chatService.SendMessageAsync(currentUserId.Value, request);
         }
 
         public async Task Typing(int conversationId, bool isTyping)
@@ -123,12 +122,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Hubs
             }
 
             await _chatService.MarkMessagesAsReadAsync(currentUserId.Value, conversationId, messageId);
-            await Clients.Group(BuildConversationGroupName(conversationId)).SendAsync("readReceipt", new
-            {
-                ConversationId = conversationId,
-                UserId = currentUserId.Value,
-                UpToMessageId = messageId
-            });
         }
 
         public async Task SetReaction(int conversationId, int messageId, MessageReaction? reaction)
@@ -139,8 +132,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Hubs
                 throw new HubException("Unauthorized.");
             }
 
-            var result = await _chatService.SetMessageReactionAsync(currentUserId.Value, conversationId, messageId, reaction);
-            await Clients.Group(BuildConversationGroupName(conversationId)).SendAsync("reactionChanged", result);
+            await _chatService.SetMessageReactionAsync(currentUserId.Value, conversationId, messageId, reaction);
         }
 
         #region Helper

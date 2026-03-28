@@ -12,11 +12,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private readonly IChatRealtimePublisher _chatRealtimePublisher;
 
-        public ChatService(IUnitOfWork unitOfWork, IMapper mapper)
+        public ChatService(IUnitOfWork unitOfWork, IMapper mapper, IChatRealtimePublisher chatRealtimePublisher)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
+            _chatRealtimePublisher = chatRealtimePublisher;
         }
 
         public async Task<ConversationResponse> GetOrCreateDirectConversationAsync(Guid currentUserId, Guid targetUserId, CancellationToken cancellationToken = default)
@@ -134,6 +136,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             var response = _mapper.Map<ChatMessageResponse>(message);
             response.ConversationId = conversationId;
+
+            await _chatRealtimePublisher.PublishMessageReceivedAsync(response, cancellationToken);
             return response;
         }
 
@@ -223,6 +227,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 return mapped;
             }).ToList();
 
+            // Attach current user's reaction from recipient rows.
+            foreach (var dto in dtos)
+            {
+                var recipient = await _unitOfWork.Conversations.GetMessageRecipientAsync(userId, conversationId, dto.Id);
+                dto.Reaction = recipient?.MessageReaction;
+            }
+
             string? nextCursor = null;
             if (hasMore && pageItems.Count > 0)
             {
@@ -249,6 +260,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var unreadRecipients = await _unitOfWork.Conversations.GetUnreadRecipientsAsync(userId, conversationId, upToMessageId);
             if (unreadRecipients.Count == 0)
             {
+                await _chatRealtimePublisher.PublishReadReceiptAsync(userId: userId, conversationId: conversationId, upToMessageId: upToMessageId, cancellationToken: cancellationToken);
                 return;
             }
 
@@ -261,11 +273,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             _unitOfWork.Conversations.UpdateMessageRecipients(unreadRecipients);
             await _unitOfWork.CommitAsync();
+
+            await _chatRealtimePublisher.PublishReadReceiptAsync(userId: userId, conversationId: conversationId, upToMessageId: upToMessageId, cancellationToken: cancellationToken);
         }
 
         public async Task<MessageReactionResponse> SetMessageReactionAsync(Guid userId, int conversationId, int messageId, MessageReaction? reaction, CancellationToken cancellationToken = default)
         {
-            return await UpdateReactionAsync(userId, conversationId, messageId, reaction, cancellationToken);
+            var result = await UpdateReactionAsync(userId, conversationId, messageId, reaction, cancellationToken);
+            await _chatRealtimePublisher.PublishReactionChangedAsync(result, cancellationToken);
+            return result;
         }
 
         public async Task<bool> IsUserInConversationAsync(Guid userId, int conversationId, CancellationToken cancellationToken = default)
