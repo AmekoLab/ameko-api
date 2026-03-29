@@ -10,6 +10,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Chat
         public string Content { get; set; } = string.Empty;
         public MediaType MessageType { get; set; }
         public int? ParentMessageId { get; set; }
+        public MessageReaction? Reaction { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 }

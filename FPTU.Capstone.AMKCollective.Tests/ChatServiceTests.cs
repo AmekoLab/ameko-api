@@ -2,6 +2,7 @@ using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Chat;
 using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Application.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
@@ -16,7 +17,8 @@ namespace FPTU.Capstone.AMKCollective.Tests
             Mock<IUnitOfWork> unitOfWorkMock,
             Mock<IConversationRepository> conversationRepoMock,
             Mock<IUserRepository> userRepoMock,
-            Mock<IMapper>? mapperMock = null)
+            Mock<IMapper>? mapperMock = null,
+            Mock<IChatRealtimePublisher>? realtimePublisherMock = null)
         {
             unitOfWorkMock.SetupGet(u => u.Conversations).Returns(conversationRepoMock.Object);
             unitOfWorkMock.SetupGet(u => u.Users).Returns(userRepoMock.Object);
@@ -35,7 +37,18 @@ namespace FPTU.Capstone.AMKCollective.Tests
                     CreatedAt = m.CreatedAt
                 });
 
-            return new ChatService(unitOfWorkMock.Object, mapperMock.Object);
+            realtimePublisherMock ??= new Mock<IChatRealtimePublisher>();
+            realtimePublisherMock
+                .Setup(p => p.PublishMessageReceivedAsync(It.IsAny<ChatMessageResponse>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+            realtimePublisherMock
+                .Setup(p => p.PublishReadReceiptAsync(It.IsAny<int>(), It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+            realtimePublisherMock
+                .Setup(p => p.PublishReactionChangedAsync(It.IsAny<MessageReactionResponse>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+
+            return new ChatService(unitOfWorkMock.Object, mapperMock.Object, realtimePublisherMock.Object);
         }
 
         private static void SetupConversationSummaryDependencies(
