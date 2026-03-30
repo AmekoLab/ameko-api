@@ -58,6 +58,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(s => s.Rating)
                 .HasDefaultValue(0.0);
 
+            builder.Property(s => s.TotalReviews)
+                .HasDefaultValue(0);
+
             builder.Property(s => s.ResubmitCount)
                 .HasDefaultValue(0);
 

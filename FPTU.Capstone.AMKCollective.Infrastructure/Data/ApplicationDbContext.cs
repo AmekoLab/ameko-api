@@ -28,6 +28,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data
         public DbSet<VoucherUsageLog> VoucherUsageLogs { get; set; } = null!;
         public DbSet<Follow> Follows { get; set; } = null!;
         public DbSet<Feedback> Feedbacks { get; set; } = null!;
+        public DbSet<FeedbackImage> FeedbackImages { get; set; } = null!;
         public DbSet<Conversation> Conversations { get; set; } = null!;
         public DbSet<UserConversation> UserConversations { get; set; } = null!;
         public DbSet<Message> Messages { get; set; } = null!;

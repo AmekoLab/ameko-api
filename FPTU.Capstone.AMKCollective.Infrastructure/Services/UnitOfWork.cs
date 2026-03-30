@@ -42,6 +42,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         private IMessageRepository? _messages;
         private ICartRepository? _carts;
         private ICartItemRepository? _cartItems;
+        private IFeedbackRepository? _feedbacks;
 
         public UnitOfWork(ApplicationDbContext context)
         {
@@ -86,6 +87,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         public ICartRepository Carts => _carts ??= new CartRepository(_context);
         public ICartItemRepository CartItems => _cartItems ??= new CartItemRepository(_context);
+        public IFeedbackRepository Feedbacks => _feedbacks ??= new FeedbackRepository(_context);
+
         public async Task CommitAsync()
         {
             await _context.SaveChangesAsync();

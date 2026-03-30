@@ -25,10 +25,15 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .HasForeignKey(f => f.FromUserId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            builder.HasOne(f => f.ToUser)
-                .WithMany(u => u.ReceivedFeedbacks)
-                .HasForeignKey(f => f.ToUserId)
-                .OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne(f => f.Shop)
+                .WithMany(s => s.Feedbacks)
+                .HasForeignKey(f => f.ShopId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.HasMany(f => f.Images)
+                .WithOne(fi => fi.Feedback)
+                .HasForeignKey(fi => fi.FeedbackId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }
