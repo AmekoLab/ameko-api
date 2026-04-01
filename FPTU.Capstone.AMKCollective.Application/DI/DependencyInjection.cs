@@ -17,6 +17,8 @@ namespace FPTU.Capstone.AMKCollective.Application.DI
             services.AddScoped<IWarrantyService, WarrantyService>();
             services.AddScoped<IWithdrawalService, WithdrawalService>();
             services.AddScoped<IChatService, ChatService>();
+            services.AddScoped<IAdminDashboardService, AdminDashboardService>();
+            services.AddScoped<IShopDashboardService, ShopDashboardService>();
             return services;
         }
     }

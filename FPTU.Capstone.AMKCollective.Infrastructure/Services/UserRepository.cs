@@ -108,5 +108,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
             return (items, totalCount);
         }
+
+        public async Task<List<User>> GetUsersForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default)
+        {
+            return await _context.Users
+                .AsNoTracking()
+                .Where(u => u.CreatedAt >= fromUtc && u.CreatedAt <= toUtc)
+                .ToListAsync(token);
+        }
     }
 }

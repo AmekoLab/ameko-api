@@ -29,5 +29,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         // Aliases for compatibility with OrderIssueService
         Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetUserIssuesPaginatedAsync(Guid userId, OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default);
         Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetShopIssuesPaginatedAsync(Guid shopId, OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default);
+
+        /// <summary>
+        /// Returns all issues in the provided range for risk dashboard analytics.
+        /// </summary>
+        Task<List<OrderIssue>> GetIssuesForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default);
     }
 }

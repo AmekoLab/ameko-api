@@ -21,5 +21,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task AddRefreshTokenAsync(RefreshToken token);
         Task RemoveAllRefreshTokensAsync(Guid userId);
         Task<(IEnumerable<User> Items, int TotalCount)> SearchByNamePagedAsync(string name, int pageNumber, int pageSize, CancellationToken token = default);
+
+        /// <summary>
+        /// Returns users created within a date range for dashboard analytics.
+        /// </summary>
+        Task<List<User>> GetUsersForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default);
     }
 }

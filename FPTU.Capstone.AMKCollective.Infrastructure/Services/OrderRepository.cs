@@ -274,5 +274,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                          && !o.IsDeleted)
                 .ToListAsync(token);
         }
+
+        public async Task<List<Order>> GetOrdersForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default)
+        {
+            return await _context.Orders
+                .AsNoTracking()
+                .Where(o => !o.IsDeleted && o.CreatedAt >= fromUtc && o.CreatedAt <= toUtc)
+                .ToListAsync(token);
+        }
     }
 }

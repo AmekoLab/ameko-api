@@ -32,6 +32,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
 
         // 3. Lấy danh sách chờ duyệt nhanh cho Admin
         //Task<IEnumerable<Payment>> GetPendingWithdrawalsAsync();
+        /// <summary>
+        /// Returns all payments in the provided time range for dashboard analytics.
+        /// </summary>
+        Task<List<Payment>> GetPaymentsForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default);
 
     }
 }

@@ -172,5 +172,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         public Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetShopIssuesPaginatedAsync(Guid shopId, OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default)
             => GetByShopIdPagedAsync(shopId, status, pageNumber, pageSize, token);
+
+        public async Task<List<OrderIssue>> GetIssuesForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default)
+        {
+            return await _context.OrderIssues
+                .AsNoTracking()
+                .Where(oi => !oi.IsDeleted && oi.CreatedAt >= fromUtc && oi.CreatedAt <= toUtc)
+                .ToListAsync(token);
+        }
     }
 }
