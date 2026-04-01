@@ -149,6 +149,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .FirstOrDefaultAsync(p => p.StripeSessionId == sessionId);
         }
 
+        public async Task<List<Payment>> GetPaymentsForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default)
+        {
+            return await _context.Payments
+                .AsNoTracking()
+                .Where(p => p.CreatedAt >= fromUtc && p.CreatedAt <= toUtc)
+                .ToListAsync(token);
+        }
+
         //public async Task<(decimal TotalRevenue, decimal TotalWithdrawn, decimal PendingWithdrawal, decimal ThisMonthRevenue)> GetPaymentStatsByWalletIdAsync(Guid walletId)
         //{
         //    // Tạo query cơ bản lọc theo WalletId
