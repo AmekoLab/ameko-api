@@ -20,6 +20,8 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public double PositiveFeedbackRate { get; set; } // Tỷ lệ đánh giá tốt (%)
 
         // Kết quả tính toán
+        public double AutoCancelRate { get; set; } // Tỷ lệ tự hủy (%)
+        public int FeedbackCount { get; set; }
         public int TotalScore { get; set; }
         public ShopBadge Badge { get; set; }
 

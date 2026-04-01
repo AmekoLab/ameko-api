@@ -29,11 +29,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Where(o => o.ShopId == shopId && o.CreatedAt >= startDate && o.CreatedAt <= endDate)
                 .CountAsync();
             metrics.TotalOrders = totalOrders;
+
             if (totalOrders == 0)
             {
-                // Nếu không có đơn hàng nào trong kỳ, trả về object rỗng (hoặc giá trị mặc định)
+                // Nếu không có đơn hàng nào trong kỳ, trả về object rỗng
                 return metrics;
             }
+
             // 2. Tính Issue Rate
             var issueOrdersCount = await _context.OrderIssues
                 .Include(oi => oi.Order)
@@ -64,11 +66,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             if (totalUniqueCustomers > 0)
                 metrics.RepurchaseRate = Math.Round((double)repeatCustomers / totalUniqueCustomers * 100, 2);
 
-            // 5. Tính Positive Feedback Rate
+            // 5. Tính Positive Feedback Rate & Feedback Count
             var feedbacks = await _context.Feedbacks
                 .Where(f => f.ShopId == shopId && f.CreatedAt >= startDate && f.CreatedAt <= endDate)
                 .Select(f => f.Rating)
                 .ToListAsync();
+
+            metrics.FeedbackCount = feedbacks.Count; // Lưu tổng số lượt đánh giá
 
             if (feedbacks.Any())
             {
@@ -76,8 +80,16 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 metrics.PositiveFeedbackRate = Math.Round((double)positiveFeedbacks / feedbacks.Count * 100, 2);
             }
 
-            // 6. Tính Avg Response Hours
-            // Lấy thời gian tạo Issue và thời gian phản hồi đầu tiên của mỗi Issue
+            // 6. Tính Auto-cancel Rate (Tỷ lệ đơn bị hủy)
+            var autoCancelledCount = await _context.Orders
+                .Where(o => o.ShopId == shopId &&
+                            o.OrderStatus == OrderStatus.Cancelled &&
+                            o.CreatedAt >= startDate && o.CreatedAt <= endDate)
+                .CountAsync();
+
+            metrics.AutoCancelRate = Math.Round((double)autoCancelledCount / totalOrders * 100, 2); // [MỚI THÊM]
+
+            // 7. Tính Avg Response Hours
             var issuesWithResponseTimes = await _context.OrderIssues
                 .Where(oi => oi.Order.ShopId == shopId && oi.CreatedAt >= startDate && oi.CreatedAt <= endDate)
                 .Select(oi => new
