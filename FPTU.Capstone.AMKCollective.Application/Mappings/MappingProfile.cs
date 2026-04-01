@@ -171,6 +171,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.CitizenId, opt => opt.Ignore())     // Không đổi sau khi đăng ký
                 .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
+            CreateMap<ShopProfile, CurrentReputationDto>()
+                .ForMember(dest => dest.ShopId, opt => opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.Badge, opt => opt.MapFrom(src => src.Badge.ToString()));
+
+            CreateMap<QualityScoreSnapshot, ReputationTrendDto>()
+                .ForMember(dest => dest.Date, opt => opt.MapFrom(src => src.CapturedAt.ToString("yyyy-MM-dd")))
+                .ForMember(dest => dest.Score, opt => opt.MapFrom(src => src.TotalScore))
+                .ForMember(dest => dest.Badge, opt => opt.MapFrom(src => src.Badge.ToString()));
             //==================ShopProfile=====================//
 
 

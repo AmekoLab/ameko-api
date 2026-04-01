@@ -11,6 +11,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.ToTable("Feedbacks");
             builder.HasKey(f => f.Id);
 
+            builder.ToTable(t =>
+                t.HasCheckConstraint("CK_Feedbacks_Rating_Range", "`Rating` >= 1 AND `Rating` <= 5"));
+
             builder.Property(f => f.Location)
                 .HasMaxLength(500);
 

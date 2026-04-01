@@ -63,6 +63,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
 
             builder.Property(s => s.ResubmitCount)
                 .HasDefaultValue(0);
+            builder.Property(s => s.CurrentQualityScore)
+                .HasDefaultValue(50);
+
+            builder.Property(s => s.Badge)
+                .HasDefaultValue(ShopBadge.Basic)
+                .HasConversion<int>();
 
             builder.HasIndex(s => s.ShopName);
             builder.HasIndex(s => s.UserId).IsUnique();

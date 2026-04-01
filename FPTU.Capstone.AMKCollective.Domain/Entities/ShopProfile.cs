@@ -49,6 +49,10 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
 
         public int ResubmitCount { get; set; } = 0;
         public DateTime? LastResubmitTime { get; set; }
+        // Reputation system
+        public int CurrentQualityScore { get; set; } = 50;
+        public ShopBadge Badge { get; set; } = ShopBadge.Basic;
+
 
         // Navigation Properties
         public virtual User User { get; set; } = null!;
@@ -59,5 +63,6 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public virtual ICollection<CommissionRequest> TargetedCommissionRequests { get; set; } = new List<CommissionRequest>();
         public virtual ICollection<CommissionQuote> CommissionQuotes { get; set; } = new List<CommissionQuote>();
         public virtual ICollection<AssemblyStepTemplate> AssemblyStepTemplates { get; set; } = new List<AssemblyStepTemplate>();
+        public virtual ICollection<QualityScoreSnapshot> QualityScoreSnapshots { get; set; } = new List<QualityScoreSnapshot>();
     }
 }
