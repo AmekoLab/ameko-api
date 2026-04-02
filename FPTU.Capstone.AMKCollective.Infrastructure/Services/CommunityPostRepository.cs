@@ -22,6 +22,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<List<CommunityPost>> GetFeedCursorPagedAsync(DateTime? cursorDate, int? cursorId, int pageSize, CancellationToken ct = default)
         {
             var query = _context.CommunityPosts
+                .Include(p => p.User)
                 .Include(p => p.Attachments)
                 .Include(p => p.PostReactions)
                 .Include(p => p.PostComments)
@@ -49,6 +50,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return await _context.CommunityPosts
                 .Where(p => p.UserId == userId)
                 .OrderByDescending(p => p.CreatedAt)
+                .Include(p => p.User)
                 .Include(p => p.Attachments)
                 .Include(p => p.PostReactions)
                 .Include(p => p.PostComments)
@@ -70,6 +72,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .OrderByDescending(p => p.CreatedAt)
                 .ThenByDescending(p => p.Id)
                 .Take(pageSize + 1)
+                .Include(p => p.User)
                 .Include(p => p.Attachments)
                 .Include(p => p.PostReactions)
                 .Include(p => p.PostComments)
@@ -91,6 +94,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<CommunityPost?> GetByIdAsync(int id, CancellationToken ct = default)
         {
             return await _context.CommunityPosts
+                .Include(p => p.User)
                 .Include(p => p.Attachments)
                 .Include(p => p.PostReactions)
                 .Include(p => p.PostComments)
