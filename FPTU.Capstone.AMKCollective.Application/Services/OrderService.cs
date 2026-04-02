@@ -1853,6 +1853,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     {
                         bool success = await _unitOfWork.Models.UpdateStockAsync(mappedItem.ProductId.Value, -mappedItem.Quantity);
                         if (!success) throw new InvalidOperationException($"Product '{mappedItem.ProductName}' is out of stock.");
+
+                        if (mappedItem.OrderItemComponents != null && mappedItem.OrderItemComponents.Any())
+                        {
+                            foreach (var component in mappedItem.OrderItemComponents)
+                            {
+                                int totalPartNeeded = component.Quantity * mappedItem.Quantity;
+                                bool componentSuccess = await _unitOfWork.Models.UpdateStockAsync(component.PartId, -totalPartNeeded);
+                                if (!componentSuccess)
+                                {
+                                    throw new InvalidOperationException($"Insufficient stock for component '{component.PartName}'.");
+                                }
+                            }
+                        }
                     }
                     else if (!mappedItem.IsCustom && mappedItem.AssembledProductId.HasValue)
                     {
@@ -1886,7 +1899,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         {
                             Id = Guid.NewGuid(),
                             PartId = c.PartId,
-                            Quantity = c.Quantity
+                            PartName = c.PartName,
+                            PartPriceSnapshot = c.PartPriceSnapshot,
+                            PartImageUrl = c.PartImageUrl,
+                            Quantity = c.Quantity,
+                            Notes = c.Note
                         }).ToList() ?? new List<OrderItemComponent>()
                     };
                     order.OrderItems.Add(realOrderItem);

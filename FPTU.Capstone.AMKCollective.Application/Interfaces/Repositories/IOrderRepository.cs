@@ -48,5 +48,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
 
         Task<Order?> GetOrderDetailByIdAsync(Guid orderId);
         Task<List<Order>> GetAbandonedOrdersAsync(DateTime expirationTime, CancellationToken token = default);
+
+        /// <summary>
+        /// Read-only dataset for dashboard analytics.
+        /// </summary>
+        Task<List<Order>> GetOrdersForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default);
     }
 }
