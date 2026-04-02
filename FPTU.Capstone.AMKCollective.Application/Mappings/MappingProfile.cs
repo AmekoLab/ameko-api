@@ -174,7 +174,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             CreateMap<ShopProfile, CurrentReputationDto>()
                 .ForMember(dest => dest.ShopId, opt => opt.MapFrom(src => src.Id))
                 .ForMember(dest => dest.Badge, opt => opt.MapFrom(src => src.Badge.ToString()));
-
+            CreateMap<QualityScoreSnapshot, QualityScoreSnapshotDto>()
+                .ForMember(dest => dest.Badge, opt => opt.MapFrom(src => src.Badge.ToString()));
             CreateMap<QualityScoreSnapshot, ReputationTrendDto>()
                 .ForMember(dest => dest.Date, opt => opt.MapFrom(src => src.CapturedAt.ToString("yyyy-MM-dd")))
                 .ForMember(dest => dest.Score, opt => opt.MapFrom(src => src.TotalScore))
@@ -208,6 +209,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.SubTotal, opt => opt.MapFrom(src => src.SubTotal))
                 .ForMember(dest => dest.ShippingFee, opt => opt.MapFrom(src => src.ShippingFee))
                 .ForMember(dest => dest.DiscountAmount, opt => opt.MapFrom(src => src.DiscountAmount))
+                .ForMember(dest => dest.SystemDiscountAmount, opt => opt.MapFrom(src => src.SystemDiscountAmount))
                 .ForMember(dest => dest.TotalAmount, opt => opt.MapFrom(src => src.TotalAmount))
 
     // 4. Map OrderItems (Giữ nguyên)

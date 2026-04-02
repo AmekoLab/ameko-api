@@ -384,13 +384,28 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<List<OrderResponse>>(orders);
         }
 
+        public async Task<OrderResponse> GetOrderDetailAsync(Guid userId, Guid orderId)
+        {
+            var order = await _unitOfWork.Orders.GetOrderDetailByIdAsync(orderId);
+            if (order == null) throw new KeyNotFoundException("Order not found.");
+            if (order.CustomerId != userId) throw new UnauthorizedAccessException("You are not authorized to view this order.");
+
+            var response = _mapper.Map<OrderResponse>(order);
+            await EnrichOrderItemsAsync(response, order); // Gọi hàm Helper
+            return response;
+        }
+
+        // API CHO SHOP
         public async Task<OrderResponse> GetShopOrderDetailAsync(Guid shopId, Guid orderId, CancellationToken token = default)
         {
-            var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
+            // ĐỔI TỪ GetByIdAsync SANG GetOrderDetailByIdAsync để lấy đủ Include (Components, v.v...)
+            var order = await _unitOfWork.Orders.GetOrderDetailByIdAsync(orderId);
             if (order == null) throw new KeyNotFoundException("Order not found");
             if (order.ShopId != shopId) throw new UnauthorizedAccessException("This order does not belong to your shop.");
 
-            return _mapper.Map<OrderResponse>(order);
+            var response = _mapper.Map<OrderResponse>(order);
+            await EnrichOrderItemsAsync(response, order); // DÙNG CHUNG HÀM HELPER ĐỂ ĐỒNG BỘ DATA CHO SHOP
+            return response;
         }
 
         public async Task UpdateOrderStatusAsync(Guid shopId, Guid orderId, OrderStatus newStatus, CancellationToken token = default)
@@ -751,118 +766,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 };
             }
         }
-        public async Task<OrderResponse> GetOrderDetailAsync(Guid userId, Guid orderId)
-        {
-            // 1. Gọi Repo lấy dữ liệu
-            var order = await _unitOfWork.Orders.GetOrderDetailByIdAsync(orderId);
-
-            // 2. Validate tồn tại
-            if (order == null)
-                throw new KeyNotFoundException("Order not found.");
-
-            // 3. Validate quyền (Security Check)
-            if (order.CustomerId != userId)
-            {
-                throw new UnauthorizedAccessException("You are not authorized to view this order.");
-            }
-
-            // 4. Map sang DTO cơ bản
-            var response = _mapper.Map<OrderResponse>(order);
-
-            // 5. ENRICH DỮ LIỆU: Nạp thêm tên linh kiện, hình ảnh, giá và ShopId cho từng món hàng
-            foreach (var itemResponse in response.OrderItems)
-            {
-                // Lấy lại Item gốc từ Database để lấy DesignConfig nếu cần
-                var dbItem = order.OrderItems.FirstOrDefault(x => x.Id == itemResponse.OrderItemId);
-
-                // A. HÀNG CUSTOM BUILD
-                if (itemResponse.IsCustom && itemResponse.ProductId.HasValue)
-                {
-                    var baseKit = await _unitOfWork.Models.GetByIdAsync(itemResponse.ProductId.Value);
-                    if (baseKit != null)
-                    {
-                        if (itemResponse.ShopId == Guid.Empty) itemResponse.ShopId = baseKit.ShopId;
-                        if (string.IsNullOrEmpty(itemResponse.ProductImage)) itemResponse.ProductImage = baseKit.ThumbnailURL;
-                    }
-
-                    // Lấy Tên và Hình ảnh cho từng linh kiện từ bảng Models
-                    if (itemResponse.OrderItemComponents != null && itemResponse.OrderItemComponents.Any())
-                    {
-                        foreach (var comp in itemResponse.OrderItemComponents)
-                        {
-                            var partInfo = await _unitOfWork.Models.GetByIdAsync(comp.PartId);
-                            if (partInfo != null)
-                            {
-                                comp.PartName = partInfo.Name;
-                                comp.PartImageUrl = partInfo.ThumbnailURL;
-                                // Ưu tiên giá lúc mua, nếu đang bằng 0 thì lấy giá hiện tại của Model
-                                if (comp.PartPriceSnapshot == 0) comp.PartPriceSnapshot = partInfo.Price;
-                            }
-                        }
-                    }
-                }
-                // B. HÀNG THƯỜNG (Assembled Product)
-                else if (!itemResponse.IsCustom && itemResponse.AssembledProductId.HasValue)
-                {
-                    var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(itemResponse.AssembledProductId.Value);
-                    if (assembledProduct != null)
-                    {
-                        // Đi đường vòng lấy ShopId nếu bị rỗng
-                        var firstDetail = assembledProduct.ProductAssembledDetails?.FirstOrDefault();
-                        var targetModelId = firstDetail?.BaseKitId ?? firstDetail?.ComponentId;
-                        if (targetModelId.HasValue)
-                        {
-                            var relatedModel = await _unitOfWork.Models.GetByIdAsync(targetModelId.Value);
-                            if (relatedModel != null && itemResponse.ShopId == Guid.Empty)
-                                itemResponse.ShopId = relatedModel.ShopId;
-                        }
-
-                        // Tự động bung chi tiết linh kiện của phím lắp sẵn ra cho FE hiển thị
-                        if (assembledProduct.ProductAssembledDetails != null)
-                        {
-                            itemResponse.OrderItemComponents = new List<OrderItemComponentDto>();
-                            foreach (var detail in assembledProduct.ProductAssembledDetails)
-                            {
-                                var partId = detail.ComponentId != Guid.Empty ? detail.ComponentId : detail.BaseKitId;
-                                itemResponse.OrderItemComponents.Add(new OrderItemComponentDto
-                                {
-                                    PartId = partId,
-                                    PartName = detail.Component?.Name ?? detail.BaseKit?.Name ?? "Assembly component",
-                                    PartPriceSnapshot = detail.Component?.Price ?? detail.BaseKit?.Price ?? 0,
-                                    PartImageUrl = detail.Component?.ThumbnailURL ?? detail.BaseKit?.ThumbnailURL ?? "",
-                                    Quantity = detail.Quantity
-                                });
-                            }
-                        }
-                    }
-                }
-                // C. HÀNG COMMISSION (Báo giá Shop)
-                else if (itemResponse.IsCustom && !itemResponse.ProductId.HasValue && !itemResponse.AssembledProductId.HasValue)
-                {
-                    if (dbItem != null && !string.IsNullOrEmpty(dbItem.DesignConfig))
-                    {
-                        try
-                        {
-                            using var doc = System.Text.Json.JsonDocument.Parse(dbItem.DesignConfig);
-                            var root = doc.RootElement;
-                            if (root.TryGetProperty("Title", out var titleProp)) itemResponse.ProductName = titleProp.GetString() ?? "Custom Request";
-                            if (root.TryGetProperty("Image", out var imgProp)) itemResponse.ProductImage = imgProp.GetString() ?? "";
-                            if (root.TryGetProperty("ShopId", out var shopIdProp)) itemResponse.ShopId = shopIdProp.GetGuid();
-                        }
-                        catch { /* Bỏ qua lỗi Parse */ }
-                    }
-                }
-
-                // 🟢 Cập nhật Tên Shop nếu thiếu
-                if (itemResponse.ShopId != Guid.Empty && (string.IsNullOrEmpty(itemResponse.ShopName) || itemResponse.ShopName == "N/A"))
-                {
-                    var shop = await _unitOfWork.Shops.GetByIdAsync(itemResponse.ShopId);
-                    itemResponse.ShopName = shop?.ShopName ?? "Shop";
-                }
-            }
-
-            return response;
-        }
+        
 
         public async Task CancelAbandonedOrdersAsync(CancellationToken token = default)
         {
@@ -2143,6 +2047,94 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 var session = await _paymentService.CreateCheckoutSessionAsync(paymentRequest, token);
                 return session.PaymentUrl; // Trả về dạng string
+            }
+        }
+        private async Task EnrichOrderItemsAsync(OrderResponse response, Order order)
+        {
+            foreach (var itemResponse in response.OrderItems)
+            {
+                var dbItem = order.OrderItems.FirstOrDefault(x => x.Id == itemResponse.OrderItemId);
+
+                // A. HÀNG CUSTOM BUILD
+                if (itemResponse.IsCustom && itemResponse.ProductId.HasValue)
+                {
+                    var baseKit = await _unitOfWork.Models.GetByIdAsync(itemResponse.ProductId.Value);
+                    if (baseKit != null)
+                    {
+                        if (itemResponse.ShopId == Guid.Empty) itemResponse.ShopId = baseKit.ShopId;
+                        if (string.IsNullOrEmpty(itemResponse.ProductImage)) itemResponse.ProductImage = baseKit.ThumbnailURL;
+                    }
+
+                    if (itemResponse.OrderItemComponents != null && itemResponse.OrderItemComponents.Any())
+                    {
+                        foreach (var comp in itemResponse.OrderItemComponents)
+                        {
+                            var partInfo = await _unitOfWork.Models.GetByIdAsync(comp.PartId);
+                            if (partInfo != null)
+                            {
+                                comp.PartName = partInfo.Name;
+                                comp.PartImageUrl = partInfo.ThumbnailURL;
+                                if (comp.PartPriceSnapshot == 0) comp.PartPriceSnapshot = partInfo.Price;
+                            }
+                        }
+                    }
+                }
+                // B. HÀNG THƯỜNG (Assembled Product)
+                else if (!itemResponse.IsCustom && itemResponse.AssembledProductId.HasValue)
+                {
+                    var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(itemResponse.AssembledProductId.Value);
+                    if (assembledProduct != null)
+                    {
+                        var firstDetail = assembledProduct.ProductAssembledDetails?.FirstOrDefault();
+                        var targetModelId = firstDetail?.BaseKitId ?? firstDetail?.ComponentId;
+                        if (targetModelId.HasValue)
+                        {
+                            var relatedModel = await _unitOfWork.Models.GetByIdAsync(targetModelId.Value);
+                            if (relatedModel != null && itemResponse.ShopId == Guid.Empty)
+                                itemResponse.ShopId = relatedModel.ShopId;
+                        }
+
+                        if (assembledProduct.ProductAssembledDetails != null)
+                        {
+                            itemResponse.OrderItemComponents = new List<OrderItemComponentDto>();
+                            foreach (var detail in assembledProduct.ProductAssembledDetails)
+                            {
+                                var partId = detail.ComponentId != Guid.Empty ? detail.ComponentId : detail.BaseKitId;
+                                itemResponse.OrderItemComponents.Add(new OrderItemComponentDto
+                                {
+                                    PartId = partId,
+                                    PartName = detail.Component?.Name ?? detail.BaseKit?.Name ?? "Assembly component",
+                                    PartPriceSnapshot = detail.Component?.Price ?? detail.BaseKit?.Price ?? 0,
+                                    PartImageUrl = detail.Component?.ThumbnailURL ?? detail.BaseKit?.ThumbnailURL ?? "",
+                                    Quantity = detail.Quantity
+                                });
+                            }
+                        }
+                    }
+                }
+                // C. HÀNG COMMISSION (Báo giá Shop)
+                else if (itemResponse.IsCustom && !itemResponse.ProductId.HasValue && !itemResponse.AssembledProductId.HasValue)
+                {
+                    if (dbItem != null && !string.IsNullOrEmpty(dbItem.DesignConfig))
+                    {
+                        try
+                        {
+                            using var doc = System.Text.Json.JsonDocument.Parse(dbItem.DesignConfig);
+                            var root = doc.RootElement;
+                            if (root.TryGetProperty("Title", out var titleProp)) itemResponse.ProductName = titleProp.GetString() ?? "Custom Request";
+                            if (root.TryGetProperty("Image", out var imgProp)) itemResponse.ProductImage = imgProp.GetString() ?? "";
+                            if (root.TryGetProperty("ShopId", out var shopIdProp)) itemResponse.ShopId = shopIdProp.GetGuid();
+                        }
+                        catch { /* Bỏ qua lỗi Parse */ }
+                    }
+                }
+
+                // Cập nhật Tên Shop nếu thiếu
+                if (itemResponse.ShopId != Guid.Empty && (string.IsNullOrEmpty(itemResponse.ShopName) || itemResponse.ShopName == "N/A"))
+                {
+                    var shop = await _unitOfWork.Shops.GetByIdAsync(itemResponse.ShopId);
+                    itemResponse.ShopName = shop?.ShopName ?? "Shop";
+                }
             }
         }
     }

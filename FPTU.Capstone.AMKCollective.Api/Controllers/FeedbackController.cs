@@ -93,12 +93,40 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// <param name="shopId">Mã ID của Shop cần lấy danh sách đánh giá</param>
         /// <returns>Danh sách các đánh giá của Shop, sắp xếp từ mới nhất đến cũ nhất</returns>
         [HttpGet("shops/{shopId}/feedbacks")]
-        public async Task<IActionResult> GetShopFeedbacks(Guid shopId)
+        public async Task<IActionResult> GetShopFeedbacks(Guid shopId, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10)
         {
             try
             {
-                var result = await _feedbackService.GetShopFeedbacksAsync(shopId);
+                var result = await _feedbackService.GetShopFeedbacksAsync(shopId, pageNumber, pageSize);
                 return SuccessResponse(result, "Fetched feedbacks successfully.");
+            }
+            catch (Exception ex)
+            {
+                return ErrorResponse(ex.Message);
+            }
+        }
+        /// <summary>
+        /// Kênh Người Bán: Chủ Shop lấy danh sách toàn bộ đánh giá của gian hàng mình.
+        /// </summary>
+        /// <remarks>
+        /// </remarks>
+        /// <param name="pageNumber">Số thứ tự trang cần lấy (Mặc định: 1)</param>
+        /// <param name="pageSize">Số lượng đánh giá hiển thị trên 1 trang (Mặc định: 10)</param>
+        /// <returns>Danh sách đánh giá đã được phân trang (PaginatedResult) của gian hàng, sắp xếp mới nhất lên đầu.</returns>
+        [HttpGet("feedbacks/my-shop")]
+        [Authorize]
+        public async Task<IActionResult> GetMyShopFeedbacks([FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var result = await _feedbackService.GetMyShopFeedbacksAsync(userId, pageNumber, pageSize);
+
+                return SuccessResponse(result, "Fetched my shop feedbacks successfully.");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<object>(ex.Message);
             }
             catch (Exception ex)
             {

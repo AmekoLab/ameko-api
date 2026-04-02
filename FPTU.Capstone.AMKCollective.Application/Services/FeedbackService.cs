@@ -124,9 +124,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return response;
         }
 
-        public async Task<IEnumerable<FeedbackResponse>> GetShopFeedbacksAsync(Guid shopId)
+        public async Task<PaginatedResult<FeedbackResponse>> GetShopFeedbacksAsync(Guid shopId, int pageNumber, int pageSize)
         {
-            var feedbacks = await _unitOfWork.Feedbacks.GetFeedbacksByShopIdAsync(shopId);
+            var (feedbacks, totalCount) = await _unitOfWork.Feedbacks.GetFeedbacksByShopIdAsync(shopId, pageNumber, pageSize);
             var responses = new List<FeedbackResponse>();
 
             foreach (var fb in feedbacks)
@@ -136,7 +136,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 responses.Add(dto);
             }
 
-            return responses;
+            return new PaginatedResult<FeedbackResponse>(responses, totalCount, pageNumber, pageSize);
+        }
+
+        public async Task<PaginatedResult<FeedbackResponse>> GetMyShopFeedbacksAsync(Guid userId, int pageNumber, int pageSize)
+        {
+            var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+            if (shop == null)
+            {
+                return new PaginatedResult<FeedbackResponse>(new List<FeedbackResponse>(), 0, pageNumber, pageSize);
+            }
+
+            return await GetShopFeedbacksAsync(shop.Id, pageNumber, pageSize);
         }
     }
 }

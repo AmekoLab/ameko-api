@@ -11,7 +11,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
     {
         Task<QualityScoreResultDto> CalculateShopScoreAsync(Guid shopId, DateTime startDate, DateTime endDate);
         Task<CurrentReputationDto?> GetCurrentReputationAsync(Guid shopId);
-        Task<QualityScoreSnapshot?> GetReputationBreakdownAsync(Guid shopId);
+        Task<QualityScoreSnapshotDto?> GetReputationBreakdownAsync(Guid shopId);
         Task<IEnumerable<ReputationTrendDto>> GetReputationTrendAsync(Guid shopId);
         Task<IEnumerable<BadgeHistoryDto>> GetBadgeHistoryAsync(Guid shopId);
     }

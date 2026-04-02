@@ -11,7 +11,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
     {
         Task<Feedback?> GetByIdAsync(Guid feedbackId);
         Task<Feedback?> GetByOrderIdAsync(Guid orderId);
-        Task<IEnumerable<Feedback>> GetFeedbacksByShopIdAsync(Guid shopId);
+        Task<(IEnumerable<Feedback> Items, int TotalCount)> GetFeedbacksByShopIdAsync(Guid shopId, int pageNumber, int pageSize);
         Task AddAsync(Feedback feedback);
         void Update(Feedback feedback);
         Task<bool> ExistsByOrderIdAsync(Guid orderId);

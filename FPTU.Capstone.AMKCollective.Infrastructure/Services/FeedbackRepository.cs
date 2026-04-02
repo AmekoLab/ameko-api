@@ -34,14 +34,24 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .FirstOrDefaultAsync(f => f.OrderId == orderId);
         }
 
-        public async Task<IEnumerable<Feedback>> GetFeedbacksByShopIdAsync(Guid shopId)
+        public async Task<(IEnumerable<Feedback> Items, int TotalCount)> GetFeedbacksByShopIdAsync(Guid shopId, int pageNumber, int pageSize)
         {
-            return await _context.Feedbacks
+            var query = _context.Feedbacks
                 .Include(f => f.Images)
                 .Include(f => f.FromUser)
-                .Where(f => f.ShopId == shopId)
+                .Where(f => f.ShopId == shopId);
+
+            // Đếm tổng số lượng record
+            var totalCount = await query.CountAsync();
+
+            // Phân trang
+            var items = await query
                 .OrderByDescending(f => f.CreatedAt)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
+
+            return (items, totalCount);
         }
 
         public async Task AddAsync(Feedback feedback)

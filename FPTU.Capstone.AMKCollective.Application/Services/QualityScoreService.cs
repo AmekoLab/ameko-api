@@ -99,9 +99,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<CurrentReputationDto>(shop);
         }
 
-        public async Task<QualityScoreSnapshot?> GetReputationBreakdownAsync(Guid shopId)
+        public async Task<QualityScoreSnapshotDto?> GetReputationBreakdownAsync(Guid shopId)
         {
-            return await _unitOfWork.QualityScoreSnapshots.GetLatestSnapshotAsync(shopId);
+            var snapshot = await _unitOfWork.QualityScoreSnapshots.GetLatestSnapshotAsync(shopId);
+            if (snapshot == null) return null;
+
+            return _mapper.Map<QualityScoreSnapshotDto>(snapshot);
         }
 
         public async Task<IEnumerable<ReputationTrendDto>> GetReputationTrendAsync(Guid shopId)
