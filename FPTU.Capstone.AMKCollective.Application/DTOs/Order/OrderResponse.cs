@@ -22,6 +22,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
         public decimal SubTotal { get; set; }
         public decimal ShippingFee { get; set; }
         public decimal DiscountAmount { get; set; }
+        public decimal SystemDiscountAmount { get; set; }
         public decimal TotalAmount { get; set; }
 
         // 3. Nhóm thông tin người nhận (Bắt buộc cho trang Chi tiết đơn hàng)

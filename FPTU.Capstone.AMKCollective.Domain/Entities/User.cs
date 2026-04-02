@@ -50,7 +50,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public virtual ICollection<Follow> Followers { get; set; } = new List<Follow>();
         public virtual ICollection<Follow> Following { get; set; } = new List<Follow>();
         public virtual ICollection<Feedback> SentFeedbacks { get; set; } = new List<Feedback>();
-        public virtual ICollection<Feedback> ReceivedFeedbacks { get; set; } = new List<Feedback>();
+        //public virtual ICollection<Feedback> ReceivedFeedbacks { get; set; } = new List<Feedback>();
         public virtual ICollection<UserConversation> UserConversations { get; set; } = new List<UserConversation>();
         public virtual ICollection<MessageRecipient> MessageRecipients { get; set; } = new List<MessageRecipient>();
         public virtual ICollection<Message> MessagesCreated { get; set; } = new List<Message>();

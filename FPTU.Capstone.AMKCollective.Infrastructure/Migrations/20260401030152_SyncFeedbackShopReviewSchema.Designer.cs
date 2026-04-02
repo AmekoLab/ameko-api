@@ -4,6 +4,7 @@ using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260401030152_SyncFeedbackShopReviewSchema")]
+    partial class SyncFeedbackShopReviewSchema
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1683,67 +1686,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.ToTable("ProductAssembledDetails", (string)null);
                 });
 
-            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.QualityScoreSnapshot", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<double>("AutoCancelRate")
-                        .HasColumnType("double");
-
-                    b.Property<double>("AvgResponseHours")
-                        .HasColumnType("double");
-
-                    b.Property<int>("Badge")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CapturedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("char(36)");
-
-                    b.Property<int>("FeedbackCount")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<double>("IssueRate")
-                        .HasColumnType("double");
-
-                    b.Property<double>("PositiveFeedbackRate")
-                        .HasColumnType("double");
-
-                    b.Property<double>("RefundRate")
-                        .HasColumnType("double");
-
-                    b.Property<double>("RepurchaseRate")
-                        .HasColumnType("double");
-
-                    b.Property<Guid>("ShopId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<int>("TotalScore")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("UpdatedBy")
-                        .HasColumnType("char(36)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ShopId");
-
-                    b.ToTable("QualityScoreSnapshots", (string)null);
-                });
-
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1863,11 +1805,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("varchar(1000)");
 
-                    b.Property<int>("Badge")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(0);
-
                     b.Property<string>("BankAccountName")
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
@@ -1901,11 +1838,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("char(36)");
-
-                    b.Property<int>("CurrentQualityScore")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(50);
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
@@ -3030,17 +2962,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Navigation("Component");
                 });
 
-            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.QualityScoreSnapshot", b =>
-                {
-                    b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.ShopProfile", "Shop")
-                        .WithMany("QualityScoreSnapshots")
-                        .HasForeignKey("ShopId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Shop");
-                });
-
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.RefreshToken", b =>
                 {
                     b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.User", "User")
@@ -3306,8 +3227,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Navigation("Models");
 
                     b.Navigation("Orders");
-
-                    b.Navigation("QualityScoreSnapshots");
 
                     b.Navigation("TargetedCommissionRequests");
                 });

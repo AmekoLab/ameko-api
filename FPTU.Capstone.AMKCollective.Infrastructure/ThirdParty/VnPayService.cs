@@ -66,7 +66,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
         {
             var pay = new VnPayLibrary();
             var response = pay.GetFullResponseData(collections, _vnpaySettings.HashSecret);
-
+            var transactionStatus = collections["vnp_TransactionStatus"].ToString();
+            response.IsPaid = response.Success
+                              && response.VnPayResponseCode == "00"
+                              && (string.IsNullOrEmpty(transactionStatus) || transactionStatus == "00");
             if (!response.Success) return response; // Sai chữ ký bảo mật
 
             // Tách cái TxnRef (Guid_Tick) ra để lấy lại OrderGroupId

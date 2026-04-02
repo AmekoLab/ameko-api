@@ -5,6 +5,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs.AssemblyTracking;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Chat;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Commission;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Feedback;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Follow;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
@@ -170,6 +171,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.CitizenId, opt => opt.Ignore())     // Không đổi sau khi đăng ký
                 .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
+            CreateMap<ShopProfile, CurrentReputationDto>()
+                .ForMember(dest => dest.ShopId, opt => opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.Badge, opt => opt.MapFrom(src => src.Badge.ToString()));
+            CreateMap<QualityScoreSnapshot, QualityScoreSnapshotDto>()
+                .ForMember(dest => dest.Badge, opt => opt.MapFrom(src => src.Badge.ToString()));
+            CreateMap<QualityScoreSnapshot, ReputationTrendDto>()
+                .ForMember(dest => dest.Date, opt => opt.MapFrom(src => src.CapturedAt.ToString("yyyy-MM-dd")))
+                .ForMember(dest => dest.Score, opt => opt.MapFrom(src => src.TotalScore))
+                .ForMember(dest => dest.Badge, opt => opt.MapFrom(src => src.Badge.ToString()));
             //==================ShopProfile=====================//
 
 
@@ -199,6 +209,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.SubTotal, opt => opt.MapFrom(src => src.SubTotal))
                 .ForMember(dest => dest.ShippingFee, opt => opt.MapFrom(src => src.ShippingFee))
                 .ForMember(dest => dest.DiscountAmount, opt => opt.MapFrom(src => src.DiscountAmount))
+                .ForMember(dest => dest.SystemDiscountAmount, opt => opt.MapFrom(src => src.SystemDiscountAmount))
                 .ForMember(dest => dest.TotalAmount, opt => opt.MapFrom(src => src.TotalAmount))
 
     // 4. Map OrderItems (Giữ nguyên)
@@ -374,9 +385,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.OrderStatus, opt => opt.MapFrom(src =>
                     src.RelatedOrder != null ? src.RelatedOrder.OrderStatus.ToString() : "Unknown"))
                 .ForMember(dest => dest.Reason, opt => opt.MapFrom(src => "Reserved Funds (Until Order is Completed)"));
+
+            // =========================================================
+            // Feedback (Feedback -> DTO)
+            // =========================================================
+            CreateMap<Feedback, FeedbackResponse>()
+                .ForMember(dest => dest.FeedbackId, opt => opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.FromUserName, opt => opt.MapFrom(src => src.FromUser.Username))
+                .ForMember(dest => dest.FromUserAvatar, opt => opt.MapFrom(src => src.FromUser.Image))
+                .ForMember(dest => dest.CreatedDate, opt => opt.MapFrom(src => src.CreatedAt))
+                .ForMember(dest => dest.ImageUrls, opt => opt.Ignore());
+
         }
-
-
 
         //HELPER
         private int GetRecipeValue(string? jsonSpecs, string key)

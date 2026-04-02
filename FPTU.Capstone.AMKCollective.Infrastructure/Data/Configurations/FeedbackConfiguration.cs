@@ -11,6 +11,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.ToTable("Feedbacks");
             builder.HasKey(f => f.Id);
 
+            builder.ToTable(t =>
+                t.HasCheckConstraint("CK_Feedbacks_Rating_Range", "`Rating` >= 1 AND `Rating` <= 5"));
+
             builder.Property(f => f.Location)
                 .HasMaxLength(500);
 
@@ -25,10 +28,15 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .HasForeignKey(f => f.FromUserId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            builder.HasOne(f => f.ToUser)
-                .WithMany(u => u.ReceivedFeedbacks)
-                .HasForeignKey(f => f.ToUserId)
-                .OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne(f => f.Shop)
+                .WithMany(s => s.Feedbacks)
+                .HasForeignKey(f => f.ShopId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.HasMany(f => f.Images)
+                .WithOne(fi => fi.Feedback)
+                .HasForeignKey(fi => fi.FeedbackId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }

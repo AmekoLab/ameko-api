@@ -9,6 +9,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Payment
     public class PaymentResponseModel
     {
         public bool Success { get; set; }
+        public bool IsPaid { get; set; }
         public string PaymentMethod { get; set; } = string.Empty;
         public string OrderDescription { get; set; } = string.Empty;
         public string OrderId { get; set; } = string.Empty;
