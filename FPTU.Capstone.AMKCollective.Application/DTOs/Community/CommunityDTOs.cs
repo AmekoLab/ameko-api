@@ -34,6 +34,8 @@ public class PostFeedResponse
     public string Role { get; set; } = string.Empty;
     
     public ProductPreviewDto? Product { get; set; }
+    
+    public string? CurrentUserReaction { get; set; }
 }
 
 public class CreatePostDto

@@ -38,7 +38,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [SwaggerResponse(200, "Successfully retrieved feed", typeof(ApiResponse<CursorPagedResult<PostFeedResponse>>))]
         public async Task<IActionResult> GetFeed([FromQuery] string? cursor, [FromQuery] int pageSize = 20, CancellationToken cancellationToken = default)
         {
-            var feed = await _communityService.GetFeedAsync(cursor, pageSize, cancellationToken);
+            var feed = await _communityService.GetFeedAsync(TryGetCurrentUserId(), cursor, pageSize, cancellationToken);
             return SuccessResponse(feed);
         }
 
@@ -71,7 +71,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [SwaggerResponse(404, "Post not found")]
         public async Task<IActionResult> GetPostById(int id, CancellationToken cancellationToken = default)
         {
-            var post = await _communityService.GetPostByIdAsync(id, cancellationToken);
+            var post = await _communityService.GetPostByIdAsync(id, TryGetCurrentUserId(), cancellationToken);
             return SuccessResponse(post);
         }
 
@@ -122,6 +122,17 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             await _communityService.ReactToPostAsync(postId, userId, reactionType, cancellationToken);
             return SuccessResponse(new { success = true });
         }
+        [HttpDelete("posts/{postId}/reactions")]
+        [Authorize]
+        [SwaggerOperation(Summary = "Remove Reaction from Post", Description = "Removes the current user's reaction from a specific post.")]
+        [SwaggerResponse(200, "Reaction removed successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
+        public async Task<IActionResult> UnreactToPost(int postId, CancellationToken cancellationToken = default)
+        {
+            Guid userId = GetCurrentUserId();
+            await _communityService.RemoveReactionAsync(postId, userId, cancellationToken);
+            return SuccessResponse(new { success = true });
+        }
 
         [HttpGet("posts/{postId}/reactions")]
         [AllowAnonymous]
@@ -139,7 +150,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [SwaggerResponse(200, "Successfully retrieved user posts", typeof(ApiResponse<CursorPagedResult<PostFeedResponse>>))]
         public async Task<IActionResult> GetUserPosts(Guid userId, [FromQuery] string? cursor, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
         {
-            var results = await _communityService.GetPostsByUserIdAsync(userId, cursor, pageSize, cancellationToken);
+            var results = await _communityService.GetPostsByUserIdAsync(userId, TryGetCurrentUserId(), cursor, pageSize, cancellationToken);
             return SuccessResponse(results);
         }
 

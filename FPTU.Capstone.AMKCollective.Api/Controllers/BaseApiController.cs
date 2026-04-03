@@ -85,5 +85,22 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             }
             throw new UnauthorizedAccessException("User ID not found in token");
         }
+
+        /// <summary>
+        /// Attempts to get the current user's ID from the JWT token, returning null if not found
+        /// </summary>
+        /// <returns>ID of the current user, or null if unauthorized</returns>
+        protected Guid? TryGetCurrentUserId()
+        {
+            var userIdClaim = User?.FindFirst(ClaimTypes.NameIdentifier)
+                           ?? User?.FindFirst("nameid")
+                           ?? User?.FindFirst("sub")
+                           ?? User?.FindFirst("id");
+            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out Guid userId))
+            {
+                return userId;
+            }
+            return null;
+        }
     }
 }

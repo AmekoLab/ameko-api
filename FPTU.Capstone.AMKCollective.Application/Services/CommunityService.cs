@@ -36,20 +36,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _configuration = configuration;
         }
 
-        public async Task<CursorPagedResult<PostFeedResponse>> GetFeedAsync(string? cursor, int pageSize, CancellationToken cancellationToken)
+        public async Task<CursorPagedResult<PostFeedResponse>> GetFeedAsync(Guid? currentUserId, string? cursor, int pageSize, CancellationToken cancellationToken)
         {
             var decodedCursor = CursorHelper.DecodeCursor(cursor);
             var posts = await _unitOfWork.CommunityPosts.GetFeedCursorPagedAsync(decodedCursor?.CreatedAt, decodedCursor?.Id, pageSize, cancellationToken);
             
-            return await MapPostsToFeedResponse(posts, pageSize, cancellationToken);
+            return await MapPostsToFeedResponse(posts, pageSize, currentUserId, cancellationToken);
         }
 
-        public async Task<CursorPagedResult<PostFeedResponse>> GetPostsByUserIdAsync(Guid userId, string? cursor, int pageSize, CancellationToken cancellationToken = default)
+        public async Task<CursorPagedResult<PostFeedResponse>> GetPostsByUserIdAsync(Guid userId, Guid? currentUserId, string? cursor, int pageSize, CancellationToken cancellationToken = default)
         {
             var decodedCursor = CursorHelper.DecodeCursor(cursor);
             var posts = await _unitOfWork.CommunityPosts.GetByUserIdCursorPagedAsync(userId, decodedCursor?.CreatedAt, decodedCursor?.Id, pageSize, cancellationToken);
             
-            return await MapPostsToFeedResponse(posts, pageSize, cancellationToken);
+            return await MapPostsToFeedResponse(posts, pageSize, currentUserId, cancellationToken);
         }
 
         private async Task<CursorPagedResult<CommentResponse>> MapCommentsToResponse(List<PostComment> comments, int pageSize)
@@ -84,7 +84,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         }
 
 
-        private async Task<CursorPagedResult<PostFeedResponse>> MapPostsToFeedResponse(List<CommunityPost> posts, int pageSize, CancellationToken cancellationToken)
+        private async Task<CursorPagedResult<PostFeedResponse>> MapPostsToFeedResponse(List<CommunityPost> posts, int pageSize, Guid? currentUserId, CancellationToken cancellationToken)
         {
             var responseItems = posts.Take(pageSize + 1).Select(p => new PostFeedResponse
             {
@@ -100,7 +100,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 AssembledProductId = p.AssembledProductId,
                 AttachmentUrls = p.Attachments.Select(a => a.FileUrl).ToList(),
                 ReactionCount = p.PostReactions.Count,
-                CommentCount = p.PostComments.Count
+                CommentCount = p.PostComments.Count,
+                CurrentUserReaction = currentUserId.HasValue 
+                    ? p.PostReactions.FirstOrDefault(r => r.UserId == currentUserId.Value)?.Type.ToString() 
+                    : null
             }).ToList();
 
             bool hasMore = responseItems.Count > pageSize;
@@ -177,7 +180,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return response;
         }
 
-        public async Task<PostFeedResponse> GetPostByIdAsync(int id, CancellationToken cancellationToken = default)
+        public async Task<PostFeedResponse> GetPostByIdAsync(int id, Guid? currentUserId, CancellationToken cancellationToken = default)
         {
             var post = await _unitOfWork.CommunityPosts.GetByIdAsync(id, cancellationToken);
             if (post == null) throw new KeyNotFoundException("Post not found");
@@ -196,7 +199,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 AssembledProductId = post.AssembledProductId,
                 AttachmentUrls = post.Attachments.Select(a => a.FileUrl).ToList(),
                 ReactionCount = post.PostReactions.Count,
-                CommentCount = post.PostComments.Count
+                CommentCount = post.PostComments.Count,
+                CurrentUserReaction = currentUserId.HasValue 
+                    ? post.PostReactions.FirstOrDefault(r => r.UserId == currentUserId.Value)?.Type.ToString() 
+                    : null
             };
             
             await _postEnricher.EnrichAsync(new[] { responseItem }, cancellationToken);
@@ -228,7 +234,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _unitOfWork.CommunityPosts.Update(post);
             await _unitOfWork.CommitAsync();
 
-            return await GetPostByIdAsync(post.Id, cancellationToken);
+            return await GetPostByIdAsync(post.Id, userId, cancellationToken);
         }
 
         public async Task DeletePostAsync(int id, Guid userId, CancellationToken cancellationToken = default)
@@ -282,6 +288,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             await _unitOfWork.CommitAsync();
+        }
+
+        public async Task RemoveReactionAsync(int postId, Guid userId, CancellationToken cancellationToken = default)
+        {
+            var existingReaction = await _unitOfWork.PostReactions.GetByUserAndPostAsync(postId, userId, cancellationToken);
+            if (existingReaction != null)
+            {
+                _unitOfWork.PostReactions.Remove(existingReaction);
+                await _unitOfWork.CommitAsync();
+            }
         }
 
         public async Task<IEnumerable<PostReactionDetailResponse>> GetPostReactionsAsync(int postId, CancellationToken cancellationToken = default)

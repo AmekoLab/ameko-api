@@ -9,13 +9,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
     public interface ICommunityService
     {
         Task<PostFeedResponse> CreatePostAsync(Guid userId, CreatePostDto request, CancellationToken cancellationToken = default);
-        Task<CursorPagedResult<PostFeedResponse>> GetFeedAsync(string? cursor, int pageSize, CancellationToken cancellationToken = default);
-        Task<PostFeedResponse> GetPostByIdAsync(int id, CancellationToken cancellationToken = default);
+        Task<CursorPagedResult<PostFeedResponse>> GetFeedAsync(Guid? currentUserId, string? cursor, int pageSize, CancellationToken cancellationToken = default);
+        Task<PostFeedResponse> GetPostByIdAsync(int id, Guid? currentUserId, CancellationToken cancellationToken = default);
         Task<PostFeedResponse> UpdatePostAsync(int id, Guid userId, UpdatePostDto request, CancellationToken cancellationToken = default);
         Task DeletePostAsync(int id, Guid userId, CancellationToken cancellationToken = default);
         Task ReactToPostAsync(int postId, Guid userId, FPTU.Capstone.AMKCollective.Domain.Enums.ReactionType type, CancellationToken cancellationToken = default);
+        Task RemoveReactionAsync(int postId, Guid userId, CancellationToken cancellationToken = default);
         Task<IEnumerable<PostReactionDetailResponse>> GetPostReactionsAsync(int postId, CancellationToken cancellationToken = default);
-        Task<CursorPagedResult<PostFeedResponse>> GetPostsByUserIdAsync(Guid userId, string? cursor, int pageSize, CancellationToken cancellationToken = default);
+        Task<CursorPagedResult<PostFeedResponse>> GetPostsByUserIdAsync(Guid userId, Guid? currentUserId, string? cursor, int pageSize, CancellationToken cancellationToken = default);
         Task<CommentResponse> AddCommentAsync(int postId, Guid userId, CreateCommentDto request, CancellationToken cancellationToken = default);
         Task<CursorPagedResult<CommentResponse>> GetPostCommentsAsync(int postId, string? cursor, int pageSize, CancellationToken cancellationToken = default);
     }
