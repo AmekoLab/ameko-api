@@ -26,6 +26,13 @@ public class PostFeedResponse
     public int ReactionCount { get; set; }
     public int CommentCount { get; set; }
     
+    public string Username { get; set; } = string.Empty;
+    public string FullName { get; set; } = string.Empty;
+    public string? AvatarUrl { get; set; }
+    
+    public Guid? ShopId { get; set; }
+    public string Role { get; set; } = string.Empty;
+    
     public ProductPreviewDto? Product { get; set; }
 }
 

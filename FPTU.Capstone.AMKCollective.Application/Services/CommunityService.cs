@@ -90,6 +90,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 Id = p.Id,
                 UserId = p.UserId,
+                Username = p.User?.Username ?? "Unknown",
+                FullName = p.User != null ? $"{p.User.FirstName} {p.User.LastName}" : "Unknown",
+                AvatarUrl = p.User?.Image,
+                ShopId = p.User?.ShopProfile?.Id,
+                Role = p.User?.Role != null ? p.User.Role.Name.ToString() : "Customer",
                 Title = p.Title,
                 CreatedAt = p.CreatedAt,
                 AssembledProductId = p.AssembledProductId,
@@ -150,10 +155,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             };
             await _notificationQueue.QueueNotificationAsync(notificationItem);
 
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            
             var response = new PostFeedResponse
             {
                 Id = post.Id,
                 UserId = post.UserId,
+                Username = user?.Username ?? "Unknown",
+                FullName = user != null ? $"{user.FirstName} {user.LastName}" : "Unknown",
+                AvatarUrl = user?.Image,
+                ShopId = user?.ShopProfile?.Id,
+                Role = user?.Role != null ? user.Role.Name.ToString() : "Customer",
                 Title = post.Title,
                 CreatedAt = post.CreatedAt,
                 AssembledProductId = post.AssembledProductId,
@@ -174,6 +186,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 Id = post.Id,
                 UserId = post.UserId,
+                Username = post.User?.Username ?? "Unknown",
+                FullName = post.User != null ? $"{post.User.FirstName} {post.User.LastName}" : "Unknown",
+                AvatarUrl = post.User?.Image,
+                ShopId = post.User?.ShopProfile?.Id,
+                Role = post.User?.Role != null ? post.User.Role.Name.ToString() : "Customer",
                 Title = post.Title,
                 CreatedAt = post.CreatedAt,
                 AssembledProductId = post.AssembledProductId,
