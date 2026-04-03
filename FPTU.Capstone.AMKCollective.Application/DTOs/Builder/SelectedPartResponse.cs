@@ -21,5 +21,12 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Builder
         public string? LayerImageUrl { get; set; }
         /// <summary>Luật lọc bước tiếp theo, VD: "plate:case-den"</summary>
         public string? NextStepFilterRule { get; set; }
+
+        /// Giá per-unit của linh kiện bị thay thế (chỉ dùng cho addon replacement).
+        /// = 0 nếu là addon extra thật sự (keycap artisan).
+        /// > 0 nếu là addon replacement (switch đặc biệt thay thế switch thường).
+        /// Dùng để tránh double-counting khi tính tổng giá.
+        public decimal BaseUnitPriceToDeduct { get; set; } = 0;
+
     }
 }

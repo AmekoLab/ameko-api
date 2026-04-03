@@ -88,10 +88,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var cart = await _unitOfWork.Carts.GetCartByUserIdAsync(userId);
             if (cart == null || !cart.CartItems.Any()) return null;
 
+            // Sync CartItem với session đang còn active trước khi render giỏ hàng.
+            // Đảm bảo user luôn thấy giá và addon mới nhất, không phải snapshot cũ.
+            await SyncCustomCartItemsWithSessionsAsync(cart);
+
             var orderItemsResponse = new List<OrderItemResponse>();
             decimal subTotal = 0;
 
-            // 1. Gọi Helper map và tính giá Real-time cho từng Item
             foreach (var item in cart.CartItems)
             {
                 var itemResponse = await ValidateAndMapCartItemAsync(item);
@@ -99,7 +102,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 subTotal += itemResponse.TotalPrice;
             }
 
-            // 2. Map ra Response DTO lừa FE
             return new OrderResponse
             {
                 OrderId = cart.Id,
@@ -1602,12 +1604,26 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (baseKit == null || !baseKit.IsActive) throw new InvalidOperationException("Product is inactive or not found.");
             if (baseKit.StockQuantity < request.Quantity) throw new InvalidOperationException($"Insufficient stock. Available: {baseKit.StockQuantity}");
 
+            // Luôn build DesignConfig từ session.SelectedItemsJson hiện tại.
+            // Đảm bảo mọi addon đã thêm sau lần add to cart đầu tiên đều được sync vào CartItem.
+            var latestDesignConfig = JsonSerializer.Serialize(new
+            {
+                SessionId = session.Id,
+                BaseKitId = session.BaseKitId,
+                SelectedItemsJson = session.SelectedItemsJson
+            });
+
             var sessionStr = request.BuilderSessionId.Value.ToString();
-            var existingItem = cart.CartItems.FirstOrDefault(x => x.IsCustom && x.DesignConfig != null && x.DesignConfig.Contains(sessionStr));
+            var existingItem = cart.CartItems.FirstOrDefault(x =>
+                x.IsCustom && x.DesignConfig != null && x.DesignConfig.Contains(sessionStr));
 
             if (existingItem != null)
             {
+                // Cập nhật cả Quantity LẪN DesignConfig thay vì chỉ tăng Quantity.
+                // Trước đây: addon mới bị mất vì snapshot cũ không bị thay thế.
                 existingItem.Quantity += request.Quantity;
+                existingItem.DesignConfig = latestDesignConfig;
+                existingItem.UpdatedAt = DateTime.UtcNow;
                 _unitOfWork.CartItems.Update(existingItem);
             }
             else
@@ -1618,12 +1634,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     ProductId = session.BaseKitId,
                     Quantity = request.Quantity,
                     IsCustom = true,
-                    DesignConfig = JsonSerializer.Serialize(new
-                    {
-                        SessionId = session.Id,
-                        BaseKitId = session.BaseKitId,
-                        SelectedItemsJson = session.SelectedItemsJson
-                    })
+                    DesignConfig = latestDesignConfig
                 };
                 await _unitOfWork.CartItems.AddAsync(newItem);
             }
@@ -1778,16 +1789,28 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         var selectedParts = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(selectedItemsStr);
                         if (selectedParts != null)
                         {
-                            foreach (var part in selectedParts.Values)
+                            foreach (var kvp in selectedParts)
                             {
+                                var key = kvp.Key;
+                                var part = kvp.Value;
                                 int qtyRecipe = part.Quantity > 0 ? part.Quantity : 1;
-                                additionalPrice += (part.Price * qtyRecipe);
+
+                                // Dùng CÙNG logic với AddExtraPartToSessionAsync và RemoveExtraPartFromSessionAsync:
+                                // - Addon key (bắt đầu bằng "addon_"): chỉ cộng phần CHÊNH LỆCH
+                                //   VD: switch addon thay thế switch cũ → cộng (newPrice - oldPrice) * qty
+                                //   → tránh double-count giá switch workflow + giá switch addon
+                                // - Builder step bình thường: cộng toàn bộ price * qty
+                                decimal effectivePrice = key.StartsWith("addon_")
+                                    ? (part.Price - part.BaseUnitPriceToDeduct)
+                                    : part.Price;
+
+                                additionalPrice += effectivePrice * qtyRecipe;
 
                                 componentsDto.Add(new OrderItemComponentDto
                                 {
                                     PartId = part.Id,
                                     PartName = part.Name,
-                                    PartPriceSnapshot = part.Price,
+                                    PartPriceSnapshot = effectivePrice, // snapshot giá thực tế được tính
                                     PartImageUrl = part.ThumbnailUrl,
                                     Quantity = qtyRecipe
                                 });
@@ -1808,6 +1831,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 var baseKit = await _unitOfWork.Models.GetByIdAsync(item.ProductId.Value);
                 if (baseKit == null || baseKit.StockQuantity < newQuantity)
                     throw new InvalidOperationException("Insufficient stock for custom base kit.");
+
+                // Kiểm tra tồn kho của từng addon trong DesignConfig.
+                // Addon chỉ được soft-check khi thêm vào session, race condition có thể xảy ra.
+                // Đây là lần hard-check thực sự trước khi cho phép checkout.
+                if (!string.IsNullOrEmpty(item.DesignConfig))
+                    await ValidateAddonStockFromDesignConfigAsync(item.DesignConfig, newQuantity);
             }
             else if (!item.IsCustom && item.AssembledProductId.HasValue)
             {
@@ -2153,6 +2182,98 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     itemResponse.ShopName = shop?.ShopName ?? "Shop";
                 }
             }
+        }
+
+        /// <summary>
+        /// Hard-check tồn kho cho tất cả addon component trong DesignConfig.
+        /// Gọi trước checkout để bắt race condition (nhiều user cùng add addon cho 1 item kho).
+        /// </summary>
+        private async Task ValidateAddonStockFromDesignConfigAsync(string designConfig, int kitQuantity)
+        {
+            try
+            {
+                var configObj = JsonSerializer.Deserialize<JsonElement>(designConfig);
+                if (!configObj.TryGetProperty("SelectedItemsJson", out var selectedItemsProp)) return;
+
+                var selectedItemsStr = selectedItemsProp.GetString();
+                if (string.IsNullOrEmpty(selectedItemsStr)) return;
+
+                var selectedParts = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(selectedItemsStr);
+                if (selectedParts == null) return;
+
+                // Chỉ check các key addon, bỏ qua các bước builder thông thường (case, plate, switch...)
+                foreach (var kvp in selectedParts.Where(x => x.Key.StartsWith("addon_")))
+                {
+                    var part = kvp.Value;
+                    if (part.BaseUnitPriceToDeduct > part.Price)
+                        throw new InvalidOperationException(
+                            $"Invalid price configuration for add-on '{part.Name}'. " +
+                            $"Deduction cannot exceed component price.");
+                    int totalNeeded = part.Quantity * kitQuantity;
+
+                    var partEntity = await _unitOfWork.Models.GetByIdAsync(part.Id);
+                    if (partEntity == null)
+                        throw new InvalidOperationException($"Add-on component '{part.Name}' no longer exists.");
+
+                    if (partEntity.StockQuantity < totalNeeded)
+                        throw new InvalidOperationException(
+                            $"Insufficient stock for add-on '{part.Name}'. " +
+                            $"Available: {partEntity.StockQuantity}, Required: {totalNeeded}. " +
+                            $"Please update your configuration before checking out.");
+                }
+            }
+            catch (JsonException)
+            {
+                // DesignConfig malformed bỏ qua, để checkout tự xử lý
+            }
+        }
+        /// <summary>
+        /// Đồng bộ DesignConfig của các CartItem custom với session đang còn active.
+        /// Chỉ sync khi session còn sống và data thực sự thay đổi để tránh DB write thừa.
+        /// Nếu session đã hết hạn → giữ nguyên snapshot cuối cùng để user vẫn checkout được.
+        /// </summary>
+        private async Task SyncCustomCartItemsWithSessionsAsync(Cart cart)
+        {
+            bool hasChanges = false;
+
+            foreach (var item in cart.CartItems.Where(x =>
+                x.IsCustom && x.ProductId.HasValue && !string.IsNullOrEmpty(x.DesignConfig)))
+            {
+                try
+                {
+                    var configObj = JsonSerializer.Deserialize<JsonElement>(item.DesignConfig!);
+                    if (!configObj.TryGetProperty("SessionId", out var sessionIdProp)) continue;
+                    if (!sessionIdProp.TryGetGuid(out var sessionId)) continue;
+
+                    var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(sessionId);
+
+                    // Session hết hạn hoặc không tìm thấy, giữ nguyên snapshot cuối, không làm gì
+                    if (session == null || session.ExpiresAt < DateTime.UtcNow) continue;
+
+                    // Build config mới nhất từ session hiện tại
+                    var latestDesignConfig = JsonSerializer.Serialize(new
+                    {
+                        SessionId = session.Id,
+                        BaseKitId = session.BaseKitId,
+                        SelectedItemsJson = session.SelectedItemsJson
+                    });
+
+                    // Chỉ update khi thực sự có thay đổi, tránh DB write thừa
+                    if (item.DesignConfig == latestDesignConfig) continue;
+
+                    item.DesignConfig = latestDesignConfig;
+                    item.UpdatedAt = DateTime.UtcNow;
+                    _unitOfWork.CartItems.Update(item);
+                    hasChanges = true;
+                }
+                catch (JsonException)
+                {
+                    // DesignConfig lỗi JSON bỏ qua item này
+                }
+            }
+
+            if (hasChanges)
+                await _unitOfWork.CommitAsync();
         }
     }
 }

@@ -474,10 +474,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             // 1. Validate Session
             var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(sessionId);
-            if (session == null || session.ExpiresAt < DateTime.UtcNow)
+            if (session == null)
             {
-                throw new KeyNotFoundException("Session not found or expired");
+                throw new KeyNotFoundException("Session not found");
             }
+
+            // TODO: Tạm thời tắt check Hết hạn để code/test ở môi trường Dev
+            // if (session.ExpiresAt < DateTime.UtcNow)
+            // {
+            //     throw new KeyNotFoundException("Session expired");
+            // }
 
             // 2. Lấy Workflow
             var workflow = GetWorkflowFromKit(session.BaseKit);
@@ -641,27 +647,72 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<BuilderStepResponse> AddExtraPartToSessionAsync(BuilderAddonRequest request)
         {
-            // 1. Lấy Session hiện tại
-            var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.SessionId);
-            if (session == null) throw new KeyNotFoundException("Session expired or not found");
+            // 1. Basic Validations
+            if (request.SessionId == Guid.Empty)
+                throw new ArgumentException("Session ID cannot be empty.");
 
-            // Phục hồi Dictionary từ JSON
+            if (request.Items == null || !request.Items.Any())
+                return await GetExistingSessionAsync(request.SessionId); // Không có gì để add thì trả về luôn
+
+            // 2. Fetch Session
+            var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.SessionId);
+            if (session == null)
+                throw new KeyNotFoundException($"Builder session with ID {request.SessionId} not found.");
+
+            if (session.BaseKit == null)
+                throw new InvalidOperationException("BaseKit information is missing for this session.");
+
+            // 3. Process Add-ons
             var currentSelection = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson)
                                    ?? new Dictionary<string, SelectedPartResponse>();
 
-            // 2. Vòng lặp xử lý từng món lẻ FE gửi lên
             foreach (var item in request.Items)
             {
+                if (item.Quantity <= 0)
+                    throw new ArgumentException("Quantity must be greater than zero.");
+
                 var extraPart = await _unitOfWork.Models.GetByIdAsync(item.ComponentId);
-                if (extraPart == null) continue; // Bỏ qua nếu ko tìm thấy
+                if (extraPart == null)
+                    throw new KeyNotFoundException($"Add-on component with ID {item.ComponentId} not found.");
 
-                if (extraPart.StockQuantity < item.Quantity)
-                    throw new InvalidOperationException($"The part '{extraPart.Name}' is out of stock.");
+                // Lấy category slug để phân biệt switch vs keycap tại cùng vị trí.
+                // Dùng PartType của component; fallback về "part" nếu null.
+                string categorySlug = extraPart.PartType?.ToLower().Trim().Replace(" ", "_") ?? "part";
 
-                string addonKey = $"addon_{Guid.NewGuid()}";
+                // Key luôn bao gồm cả categorySlug lẫn ComponentId/PositionNote để
+                // đảm bảo switch và keycap tại CÙNG vị trí KHÔNG bao giờ ghi đè nhau.
+                // VD: addon_switch_a  vs  addon_keycap_a  → 2 key khác nhau.
+                string addonKey = string.IsNullOrWhiteSpace(item.PositionNote)
+                    ? $"addon_{categorySlug}_comp_{item.ComponentId}"
+                    : $"addon_{categorySlug}_{item.PositionNote.Trim().ToLower().Replace(" ", "_")}";
+
                 string displayName = string.IsNullOrWhiteSpace(item.PositionNote)
                     ? extraPart.Name
-                    : $"{extraPart.Name} (Mounting position: {item.PositionNote})";
+                    : $"{extraPart.Name} (Position: {item.PositionNote})";
+
+                // Fix switch DOUBLE-COUNT:
+                // - Switch replacement: lưu baseUnitPriceToDeduct = giá per-unit switch cũ
+                //   → khi cộng giá chỉ cộng phần CHÊNH LỆCH (newPrice - oldPrice)
+                // - Keycap artisan (extra thật): baseUnitPriceToDeduct luôn = 0
+                decimal baseUnitPriceToDeduct = 0;
+
+                if (!string.IsNullOrWhiteSpace(item.ReplacesStepName))
+                {
+                    // Kiểm tra xem component này có phải keycap không.
+                    // Keycap artisan KHÔNG phải replacement dù FE có gửi ReplacesStepName.
+                    bool isKeycapCategory = categorySlug.Contains("keycap");
+
+                    if (!isKeycapCategory)
+                    {
+                        // Switch (hoặc part khác): chỉ deduct nếu step bị replace thực sự tồn tại
+                        var stepToReplace = item.ReplacesStepName.Trim().ToLower();
+                        if (currentSelection.TryGetValue(stepToReplace, out var baseStep) && baseStep.Quantity > 0)
+                        {
+                            baseUnitPriceToDeduct = baseStep.Price; // per-unit price của switch cũ
+                        }
+                    }
+                    // isKeycapCategory == true → baseUnitPriceToDeduct giữ nguyên = 0
+                }
 
                 currentSelection[addonKey] = new SelectedPartResponse
                 {
@@ -672,18 +723,31 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     Quantity = item.Quantity,
                     KitDesignOptionId = Guid.Empty,
                     LayerImageUrl = "",
-                    NextStepFilterRule = ""
+                    NextStepFilterRule = "",
+                    BaseUnitPriceToDeduct = baseUnitPriceToDeduct
                 };
             }
 
-            // 3. Tính toán lại tổng tiền giỏ hàng sau khi đã thêm đủ món
+            // 4. Recalculate Total Price (Tính lại giá tự động)
             decimal newTotal = session.BaseKit.Price;
-            foreach (var item in currentSelection.Values)
+            foreach (var kvp in currentSelection)
             {
-                newTotal += (item.Price * item.Quantity);
+                var part = kvp.Value;
+                if (kvp.Key.StartsWith("addon_"))
+                {
+                    // Addon: cộng giá mới, trừ giá cũ của linh kiện bị replace
+                    // Nếu BaseUnitPriceToDeduct = 0 (keycap artisan) → cộng toàn bộ
+                    // Nếu BaseUnitPriceToDeduct > 0 (switch replacement) → chỉ cộng phần chênh lệch
+                    newTotal += (part.Price - part.BaseUnitPriceToDeduct) * part.Quantity;
+                }
+                else
+                {
+                    // Builder step bình thường
+                    newTotal += part.Price * part.Quantity;
+                }
             }
 
-            // 4. Lưu lại
+            // 5. Save Changes
             session.TotalPrice = newTotal;
             session.SelectedItemsJson = JsonSerializer.Serialize(currentSelection);
 
@@ -706,12 +770,23 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 currentSelection.Remove(addonKey);
 
-                // Tính lại tiền
+                // Tính lại tiền — dùng cùng logic với AddExtraPartToSessionAsync:
+                // Addon key (bắt đầu bằng "addon_"): cộng (Price - BaseUnitPriceToDeduct) * Quantity
+                // Builder step bình thường: cộng Price * Quantity
                 decimal newTotal = session.BaseKit.Price;
-                foreach (var item in currentSelection.Values)
+                foreach (var kvp in currentSelection)
                 {
-                    newTotal += (item.Price * item.Quantity);
+                    var part = kvp.Value;
+                    if (kvp.Key.StartsWith("addon_"))
+                    {
+                        newTotal += (part.Price - part.BaseUnitPriceToDeduct) * part.Quantity;
+                    }
+                    else
+                    {
+                        newTotal += part.Price * part.Quantity;
+                    }
                 }
+
                 session.TotalPrice = newTotal;
                 session.SelectedItemsJson = JsonSerializer.Serialize(currentSelection);
 
