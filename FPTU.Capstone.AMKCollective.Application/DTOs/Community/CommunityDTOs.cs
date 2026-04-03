@@ -30,6 +30,9 @@ public class PostFeedResponse
     public string FullName { get; set; } = string.Empty;
     public string? AvatarUrl { get; set; }
     
+    public Guid? ShopId { get; set; }
+    public string Role { get; set; } = string.Empty;
+    
     public ProductPreviewDto? Product { get; set; }
 }
 

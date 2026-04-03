@@ -50,7 +50,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         public async Task<User?> GetByIdAsync(Guid id)
         {
-            return await _context.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.Id == id);
+            return await _context.Users.Include(u => u.Role).Include(u => u.ShopProfile).FirstOrDefaultAsync(u => u.Id == id);
         }
 
         public Task UpdateAsync(User user)
