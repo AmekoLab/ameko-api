@@ -15,5 +15,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Settings
         public int MaxCancellationsPerPeriod { get; set; }
         public decimal ShopCancellationPenaltyRate { get; set; }
         public int ShopResponseTimeoutHours { get; set; }
+        public int CustomerResponseSlaHours { get; set; } = 24;
+        public int CustomerResponseReminderMaxCount { get; set; } = 3;
     }
 }

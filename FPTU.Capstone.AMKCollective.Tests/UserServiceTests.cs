@@ -39,8 +39,9 @@ namespace FPTU.Capstone.AMKCollective.Tests
         public async Task LoginAsync_VariousCases_ReturnsExpected(string email, string inputPassword, AccountStatus status, bool shouldSucceed, string testCase)
         {
             // Arrange
+            _ = testCase;
             var correctPassword = "password123";
-            User user = null;
+            User? user = null;
 
             if (email != "nonexistent@test.com")
             {
@@ -55,7 +56,7 @@ namespace FPTU.Capstone.AMKCollective.Tests
             }
 
             var mockUnitOfWork = new Mock<IUnitOfWork>();
-            mockUnitOfWork.Setup(u => u.Users.GetByEmailAsync(email)).ReturnsAsync(user);
+            mockUnitOfWork.Setup(u => u.Users.GetByEmailAsync(email)).ReturnsAsync((User?)user);
             mockUnitOfWork.Setup(u => u.CommitAsync()).Returns(Task.CompletedTask);
 
             var mockEmailService = new Mock<IEmailService>();
@@ -93,12 +94,13 @@ namespace FPTU.Capstone.AMKCollective.Tests
         public async Task RegisterAsync_VariousCases_ReturnsExpected(string username, string email, bool shouldSucceed, string testCase)
         {
             // Arrange
+            _ = testCase;
             var mockUnitOfWork = new Mock<IUnitOfWork>();
             
             if (shouldSucceed)
             {
-                mockUnitOfWork.Setup(u => u.Users.GetByUsernameAsync(username)).ReturnsAsync((User)null);
-                mockUnitOfWork.Setup(u => u.Users.GetByEmailAsync(email)).ReturnsAsync((User)null);
+                mockUnitOfWork.Setup(u => u.Users.GetByUsernameAsync(username)).ReturnsAsync((User?)null);
+                mockUnitOfWork.Setup(u => u.Users.GetByEmailAsync(email)).ReturnsAsync((User?)null);
             }
             else
             {

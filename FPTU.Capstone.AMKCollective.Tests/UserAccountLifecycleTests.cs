@@ -374,6 +374,72 @@ namespace FPTU.Capstone.AMKCollective.Tests
         }
 
         [Fact]
+        public async Task UpgradeToShopAsync_WhenShopProfileMissing_ReturnsFail()
+        {
+            var userId = Guid.NewGuid();
+            var user = new User
+            {
+                Id = userId,
+                Email = "user@test.com",
+                Username = "user",
+                FirstName = "U",
+                LastName = "S",
+                HashedPassword = CreatePasswordHash("123"),
+                EmailConfirmed = true
+            };
+
+            var shopRole = new Role { Id = Guid.NewGuid(), Name = RoleType.Shop };
+
+            var unitOfWorkMock = new Mock<IUnitOfWork>();
+            unitOfWorkMock.Setup(u => u.Users.GetByIdAsync(userId)).ReturnsAsync(user);
+            unitOfWorkMock.Setup(u => u.Users.GetRoleByNameAsync(RoleType.Shop)).ReturnsAsync(shopRole);
+            unitOfWorkMock.Setup(u => u.Shops.GetByUserIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync((ShopProfile?)null);
+
+            var service = CreateUserService(unitOfWorkMock);
+
+            var result = await service.UpgradeToShopAsync(userId);
+
+            Assert.False(result.Success);
+            Assert.Equal("Shop profile is required before upgrading to Shop", result.ErrorMessage);
+        }
+
+        [Fact]
+        public async Task UpgradeToShopAsync_WhenShopProfileIncomplete_ReturnsFail()
+        {
+            var userId = Guid.NewGuid();
+            var user = new User
+            {
+                Id = userId,
+                Email = "user@test.com",
+                Username = "user",
+                FirstName = "U",
+                LastName = "S",
+                HashedPassword = CreatePasswordHash("123"),
+                EmailConfirmed = true
+            };
+
+            var shopRole = new Role { Id = Guid.NewGuid(), Name = RoleType.Shop };
+            var incompleteProfile = new ShopProfile
+            {
+                UserId = userId,
+                ShopName = "My Shop",
+                CitizenId = "0123456789"
+            };
+
+            var unitOfWorkMock = new Mock<IUnitOfWork>();
+            unitOfWorkMock.Setup(u => u.Users.GetByIdAsync(userId)).ReturnsAsync(user);
+            unitOfWorkMock.Setup(u => u.Users.GetRoleByNameAsync(RoleType.Shop)).ReturnsAsync(shopRole);
+            unitOfWorkMock.Setup(u => u.Shops.GetByUserIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(incompleteProfile);
+
+            var service = CreateUserService(unitOfWorkMock);
+
+            var result = await service.UpgradeToShopAsync(userId);
+
+            Assert.False(result.Success);
+            Assert.StartsWith("Shop profile is incomplete. Missing:", result.ErrorMessage);
+        }
+
+        [Fact]
         public async Task UpgradeToShopAsync_WhenValid_UpdatesRoleAndCommits()
         {
             var userId = Guid.NewGuid();
@@ -390,10 +456,25 @@ namespace FPTU.Capstone.AMKCollective.Tests
             };
 
             var shopRole = new Role { Id = roleId, Name = RoleType.Shop };
+            var completeProfile = new ShopProfile
+            {
+                UserId = userId,
+                ShopName = "AMK Artisan",
+                Bio = "Custom artisan",
+                Address = "HCM City",
+                PhoneNumber = "0900000000",
+                ContactEmail = "shop@test.com",
+                CitizenId = "012345678901",
+                TaxCode = "TAX-001",
+                BankName = "Vietcombank",
+                BankAccountNumber = "123456789",
+                BankAccountName = "AMK Artisan"
+            };
 
             var unitOfWorkMock = new Mock<IUnitOfWork>();
             unitOfWorkMock.Setup(u => u.Users.GetByIdAsync(userId)).ReturnsAsync(user);
             unitOfWorkMock.Setup(u => u.Users.GetRoleByNameAsync(RoleType.Shop)).ReturnsAsync(shopRole);
+            unitOfWorkMock.Setup(u => u.Shops.GetByUserIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(completeProfile);
             unitOfWorkMock.Setup(u => u.Users.UpdateAsync(user)).Returns(Task.CompletedTask);
             unitOfWorkMock.Setup(u => u.CommitAsync()).Returns(Task.CompletedTask);
 
