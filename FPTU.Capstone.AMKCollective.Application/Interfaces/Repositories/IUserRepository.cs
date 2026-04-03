@@ -26,5 +26,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         /// Returns users created within a date range for dashboard analytics.
         /// </summary>
         Task<List<User>> GetUsersForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default);
+
+        /// <summary>
+        /// Deletes accounts that are still pending verification after a configured threshold.
+        /// Returns the number of deleted users.
+        /// </summary>
+        Task<int> DeleteUnverifiedAccountsOlderThanAsync(DateTime thresholdUtc, CancellationToken token = default);
     }
 }

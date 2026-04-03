@@ -188,6 +188,7 @@ internal class Program
         builder.Services.AddHostedService<OrderCancellationTimeoutWorker>();
         builder.Services.AddHostedService<FundsReleaseWorker>();
         builder.Services.AddHostedService<AbandonedOrderCleanupWorker>();
+        builder.Services.AddHostedService<UnverifiedAccountCleanupWorker>();       
         builder.Services.AddHostedService<QualityScoreRefreshWorker>();
 
         // Social Commerce Queues

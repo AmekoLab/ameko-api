@@ -68,6 +68,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var user = await _unitOfWork.Users.GetByEmailAsync(request.Email);
             if (user == null || !VerifyPasswordHash(request.Password, user.HashedPassword))
                 return null;
+
+            // Keep this behavior to let FE route unverified users to verification flow.
             if(user.Status == AccountStatus.Suspended)
                 return null;
 
@@ -77,6 +79,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
 
             var response = _mapper.Map<LoginResponse>(user);
+            response.EmailConfirmed = user.EmailConfirmed;
+            response.AccountStatus = user.Status.ToString();
             response.Token = token;
             response.RefreshToken = refreshTokenRaw;
 
