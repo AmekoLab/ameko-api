@@ -19,5 +19,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<CursorPagedResult<PostFeedResponse>> GetPostsByUserIdAsync(Guid userId, Guid? currentUserId, string? cursor, int pageSize, CancellationToken cancellationToken = default);
         Task<CommentResponse> AddCommentAsync(int postId, Guid userId, CreateCommentDto request, CancellationToken cancellationToken = default);
         Task<CursorPagedResult<CommentResponse>> GetPostCommentsAsync(int postId, string? cursor, int pageSize, CancellationToken cancellationToken = default);
+        Task<CommentResponse> UpdateCommentAsync(int commentId, Guid userId, UpdateCommentDto request, CancellationToken cancellationToken = default);
+        Task SoftDeleteCommentAsync(int commentId, Guid userId, string userRole, CancellationToken cancellationToken = default);
+        Task HardDeleteCommentAsync(int commentId, Guid userId, string userRole, CancellationToken cancellationToken = default);
+        Task HardDeleteReactionAsync(int postId, Guid userId, string userRole, CancellationToken cancellationToken = default);
     }
 }

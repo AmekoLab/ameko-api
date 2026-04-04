@@ -102,5 +102,15 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             }
             return null;
         }
+
+        /// <summary>
+        /// Gets the current user's Role from the JWT token
+        /// </summary>
+        /// <returns>Role of the current user</returns>
+        protected string GetCurrentUserRole()
+        {
+            var roleClaim = User?.FindFirst(ClaimTypes.Role) ?? User?.FindFirst("role");
+            return roleClaim?.Value ?? string.Empty;
+        }
     }
 }

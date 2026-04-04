@@ -10,6 +10,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
     {
         Task<List<PostComment>> GetByPostIdAsync(int postId, CancellationToken ct = default);
         Task<List<PostComment>> GetByPostIdCursorPagedAsync(int postId, DateTime? createdAt, int? id, int pageSize, CancellationToken ct = default);
+        Task<PostComment?> GetByIdAsync(int id, CancellationToken ct = default);
         Task AddAsync(PostComment comment, CancellationToken ct = default);
         void Update(PostComment comment);
         void Remove(PostComment comment);
