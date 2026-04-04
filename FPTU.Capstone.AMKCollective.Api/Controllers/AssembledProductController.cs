@@ -46,7 +46,6 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         /// </summary>
         /// <param name="shopId">The unique identifier of the shop.</param>
         /// <returns>A list of assembled products for the shop.</returns>
-        [Authorize]
         [HttpGet("shop/{shopId}")]
         [SwaggerOperation(
             Summary = "Get assembled products by shop",
@@ -64,7 +63,6 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         /// </summary>
         /// <param name="id">The unique identifier of the assembled product.</param>
         /// <returns>The detailed information of the assembled product.</returns>
-        [Authorize]
         [HttpGet("{id}")]
         [SwaggerOperation(
             Summary = "Get assembled product detail",

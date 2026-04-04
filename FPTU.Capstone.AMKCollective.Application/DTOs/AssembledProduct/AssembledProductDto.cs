@@ -11,6 +11,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct
         public decimal Price { get; set; }
         public Guid ShopId { get; set; }
         public string ShopName { get; set; } = string.Empty;
+        public string? LogoUrl { get; set; }
         public bool IsDeleted { get; set; }
         public string? Image1 { get; set; }
         public string? Image2 { get; set; }
