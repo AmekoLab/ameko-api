@@ -96,8 +96,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Include(x => x.Order) 
                 .CountAsync(x => x.UserId == userId
                               && x.VoucherId == voucherId
-                              && x.OrderId != excludeOrderId
-                              && x.Order.OrderStatus != OrderStatus.Cancelled);
+                              && x.OrderId != excludeOrderId);
         }
     }
 }

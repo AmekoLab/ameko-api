@@ -19,6 +19,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DI
             services.AddScoped<IChatService, ChatService>();
             services.AddScoped<IAdminDashboardService, AdminDashboardService>();
             services.AddScoped<IShopDashboardService, ShopDashboardService>();
+            services.AddScoped<IReputationService, ReputationService>();
             return services;
         }
     }

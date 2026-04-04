@@ -51,6 +51,30 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
+        /// Khach hang cap nhat danh gia (chi duoc chinh 1 lan).
+        /// </summary>
+        [HttpPut("feedbacks/{feedbackId}")]
+        [Authorize]
+        public async Task<IActionResult> UpdateFeedback(Guid feedbackId, [FromForm] UpdateFeedbackRequest request)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var result = await _feedbackService.UpdateFeedbackAsync(userId, feedbackId, request);
+
+                return SuccessResponse(result, "Feedback updated successfully.");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<object>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ErrorResponse(ex.Message);
+            }
+        }
+
+        /// <summary>
         /// Chủ Shop phản hồi lại một đánh giá của khách hàng.
         /// </summary>
         /// <remarks>

@@ -1,6 +1,8 @@
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Payment;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
+using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
@@ -21,17 +23,19 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
     {
         private readonly StripeSettings _stripeSettings;
         private readonly IUnitOfWork _unitOfWork;
+                private readonly OrderSettings _orderSettings;
         //private readonly IWalletService _walletService;
         private readonly IServiceProvider _serviceProvider;
 
         public StripePaymentService(IOptions<StripeSettings> stripeSettings, IUnitOfWork unitOfWork, //IWalletService walletService
-          IServiceProvider serviceProvider)
+                    IServiceProvider serviceProvider, IOptions<OrderSettings> orderOptions)
         {
             _stripeSettings = stripeSettings.Value;
             StripeConfiguration.ApiKey = _stripeSettings.SecretKey;
             _unitOfWork = unitOfWork;
             //_walletService = walletService;
             _serviceProvider = serviceProvider;
+                        _orderSettings = orderOptions.Value;
         }
 
         // 1. TẠO CHECKOUT SESSION (Gửi sang Stripe)
@@ -215,7 +219,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                                 var shopProfile = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
                                 if (shopProfile != null)
                                 {
-                                    decimal shopRevenue = order.TotalAmount + order.SystemDiscountAmount;
+                                    decimal shopRevenue = ShopRevenueCalculator.CalculateShopRevenue(
+                                        order,
+                                        _orderSettings.ShopPayoutRate,
+                                        _orderSettings.SystemVoucherShopShareRate,
+                                        _orderSettings.SystemVoucherShopShareCap);
                                     shopPendingSales.Add((shopProfile.UserId, order.Id, shopRevenue));
                                 }
                             }

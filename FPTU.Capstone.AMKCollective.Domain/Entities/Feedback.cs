@@ -14,6 +14,8 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         [MaxLength(2000)]
         public string? Comment { get; set; }
 
+        public int EditCount { get; set; } = 0;
+
         [MaxLength(2000)]
         public string? ShopReply { get; set; }
         public DateTime? ShopRepliedAt { get; set; }

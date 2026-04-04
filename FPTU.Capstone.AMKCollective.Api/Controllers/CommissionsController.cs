@@ -34,9 +34,33 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             var userId = GetCurrentUserId();
             if (userId == Guid.Empty) return Unauthorized();
 
-            var requestId = await _commissionService.CreateRequestAsync(userId, request);
+            var result = await _commissionService.CreateRequestAsync(userId, request);
 
-            return SuccessResponse(new { RequestId = requestId }, "Request created successfully");
+            if (!result.Success)
+            {
+                return ErrorResponse<object>(result.ErrorMessage);
+            }
+
+            return SuccessResponse(new { RequestId = result.RequestId }, "Request created successfully");
+        }
+
+        /// <summary>
+        /// Updates a draft commission request.
+        /// </summary>
+        [HttpPut("{requestId}")]
+        [Authorize]
+        public async Task<IActionResult> UpdateRequest(Guid requestId, [FromBody] UpdateCommissionRequest request)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == Guid.Empty) return Unauthorized();
+
+            var result = await _commissionService.UpdateRequestAsync(userId, requestId, request);
+            if (!result.Success)
+            {
+                return ErrorResponse<object>(result.ErrorMessage);
+            }
+
+            return SuccessResponse<object>("Request updated successfully");
         }
         /// <summary>
         /// Retrieves a list of all commission requests created by the currently logged-in user.

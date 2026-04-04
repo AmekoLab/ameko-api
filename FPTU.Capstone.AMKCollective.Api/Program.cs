@@ -189,6 +189,8 @@ internal class Program
         builder.Services.AddHostedService<FundsReleaseWorker>();
         builder.Services.AddHostedService<AbandonedOrderCleanupWorker>();
         builder.Services.AddHostedService<QualityScoreRefreshWorker>();
+        builder.Services.AddHostedService<CommissionReminderWorker>();
+        builder.Services.AddHostedService<AssemblyTrackingTimeoutWorker>();
 
         // Social Commerce Queues
         builder.Services.AddSingleton<INotificationQueue, NotificationQueue>();

@@ -17,6 +17,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Enums
         Completed = 3,          // Đã chốt báo giá và chuyển thành công thành Đơn hàng
 
         Canceled = 4,           // Yêu cầu đã bị hủy (bởi User hoặc hệ thống)
-        RejectedByShop = 5      // Shop từ chối làm
+        RejectedByShop = 5,     // Shop từ chối làm
+        Draft = 6               // Bản nhap, chua public cho shop nao
     }
 }

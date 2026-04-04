@@ -1,9 +1,11 @@
 using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Builder;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Reputation;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Wallet;
+using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
@@ -31,11 +33,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly OrderSettings _orderSettings;
         private readonly FrontendUrls _frontendUrls;
         private readonly SystemSettings _systemSettings;
+        private readonly ReputationSettings _reputationSettings;
+        private readonly IReputationService _reputationService;
         private readonly IVnPayService _vnPayService;
         private readonly IHttpContextAccessor _httpContextAccessor;
 
         public OrderService(IUnitOfWork unitOfWork, IMapper mapper, IPaymentService paymentService, IVoucherService voucher, IWalletService wallet, IOptions<OrderSettings> orderOptions,
-        IOptions<FrontendUrls> urlOptions, IOptions<SystemSettings> systemSettings, IVnPayService vnPayService, IHttpContextAccessor httpContextAccessor)
+        IOptions<FrontendUrls> urlOptions, IOptions<SystemSettings> systemSettings, IOptions<ReputationSettings> reputationOptions, IReputationService reputationService, IVnPayService vnPayService, IHttpContextAccessor httpContextAccessor)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
@@ -45,6 +49,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _orderSettings = orderOptions.Value;
             _frontendUrls = urlOptions.Value;
             _systemSettings = systemSettings.Value;
+            _reputationSettings = reputationOptions.Value;
+            _reputationService = reputationService;
             _vnPayService = vnPayService;
             _httpContextAccessor = httpContextAccessor;
         }
@@ -168,8 +174,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             decimal totalShippingFee = 0;
             decimal totalShopDiscount = 0;
 
-            // Biến cờ check xem khách có đang xài nhiều mã không (Dùng cho cả Shop và System)
-            bool isStacking = !string.IsNullOrEmpty(request.AppliedSystemVoucherCode) && request.AppliedShopVoucherCodes?.Any() == true;
+            var shopVoucherGroups = NormalizeShopVoucherCodes(request.AppliedShopVoucherCodes, request.AppliedShopVoucherCodeGroups);
 
             foreach (var group in shopGroups)
             {
@@ -182,27 +187,52 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 decimal shopDiscount = 0;
                 string? shopVoucherError = null;
 
-                // Tính Voucher của Shop (CHỈ TÍNH TOÁN, KHÔNG GHI DATABASE)
-                if (request.AppliedShopVoucherCodes != null &&
-                    request.AppliedShopVoucherCodes.TryGetValue(shopId, out var shopVoucherCode) &&
-                    !string.IsNullOrEmpty(shopVoucherCode))
+                if (shopVoucherGroups.TryGetValue(shopId, out var shopVoucherCodes) && shopVoucherCodes.Count > 0)
                 {
-                    var sv = await _unitOfWork.Vouchers.GetByCodeAsync(shopVoucherCode);
-                    if (sv == null)
-                    {
-                        shopVoucherError = "Voucher not found.";
-                    }
-                    else
-                    {
-                        // GỌI HELPER KIỂM TRA BẢO MẬT & NGHIỆP VỤ Ở ĐÂY
-                        shopVoucherError = await ValidateVoucherStrictAsync(userId, sv, shopSubTotal, isStacking);
+                    var distinctCodes = shopVoucherCodes.Where(c => !string.IsNullOrWhiteSpace(c)).Distinct().ToList();
+                    var vouchers = new List<Voucher>();
 
-                        // NẾU KHÔNG CÓ LỖI (null) THÌ MỚI BẮT ĐẦU TÍNH TIỀN GIẢM GIÁ
-                        if (shopVoucherError == null)
+                    foreach (var code in distinctCodes)
+                    {
+                        var sv = await _unitOfWork.Vouchers.GetByCodeAsync(code);
+                        if (sv == null)
                         {
-                            shopDiscount = sv.DiscountType == DiscountType.FixedAmount ? sv.Value : (shopSubTotal * sv.Value / 100);
-                            if (sv.MaxDiscountAmount.HasValue && shopDiscount > sv.MaxDiscountAmount.Value) shopDiscount = sv.MaxDiscountAmount.Value;
-                            if (shopDiscount > shopSubTotal) shopDiscount = shopSubTotal;
+                            shopVoucherError = "Voucher not found.";
+                            break;
+                        }
+
+                        if (sv.Scope != VoucherScope.Shop)
+                        {
+                            shopVoucherError = "This voucher is not a shop voucher.";
+                            break;
+                        }
+
+                        if (sv.ShopId.HasValue && sv.ShopId.Value != shopId)
+                        {
+                            shopVoucherError = "This voucher does not belong to this shop.";
+                            break;
+                        }
+
+                        shopVoucherError = await ValidateVoucherStrictAsync(userId, sv, shopSubTotal);
+                        if (shopVoucherError != null) break;
+
+                        vouchers.Add(sv);
+                    }
+
+                    if (shopVoucherError == null && vouchers.Count > 1 && vouchers.Any(v => v.TargetUserId != userId))
+                    {
+                        shopVoucherError = "Only private shop vouchers can be stacked.";
+                    }
+
+                    if (shopVoucherError == null)
+                    {
+                        decimal remaining = shopSubTotal;
+                        foreach (var sv in vouchers)
+                        {
+                            decimal stepDiscount = _voucherService.CalculateVoucherDiscount(sv, shopSubTotal);
+                            if (stepDiscount > remaining) stepDiscount = remaining;
+                            shopDiscount += stepDiscount;
+                            remaining -= stepDiscount;
                         }
                     }
                 }
@@ -236,7 +266,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
                 else
                 {
-                    systemVoucherError = await ValidateVoucherStrictAsync(userId, sysV, totalCartSubTotal, isStacking);
+                    if (sysV.Scope != VoucherScope.System)
+                    {
+                        systemVoucherError = "This voucher is not a system voucher.";
+                    }
+                    else
+                    {
+                        systemVoucherError = await ValidateVoucherStrictAsync(userId, sysV, totalCartSubTotal);
+                    }
 
                     // NẾU KHÔNG CÓ LỖI (null) THÌ MỚI BẮT ĐẦU TÍNH TIỀN GIẢM GIÁ
                     if (systemVoucherError == null)
@@ -280,6 +317,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     await ValidateCartItemStockAsync(item, item.Quantity);
                     mappedItems.Add(await ValidateAndMapCartItemAsync(item));
                 }
+
+                await EnforceReputationMonthlyLimitsAsync(userId, mappedItems, token);
 
                 var orderGroup = new OrderGroup
                 {
@@ -397,6 +436,30 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return response;
         }
 
+        public async Task UpdateShippingAddressAsync(Guid userId, Guid orderId, DTOs.Order.UpdateShippingAddressRequest request, CancellationToken token = default)
+        {
+            var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
+            if (order == null) throw new KeyNotFoundException("Order not found.");
+            if (order.CustomerId != userId) throw new UnauthorizedAccessException("Access denied.");
+
+            if (order.OrderStatus == OrderStatus.Shipped ||
+                order.OrderStatus == OrderStatus.Completed ||
+                order.OrderStatus == OrderStatus.Returning ||
+                order.OrderStatus == OrderStatus.Returned ||
+                order.OrderStatus == OrderStatus.Refunded ||
+                order.OrderStatus == OrderStatus.Cancelled)
+            {
+                throw new InvalidOperationException("Cannot update shipping address after the order has been shipped.");
+            }
+
+            order.ReceiverName = request.ReceiverName;
+            order.ReceiverPhone = request.ReceiverPhone;
+            order.ShippingAddress = request.ShippingAddress;
+
+            await _unitOfWork.Orders.UpdateOrderAsync(order);
+            await _unitOfWork.CommitAsync();
+        }
+
         // API CHO SHOP
         public async Task<OrderResponse> GetShopOrderDetailAsync(Guid shopId, Guid orderId, CancellationToken token = default)
         {
@@ -410,12 +473,53 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return response;
         }
 
-        public async Task UpdateOrderStatusAsync(Guid shopId, Guid orderId, OrderStatus newStatus, CancellationToken token = default)
+        public async Task CancelOrderByShopAsync(Guid shopId, Guid orderId, string reason, CancellationToken token = default)
         {
             var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
             if (order == null) throw new KeyNotFoundException("Order not found");
             if (order.ShopId != shopId) throw new UnauthorizedAccessException("Access denied.");
-            if (newStatus == OrderStatus.Cancelled && order.OrderStatus != OrderStatus.Cancelled)
+
+            if (order.OrderStatus == OrderStatus.Shipped ||
+                order.OrderStatus == OrderStatus.Completed ||
+                order.OrderStatus == OrderStatus.Returning ||
+                order.OrderStatus == OrderStatus.Returned ||
+                order.OrderStatus == OrderStatus.Refunded ||
+                order.OrderStatus == OrderStatus.Cancelled)
+            {
+                throw new InvalidOperationException("Cannot cancel order at this stage.");
+            }
+
+            foreach (var item in order.OrderItems)
+            {
+                await RefundItemStockAsync(item);
+            }
+
+            if (order.PaymentStatus == PaymentStatus.Paid && order.OrderGroupId.HasValue)
+            {
+                await _paymentService.RefundPaymentAsync(order.OrderGroupId.Value);
+                order.PaymentStatus = PaymentStatus.Refunded;
+                var group = await _unitOfWork.OrderGroups.GetByIdAsync(order.OrderGroupId.Value);
+                if (group != null) group.PaymentStatus = PaymentStatus.Refunded;
+            }
+
+            order.OrderStatus = OrderStatus.Cancelled;
+            order.CancelReason = reason;
+            await _reputationService.AdjustReputationAsync(
+                ReputationTargetType.Shop,
+                shopId,
+                -_reputationSettings.PointsDeductArtisanFault,
+                $"Shop cancelled order #{order.Id}");
+
+            await _unitOfWork.Orders.UpdateOrderAsync(order);
+            await _unitOfWork.CommitAsync();
+        }
+
+        public async Task UpdateOrderStatusAsync(Guid shopId, Guid orderId, DTOs.Order.UpdateOrderStatusRequest request, CancellationToken token = default)
+        {
+            var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
+            if (order == null) throw new KeyNotFoundException("Order not found");
+            if (order.ShopId != shopId) throw new UnauthorizedAccessException("Access denied.");
+            if (request.Status == OrderStatus.Cancelled && order.OrderStatus != OrderStatus.Cancelled)
             {
                 foreach (var item in order.OrderItems)
                 {
@@ -428,7 +532,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
             }
 
-            order.OrderStatus = newStatus;
+            if (request.Status == OrderStatus.Shipped)
+            {
+                if (!request.ExpectedDeliveryDate.HasValue)
+                {
+                    throw new InvalidOperationException("Expected delivery date is required when marking an order as shipped.");
+                }
+
+                order.ExpectedDeliveryDate = request.ExpectedDeliveryDate;
+            }
+
+            order.OrderStatus = request.Status;
             await _unitOfWork.Orders.UpdateOrderAsync(order);
             await _unitOfWork.CommitAsync();
         }
@@ -441,8 +555,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (order == null) throw new KeyNotFoundException("Order not found.");
             if (order.CustomerId != userId) throw new UnauthorizedAccessException("Not your order.");
 
-            // Chặn nếu đơn hàng đã giao hoặc hoàn tất
-            if (order.OrderStatus == OrderStatus.Shipped || order.OrderStatus == OrderStatus.Completed)
+            // Chặn nếu đơn hàng đã vào giai đoạn giao hàng hoặc sau đó
+            if (order.OrderStatus == OrderStatus.Shipped ||
+                order.OrderStatus == OrderStatus.Completed ||
+                order.OrderStatus == OrderStatus.Returning ||
+                order.OrderStatus == OrderStatus.Returned ||
+                order.OrderStatus == OrderStatus.Refunded ||
+                order.OrderStatus == OrderStatus.Cancelled)
             {
                 throw new InvalidOperationException("Cannot cancel order at this stage.");
             }
@@ -574,6 +693,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     order.CancelReason = request.Decision == OrderIssueStatus.AutoCancelled
                                          ? "Request timeout 24h (Auto-Refund)"
                                          : $"Shop approved: {issue.Reason}";
+                    bool isShopFault = request.Decision == OrderIssueStatus.AutoCancelled;
 
                     // --- 3.1 TRẢ HÀNG VỀ KHO ---
                     if (order.OrderItems != null)
@@ -590,7 +710,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     if (isOrderPaid)
                     {
                         decimal cashPaidAmount = order.TotalAmount;
-                        decimal shopReceivedAmount = order.TotalAmount + order.SystemDiscountAmount; // Tiền Sàn đã ghi nhận cho Shop
+                        decimal shopReceivedAmount = ShopRevenueCalculator.CalculateShopRevenue(
+                            order,
+                            _orderSettings.ShopPayoutRate,
+                            _orderSettings.SystemVoucherShopShareRate,
+                            _orderSettings.SystemVoucherShopShareCap);
 
                         // BƯỚC 3.2.1: Hoàn 100% tiền thật vào Ví Khách Hàng
                         await _walletService.RefundToWalletAsync(
@@ -608,22 +732,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             isCompleted
                         );
 
-                        // BƯỚC 3.2.3: Hoàn lượt dùng Voucher gốc
-                        var appliedVouchers = await _unitOfWork.VoucherUsageLogs.GetByOrderIdAsync(order.Id);
-                        foreach (var av in appliedVouchers)
-                        {
-                            var appliedVoucher = await _unitOfWork.Vouchers.GetByIdAsync(av.VoucherId);
-                            // Trả lại lượt dùng cho mọi loại voucher để khách tự xài lại ở đơn sau
-                            if (appliedVoucher != null && appliedVoucher.UsedCount > 0 && DateTime.UtcNow <= appliedVoucher.EndDate)
-                            {
-                                appliedVoucher.UsedCount--;
-                                _unitOfWork.Vouchers.Update(appliedVoucher);
-                            }
-                        }
-
-                        // BƯỚC 3.2.4: Phân định lỗi & Xử phạt
-                        bool isShopFault = request.Decision == OrderIssueStatus.AutoCancelled;
-
+                        // BƯỚC 3.2.3: Phân định lỗi & Xử phạt
                         if (isShopFault)
                         {
                             // Tính tiền phạt Shop
@@ -655,6 +764,30 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         }
 
                         order.PaymentStatus = PaymentStatus.Refunded;
+                    }
+
+                    if (isShopFault)
+                    {
+                        if (order.ShopId.HasValue)
+                        {
+                            await _reputationService.AdjustReputationAsync(
+                                ReputationTargetType.Shop,
+                                order.ShopId.Value,
+                                -_reputationSettings.PointsDeductArtisanFault,
+                                $"Auto-cancel order #{order.Id}");
+                        }
+
+                        var shopOwner = await _unitOfWork.Users.GetByIdAsync(realActionUserId);
+                        if (shopOwner != null)
+                        {
+                            shopOwner.YMonthlyAutoCancels += 1;
+                            shopOwner.TotalAutoCancels += 1;
+                            if (shopOwner.YMonthlyAutoCancels >= _reputationSettings.MaxMonthlyAutoCancels)
+                            {
+                                shopOwner.Status = AccountStatus.Suspended;
+                            }
+                            await _unitOfWork.Users.UpdateAsync(shopOwner);
+                        }
                     }
                     break;
 
@@ -739,7 +872,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         if (shopProfile != null)
                         {
                             // công thức: Bù lại tiền System Voucher cho Shop
-                            decimal shopRevenue = order.TotalAmount + order.SystemDiscountAmount;
+                            decimal shopRevenue = ShopRevenueCalculator.CalculateShopRevenue(
+                                order,
+                                _orderSettings.ShopPayoutRate,
+                                _orderSettings.SystemVoucherShopShareRate,
+                                _orderSettings.SystemVoucherShopShareCap);
                             await _walletService.AddPendingSalesToWalletAsync(shopProfile.UserId, order.Id, shopRevenue);
                         }
                     }
@@ -806,22 +943,33 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     }
                 }
 
-                // 3. Nhả lại lượt dùng Voucher
-                var appliedVouchers = await _unitOfWork.VoucherUsageLogs.GetByOrderIdAsync(order.Id);
-                foreach (var av in appliedVouchers)
-                {
-                    var voucherToRestore = await _unitOfWork.Vouchers.GetByIdAsync(av.VoucherId);
-                    if (voucherToRestore != null && voucherToRestore.UsedCount > 0)
-                    {
-                        voucherToRestore.UsedCount--;
-                        _unitOfWork.Vouchers.Update(voucherToRestore);
-                    }
-                }
+                // 3. Không hoàn lại lượt dùng voucher khi đơn bị hủy
 
                 await _unitOfWork.Orders.UpdateOrderAsync(order);
             }
 
             // Lưu toàn bộ thay đổi cùng 1 lúc
+            await _unitOfWork.CommitAsync();
+        }
+
+        public async Task AutoCancelOrdersWithoutAssemblyAsync(CancellationToken token = default)
+        {
+            var threshold = DateTime.UtcNow.AddHours(-_orderSettings.ShopAssemblyInitTimeoutHours);
+            var orders = await _unitOfWork.Orders.GetOrdersPendingAssemblyInitAsync(threshold, token);
+
+            if (!orders.Any()) return;
+
+            foreach (var order in orders)
+            {
+                if (order.OrderStatus != OrderStatus.Processing || !order.ShopId.HasValue)
+                    continue;
+
+                bool hasLogs = await _unitOfWork.AssemblyProgressLogs.HasLogsForOrderAsync(order.Id);
+                if (hasLogs) continue;
+
+                await AutoCancelOrderForAssemblyTimeoutAsync(order, token);
+            }
+
             await _unitOfWork.CommitAsync();
         }
 
@@ -974,15 +1122,48 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     if (shop == null)
                         continue;
 
+                    var customer = await _unitOfWork.Users.GetByIdAsync(order.CustomerId);
+
                     // 4. Nhả tiền (chuyển từ HeldBalance -> Balance)
                     // ReleaseHeldMoneyAsync sẽ tự động:
                     // - Update Wallet.HeldBalance và Wallet.Balance
                     // - Tạo Payment log với Type=SalesReleased
-                    decimal actualShopRevenue = order.TotalAmount + order.SystemDiscountAmount;
+                    decimal actualShopRevenue = ShopRevenueCalculator.CalculateShopRevenue(
+                        order,
+                        _orderSettings.ShopPayoutRate,
+                        _orderSettings.SystemVoucherShopShareRate,
+                        _orderSettings.SystemVoucherShopShareCap);
                     await _walletService.ReleaseHeldMoneyAsync(shop.UserId, order.Id, actualShopRevenue);
                     // 5. Đánh dấu đơn đã nhả tiền
                     order.PaymentStatus = PaymentStatus.Released;
                     await _unitOfWork.Orders.UpdateOrderAsync(order, token);
+
+                    // 6. Cộng điểm uy tín sau bảo hành
+                    int successPoints = _reputationSettings.PointsPerSuccessfulOrder;
+
+                    if (customer != null)
+                    {
+                        int newCustomerScore = await _reputationService.AdjustReputationAsync(
+                            ReputationTargetType.Customer,
+                            customer.Id,
+                            successPoints,
+                            $"Order #{order.Id} completed");
+                        customer.CurrentReputationScore = newCustomerScore;
+                        customer.ConsecutiveSuccesses += 1;
+
+                        if (customer.ConsecutiveSuccesses >= _reputationSettings.SlowResponseResetSuccessCount)
+                        {
+                            customer.SlowResponseViolationCount = 0;
+                            customer.ConsecutiveSuccesses = 0;
+                        }
+
+                        await _unitOfWork.Users.UpdateAsync(customer);
+                    }
+                    await _reputationService.AdjustReputationAsync(
+                        ReputationTargetType.Shop,
+                        shop.Id,
+                        successPoints,
+                        $"Order #{order.Id} completed");
                 }
                 catch (Exception ex)
                 {
@@ -1012,7 +1193,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     if (shopProfile != null)
                     {
                         // Công thức chuẩn: Bù lại tiền System Voucher cho Shop
-                        decimal shopRevenue = order.TotalAmount + order.SystemDiscountAmount;
+                        decimal shopRevenue = ShopRevenueCalculator.CalculateShopRevenue(
+                            order,
+                            _orderSettings.ShopPayoutRate,
+                            _orderSettings.SystemVoucherShopShareRate,
+                            _orderSettings.SystemVoucherShopShareCap);
                         await _walletService.AddPendingSalesToWalletAsync(shopProfile.UserId, order.Id, shopRevenue);
                     }
                 }
@@ -1086,6 +1271,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             foreach (var shopGroup in itemsByShop)
             {
                 if (shopGroup.Key == Guid.Empty) continue;
+
+                var inProgressCount = await _unitOfWork.Orders.CountInProgressOrdersForCustomerShopAsync(userId, shopGroup.Key);
+                if (inProgressCount >= _orderSettings.MaxInProgressOrdersPerShopCustomer)
+                {
+                    throw new InvalidOperationException($"You already have {_orderSettings.MaxInProgressOrdersPerShopCustomer} in-progress orders with this shop.");
+                }
 
                 var order = new Order
                 {
@@ -1847,9 +2038,139 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
         }
 
+        private async Task AutoCancelOrderForAssemblyTimeoutAsync(Order order, CancellationToken token)
+        {
+            if (order.OrderStatus == OrderStatus.Cancelled || order.OrderStatus == OrderStatus.Refunded)
+                return;
+
+            foreach (var item in order.OrderItems)
+            {
+                await RefundItemStockAsync(item);
+            }
+
+            if (order.PaymentStatus == PaymentStatus.Paid)
+            {
+                await _walletService.RefundToWalletAsync(order.CustomerId, order.TotalAmount, $"Refund for auto-cancelled order #{order.Id}");
+
+                if (order.ShopId.HasValue)
+                {
+                    var shop = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value, token);
+                    if (shop != null)
+                    {
+                        decimal shopRevenue = ShopRevenueCalculator.CalculateShopRevenue(
+                            order,
+                            _orderSettings.ShopPayoutRate,
+                            _orderSettings.SystemVoucherShopShareRate,
+                            _orderSettings.SystemVoucherShopShareCap);
+                        await _walletService.DeductFundsForRefundAsync(shop.UserId, order.Id, shopRevenue, false);
+                    }
+                }
+
+                order.PaymentStatus = PaymentStatus.Refunded;
+                if (order.OrderGroupId.HasValue)
+                {
+                    var group = await _unitOfWork.OrderGroups.GetByIdAsync(order.OrderGroupId.Value);
+                    if (group != null) group.PaymentStatus = PaymentStatus.Refunded;
+                }
+            }
+
+            order.OrderStatus = OrderStatus.Cancelled;
+            order.CancelReason = "System auto-cancel: shop did not start assembly within 48 hours.";
+            await _unitOfWork.Orders.UpdateOrderAsync(order, token);
+
+            if (order.ShopId.HasValue)
+            {
+                var shop = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value, token);
+                if (shop != null)
+                {
+                    await _reputationService.AdjustReputationAsync(
+                        ReputationTargetType.Shop,
+                        shop.Id,
+                        -_reputationSettings.PointsDeductArtisanFault,
+                        $"Auto-cancel order #{order.Id}");
+
+                    var shopOwner = await _unitOfWork.Users.GetByIdAsync(shop.UserId);
+                    if (shopOwner != null)
+                    {
+                        shopOwner.YMonthlyAutoCancels += 1;
+                        shopOwner.TotalAutoCancels += 1;
+                        if (shopOwner.YMonthlyAutoCancels >= _reputationSettings.MaxMonthlyAutoCancels)
+                        {
+                            shopOwner.Status = AccountStatus.Suspended;
+                        }
+                        await _unitOfWork.Users.UpdateAsync(shopOwner);
+                    }
+                }
+            }
+        }
+
         // =================================================================
         // PRIVATE HELPERS CHO CHECKOUT & VOUCHER
         // =================================================================
+
+        private async Task EnforceReputationMonthlyLimitsAsync(Guid userId, List<OrderItemResponse> mappedItems, CancellationToken token)
+        {
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            if (user == null) throw new InvalidOperationException("User not found.");
+
+            var (isLocked, customerLimit) = GetCustomerMonthlyLimit(user.CurrentReputationScore);
+            if (isLocked)
+                throw new InvalidOperationException("Your account is locked due to low reputation.");
+
+            var now = DateTime.UtcNow;
+            var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var monthEnd = monthStart.AddMonths(1);
+
+            if (customerLimit > 0)
+            {
+                int currentCount = await _unitOfWork.Orders.CountMonthlyOrdersForCustomerAsync(userId, monthStart, monthEnd, token);
+                int newOrders = mappedItems.Select(i => i.ShopId).Where(id => id != Guid.Empty).Distinct().Count();
+                if (currentCount + newOrders > customerLimit)
+                    throw new InvalidOperationException($"You have reached your monthly order limit ({customerLimit}).");
+            }
+
+            var shopIds = mappedItems.Select(i => i.ShopId).Where(id => id != Guid.Empty).Distinct().ToList();
+            foreach (var shopId in shopIds)
+            {
+                var shop = await _unitOfWork.Shops.GetByIdAsync(shopId, token);
+                if (shop == null) throw new InvalidOperationException("Shop not found.");
+
+                var (isSuspended, shopLimit) = GetShopMonthlyLimit(shop.CurrentQualityScore);
+                if (isSuspended)
+                    throw new InvalidOperationException("This shop is temporarily suspended due to low reputation.");
+
+                if (shopLimit > 0)
+                {
+                    int shopCount = await _unitOfWork.Orders.CountMonthlyOrdersForShopAsync(shopId, monthStart, monthEnd, token);
+                    if (shopCount + 1 > shopLimit)
+                        throw new InvalidOperationException($"This shop has reached its monthly order limit ({shopLimit}).");
+                }
+            }
+        }
+
+        private (bool IsLocked, int MonthlyLimit) GetCustomerMonthlyLimit(int score)
+        {
+            if (score >= _reputationSettings.CustomerHighMinScore)
+                return (false, _reputationSettings.CustomerHighMonthlyOrderLimit);
+            if (score >= _reputationSettings.CustomerMidMinScore)
+                return (false, _reputationSettings.CustomerMidMonthlyOrderLimit);
+            if (score >= _reputationSettings.CustomerLowMinScore)
+                return (false, _reputationSettings.CustomerLowMonthlyOrderLimit);
+
+            return (true, 0);
+        }
+
+        private (bool IsSuspended, int MonthlyLimit) GetShopMonthlyLimit(int score)
+        {
+            if (score >= _reputationSettings.ShopHighMinScore)
+                return (false, _reputationSettings.ShopHighMonthlyOrderLimit);
+            if (score >= _reputationSettings.ShopMidMinScore)
+                return (false, _reputationSettings.ShopMidMonthlyOrderLimit);
+            if (score >= _reputationSettings.ShopLowMinScore)
+                return (false, _reputationSettings.ShopLowMonthlyOrderLimit);
+
+            return (true, 0);
+        }
 
         private async Task ProcessCheckoutShopGroupAsync(OrderGroup orderGroup, List<OrderItemResponse> mappedItems, List<CartItem> selectedItems, CheckoutRequest request)
         {
@@ -1941,39 +2262,101 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
         }
 
+        private static Dictionary<Guid, List<string>> NormalizeShopVoucherCodes(Dictionary<Guid, string>? singleCodes, Dictionary<Guid, List<string>>? groupedCodes)
+        {
+            var result = new Dictionary<Guid, List<string>>();
+
+            if (groupedCodes != null && groupedCodes.Count > 0)
+            {
+                foreach (var kv in groupedCodes)
+                {
+                    var codes = kv.Value?.Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c.Trim()).ToList()
+                        ?? new List<string>();
+                    if (codes.Count > 0)
+                    {
+                        result[kv.Key] = codes;
+                    }
+                }
+
+                return result;
+            }
+
+            if (singleCodes != null)
+            {
+                foreach (var kv in singleCodes)
+                {
+                    if (!string.IsNullOrWhiteSpace(kv.Value))
+                    {
+                        result[kv.Key] = new List<string> { kv.Value.Trim() };
+                    }
+                }
+            }
+
+            return result;
+        }
+
         private async Task ApplyVouchersToCheckoutAsync(Guid userId, OrderGroup group, CheckoutRequest request, decimal totalCheckoutSubTotal)
         {
-            bool isStacking = !string.IsNullOrEmpty(request.AppliedSystemVoucherCode) && request.AppliedShopVoucherCodes?.Any() == true;
+            var shopVoucherGroups = NormalizeShopVoucherCodes(request.AppliedShopVoucherCodes, request.AppliedShopVoucherCodeGroups);
 
             // 1. Áp dụng Shop Voucher
             foreach (var order in group.Orders)
             {
                 decimal shopDiscount = 0;
-                if (order.ShopId.HasValue && request.AppliedShopVoucherCodes != null &&
-                    request.AppliedShopVoucherCodes.TryGetValue(order.ShopId.Value, out var shopCode))
-                {
-                    var sv = await _unitOfWork.Vouchers.GetByCodeAsync(shopCode);
-                    if (sv != null)
-                    {
-                        // Gọi Helper kiểm tra. Bị lỗi là chặn luôn không cho Checkout
-                        string? error = await ValidateVoucherStrictAsync(userId, sv, order.SubTotal, isStacking);
-                        if (error != null) throw new InvalidOperationException($"Lỗi áp mã {shopCode}: {error}");
+                decimal currentOrderRemain = order.SubTotal;
+                int applyOrder = 1;
 
-                        shopDiscount = sv.DiscountType == DiscountType.FixedAmount ? sv.Value : (order.SubTotal * sv.Value / 100);
-                        if (sv.MaxDiscountAmount.HasValue && shopDiscount > sv.MaxDiscountAmount.Value) shopDiscount = sv.MaxDiscountAmount.Value;
-                        if (shopDiscount > order.SubTotal) shopDiscount = order.SubTotal;
+                if (order.ShopId.HasValue && shopVoucherGroups.TryGetValue(order.ShopId.Value, out var shopVoucherCodes))
+                {
+                    var distinctCodes = shopVoucherCodes.Where(c => !string.IsNullOrWhiteSpace(c)).Distinct().ToList();
+                    var vouchers = new List<Voucher>();
+
+                    foreach (var code in distinctCodes)
+                    {
+                        var sv = await _unitOfWork.Vouchers.GetByCodeAsync(code);
+                        if (sv == null)
+                            throw new InvalidOperationException("Voucher not found.");
+
+                        if (sv.Scope != VoucherScope.Shop)
+                            throw new InvalidOperationException("This voucher is not a shop voucher.");
+
+                        if (sv.ShopId.HasValue && sv.ShopId.Value != order.ShopId.Value)
+                            throw new InvalidOperationException("This voucher does not belong to this shop.");
+
+                        string? error = await ValidateVoucherStrictAsync(userId, sv, order.SubTotal);
+                        if (error != null) throw new InvalidOperationException($"Lỗi áp mã {code}: {error}");
+
+                        vouchers.Add(sv);
+                    }
+
+                    if (vouchers.Count > 1 && vouchers.Any(v => v.TargetUserId != userId))
+                        throw new InvalidOperationException("Only private shop vouchers can be stacked.");
+
+                    foreach (var sv in vouchers)
+                    {
+                        decimal stepDiscount = _voucherService.CalculateVoucherDiscount(sv, order.SubTotal);
+                        if (stepDiscount > currentOrderRemain) stepDiscount = currentOrderRemain;
 
                         await _unitOfWork.VoucherUsageLogs.AddAsync(new VoucherUsageLog
                         {
                             UserId = userId,
                             OrderId = order.Id,
                             VoucherId = sv.Id,
-                            DiscountApplied = shopDiscount
+                            Code = sv.Code,
+                            VoucherType = sv.Type,
+                            DiscountApplied = stepDiscount,
+                            ApplyOrder = applyOrder
                         });
-                        sv.UsedCount++;
+
+                        sv.UsedCount += 1;
                         _unitOfWork.Vouchers.Update(sv);
+
+                        applyOrder += 1;
+                        shopDiscount += stepDiscount;
+                        currentOrderRemain -= stepDiscount;
                     }
                 }
+
                 order.DiscountAmount = shopDiscount;
             }
 
@@ -1983,8 +2366,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 var sysV = await _unitOfWork.Vouchers.GetByCodeAsync(request.AppliedSystemVoucherCode);
                 if (sysV != null)
                 {
+                    if (sysV.Scope != VoucherScope.System)
+                        throw new InvalidOperationException("This voucher is not a system voucher.");
+
                     // Gọi Helper kiểm tra
-                    string? error = await ValidateVoucherStrictAsync(userId, sysV, totalCheckoutSubTotal, isStacking);
+                    string? error = await ValidateVoucherStrictAsync(userId, sysV, totalCheckoutSubTotal);
                     if (error != null) throw new InvalidOperationException($"Lỗi áp mã {request.AppliedSystemVoucherCode}: {error}");
 
                     decimal totalSysDiscount = sysV.DiscountType == DiscountType.FixedAmount ? sysV.Value : (totalCheckoutSubTotal * sysV.Value / 100);
@@ -2011,12 +2397,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             order.SystemDiscountAmount = appliedToThisOrder;
                             remainingDiscount -= appliedToThisOrder;
 
+                            int applyOrder = order.DiscountAmount > 0 ? 2 : 1;
+
                             await _unitOfWork.VoucherUsageLogs.AddAsync(new VoucherUsageLog
                             {
                                 UserId = userId,
                                 OrderId = order.Id,
                                 VoucherId = sysV.Id,
-                                DiscountApplied = appliedToThisOrder
+                                Code = sysV.Code,
+                                VoucherType = sysV.Type,
+                                DiscountApplied = appliedToThisOrder,
+                                ApplyOrder = applyOrder
                             });
                         }
                     }
@@ -2033,9 +2424,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             group.TotalGroupAmount = totalGroupAmount;
         }
 
-        private async Task<string?> ValidateVoucherStrictAsync(Guid userId, Voucher voucher, decimal subTotalToCheck, bool isStackingAttempt)
+        private async Task<string?> ValidateVoucherStrictAsync(Guid userId, Voucher voucher, decimal subTotalToCheck)
         {
             if (voucher.Status != VoucherStatus.Active) return "Voucher is not available.";
+
+            if (voucher.Scope == VoucherScope.System)
+            {
+                var user = await _unitOfWork.Users.GetByIdAsync(userId);
+                if (user == null) return "User not found.";
+
+                if (user.CurrentReputationScore < _reputationSettings.CustomerHighMinScore)
+                {
+                    return $"Admin vouchers require reputation >= {_reputationSettings.CustomerHighMinScore}.";
+                }
+            }
 
             // 1. Check Ngày tháng
             if (DateTime.UtcNow < voucher.StartDate || DateTime.UtcNow > voucher.EndDate)
@@ -2053,11 +2455,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (subTotalToCheck < voucher.MinOrderValue)
                 return $"Minimum order value: {voucher.MinOrderValue:N0} VND.";
 
-            // 5. Check Cờ Stackable (Nếu khách đang cố xài cả mã Shop và mã Sàn)
-            if (isStackingAttempt && !voucher.IsStackable)
-                return $"Voucher '{voucher.Code}' cannot be combined with other vouchers.";
-
-            // 6. Check Giới hạn Cá nhân (Max Uses Per User)
+            // 5. Check Giới hạn Cá nhân (Max Uses Per User)
             if (voucher.MaxUsesPerUser.HasValue)
             {
                 int userUsage = await _unitOfWork.VoucherUsageLogs.CountUsageByUserAndVoucherAsync(userId, voucher.Id, Guid.Empty);

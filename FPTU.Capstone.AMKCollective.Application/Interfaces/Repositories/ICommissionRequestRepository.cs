@@ -13,6 +13,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<IEnumerable<CommissionRequest>> GetByUserIdAsync(Guid userId);
         Task<IEnumerable<CommissionRequest>> GetOpenPoolRequestsAsync();
         Task<IEnumerable<CommissionRequest>> GetTargetedRequestsForShopAsync(Guid shopId);
+        Task<int> CountActiveRequestsForUserAsync(Guid userId);
+        Task<List<CommissionRequest>> GetExpiredShopResponseRequestsAsync(DateTime now);
         Task AddAsync(CommissionRequest request);
         Task UpdateAsync(CommissionRequest request);
     }

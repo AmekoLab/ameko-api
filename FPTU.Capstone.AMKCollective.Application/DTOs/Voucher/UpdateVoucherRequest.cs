@@ -15,6 +15,14 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Voucher
 
         public string? Description { get; set; }
 
+        [Range(0, double.MaxValue)]
+        public decimal? Value { get; set; }
+
+        public decimal? MaxDiscountAmount { get; set; }
+
+        [Range(0, double.MaxValue)]
+        public decimal? MinOrderValue { get; set; }
+
         public DateTime? EndDate { get; set; } 
 
         [Range(0, int.MaxValue)]

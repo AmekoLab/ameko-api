@@ -16,6 +16,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public string? ReceiverPhone { get; set; } = string.Empty;
         [MaxLength(500)]
         public string? ShippingAddress { get; set; } = string.Empty;
+        public DateTime? ExpectedDeliveryDate { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]
         public decimal SubTotal { get; set; }

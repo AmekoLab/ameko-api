@@ -13,6 +13,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<Order?> GetByIdAsync(Guid id, CancellationToken token = default);
         Task<IEnumerable<Order>> GetOrdersByUserIdAsync(Guid userId, bool includeDeleted = false, CancellationToken token = default);
         Task<IEnumerable<Order>> GetOrdersByShopIdAsync(Guid shopId, CancellationToken token = default);
+        Task<int> CountInProgressOrdersForCustomerShopAsync(Guid customerId, Guid shopId, CancellationToken token = default);
+        Task<int> CountMonthlyOrdersForCustomerAsync(Guid customerId, DateTime fromUtc, DateTime toUtc, CancellationToken token = default);
+        Task<int> CountMonthlyOrdersForShopAsync(Guid shopId, DateTime fromUtc, DateTime toUtc, CancellationToken token = default);
         Task<Order?> GetOrderByStatusAsync(Guid userId, OrderStatus status);
         /// <summary>
         /// Load cart AsNoTracking (read-only) for decision logic.
@@ -45,6 +48,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<IEnumerable<Order>> GetOrdersByGroupIdAsync(Guid orderGroupId, CancellationToken token = default);
         Task<List<Order>> GetOrdersEligibleForFundReleaseAsync(DateTime warrantyThreshold, CancellationToken token = default);
         Task<OrderItem?> GetOrderItemByIdAsync(Guid id, CancellationToken token = default);
+        Task<List<Order>> GetOrdersPendingAssemblyInitAsync(DateTime thresholdUtc, CancellationToken token = default);
 
         Task<Order?> GetOrderDetailByIdAsync(Guid orderId);
         Task<List<Order>> GetAbandonedOrdersAsync(DateTime expirationTime, CancellationToken token = default);

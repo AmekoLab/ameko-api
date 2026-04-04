@@ -55,6 +55,19 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .OrderByDescending(q => q.CreatedAt)
                 .ToListAsync();
         }
+
+        public async Task<List<CommissionQuote>> GetExpiredCustomerDecisionQuotesAsync(DateTime now)
+        {
+            return await _context.CommissionQuotes
+                .Include(q => q.Shop)
+                .Include(q => q.CommissionRequest)
+                    .ThenInclude(r => r.Quotes)
+                        .ThenInclude(rq => rq.Shop)
+                .Where(q => q.Status == Domain.Enums.QuoteStatus.PendingUserDecision
+                    && q.CustomerDecisionDeadlineAt.HasValue
+                    && q.CustomerDecisionDeadlineAt.Value <= now)
+                .ToListAsync();
+        }
     }
 }
 

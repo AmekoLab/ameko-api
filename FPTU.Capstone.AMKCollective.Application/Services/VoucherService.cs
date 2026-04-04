@@ -19,12 +19,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly VoucherSettings _voucherSettings;
+        private readonly ReputationSettings _reputationSettings;
 
-        public VoucherService(IUnitOfWork unitOfWork, IMapper mapper, IOptions<VoucherSettings> voucherOptions)
+        public VoucherService(IUnitOfWork unitOfWork, IMapper mapper, IOptions<VoucherSettings> voucherOptions, IOptions<ReputationSettings> reputationOptions)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _voucherSettings = voucherOptions.Value;
+            _reputationSettings = reputationOptions.Value;
         }
 
         // 1. Create Promotional Voucher (Marketing)
@@ -41,6 +43,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (isAdmin)
             {
+                throw new UnauthorizedAccessException("Admin cannot create negotiation vouchers.");
+            }
+
+            if (isAdmin)
+            {
                 voucher.CreatorId = userId;
                 voucher.Scope = VoucherScope.System;
                 voucher.ShopId = null;
@@ -51,6 +58,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 voucher.Scope = VoucherScope.Shop;
 
                 var myShop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+                if (myShop == null)
+                    throw new UnauthorizedAccessException("Shop not found.");
+
+                if (myShop.CurrentQualityScore < _reputationSettings.ShopMidMinScore)
+                    throw new Exception("Shop reputation is too low to create vouchers.");
+
                 voucher.ShopId = myShop?.Id;
             }
             voucher.MaxUsesPerUser = request.MaxUsesPerUser;
@@ -89,15 +102,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var scope = VoucherScope.Shop;
             Guid? actualShopId = null;
 
-            if (isAdmin)
-            {
-                scope = VoucherScope.System;
-            }
-            else
-            {
-                var myShop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
-                actualShopId = myShop?.Id;
-            }
+            var myShop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+            if (myShop == null)
+                throw new UnauthorizedAccessException("Shop not found.");
+
+            if (myShop.CurrentQualityScore < _reputationSettings.ShopMidMinScore)
+                throw new Exception("Shop reputation is too low to create vouchers.");
+
+            actualShopId = myShop?.Id;
 
             // 2. Khởi tạo Voucher
             var voucher = new Voucher
@@ -228,6 +240,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // --- STACKING VALIDATION ---
             var appliedList = (await _unitOfWork.VoucherUsageLogs.GetByOrderIdAsync(orderId)).ToList();
+
+            if (appliedList.Any())
+                throw new Exception("Only one voucher can be applied per order.");
 
             if (appliedList.Any(av => av.VoucherId == incomingVoucher.Id))
                 throw new Exception("This voucher has already been applied to this order.");
@@ -612,6 +627,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var response = new ApplicableVoucherResponse();
 
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            int userScore = user?.CurrentReputationScore ?? 0;
+            bool canUseSystemVoucher = userScore >= _reputationSettings.CustomerHighMinScore;
+
             // 1. LẤY GIỎ HÀNG TỪ BẢNG MỚI
             var cart = await _unitOfWork.Carts.GetCartByUserIdAsync(userId);
             if (cart == null || !cart.CartItems.Any())
@@ -745,6 +764,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 // A. System/Platform Vouchers (Admin created OR Compensation)
                 if (v.Scope == VoucherScope.System || v.Type == VoucherType.Compensation)
                 {
+                    if (v.Scope == VoucherScope.System && !canUseSystemVoucher)
+                        continue;
+
                     // Check against TOTAL Cart value
                     if (cartSubTotal >= v.MinOrderValue)
                     {
@@ -916,6 +938,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<List<VoucherResponse>> GetMyVouchersAsync(Guid userId)
         {
             var vouchers = await _unitOfWork.Vouchers.GetValidVouchersForUserAsync(userId);
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            int userScore = user?.CurrentReputationScore ?? 0;
+            bool canUseSystemVoucher = userScore >= _reputationSettings.CustomerHighMinScore;
+
+            if (!canUseSystemVoucher)
+            {
+                vouchers = vouchers.Where(v => v.Scope != VoucherScope.System).ToList();
+            }
+
             return _mapper.Map<List<VoucherResponse>>(vouchers);
         }
 
@@ -938,9 +969,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (!isAdmin && voucher.CreatorId != userId)
                 throw new UnauthorizedAccessException("You are not authorized to modify this voucher.");
+
+            bool isUsed = await _unitOfWork.Vouchers.IsVoucherUsedAsync(voucherId);
+            if (isUsed && (request.Value.HasValue || request.MaxDiscountAmount.HasValue || request.MinOrderValue.HasValue))
+            {
+                throw new InvalidOperationException("This voucher has already been used. Please delete it and create a new one instead of updating its value.");
+            }
             // Update fields (only allow certain fields to be edited)
             if (!string.IsNullOrEmpty(request.Name)) voucher.Name = request.Name;
             if (!string.IsNullOrEmpty(request.Description)) voucher.Description = request.Description;
+            if (request.Value.HasValue) voucher.Value = request.Value.Value;
+            if (request.MaxDiscountAmount.HasValue) voucher.MaxDiscountAmount = request.MaxDiscountAmount.Value;
+            if (request.MinOrderValue.HasValue) voucher.MinOrderValue = request.MinOrderValue.Value;
             if (request.EndDate.HasValue) voucher.EndDate = request.EndDate.Value;
             if (request.UsageLimit.HasValue)
             {
@@ -973,14 +1013,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (!isAdmin && voucher.CreatorId != userId)
                 throw new UnauthorizedAccessException("You are not authorized to modify this voucher.");
 
-            // SAFETY CHECK: If voucher already used by customers, cannot delete - must deactivate instead
-            bool isUsed = await _unitOfWork.Vouchers.IsVoucherUsedAsync(voucherId);
-            if (isUsed)
-            {
-                throw new InvalidOperationException("Cannot delete this voucher because it has been used by customers. Please deactivate it instead.");
-            }
-
-            _unitOfWork.Vouchers.Delete(voucher); // Soft Delete
+            voucher.Status = VoucherStatus.Expired;
+            voucher.IsDeleted = true; // Soft delete only
+            _unitOfWork.Vouchers.Update(voucher);
             await _unitOfWork.CommitAsync();
         }
         public async Task ToggleVoucherStatusAsync(Guid userId, Guid voucherId)

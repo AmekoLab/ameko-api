@@ -33,6 +33,13 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
 
         public CommissionStatus Status { get; set; } = CommissionStatus.OpenPool;
 
+        // Response windows and reminder tracking
+        public int ShopResponseWindowHours { get; set; } = 24;
+        public int CustomerResponseWindowHours { get; set; } = 24;
+        public DateTime? ShopResponseDeadlineAt { get; set; }
+        public int ReminderCount { get; set; } = 0;
+        public DateTime? LastReminderAt { get; set; }
+
         // Navigation Properties
         public virtual User User { get; set; } = null!;
         public virtual ShopProfile? TargetedShop { get; set; }

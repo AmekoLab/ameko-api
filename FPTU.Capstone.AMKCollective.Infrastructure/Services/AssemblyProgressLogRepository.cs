@@ -56,5 +56,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             _context.AssemblyProgressLogs.Remove(log);
         }
+
+        public async Task<bool> HasLogsForOrderAsync(Guid orderId)
+        {
+            return await _context.AssemblyProgressLogs
+                .AnyAsync(log => _context.OrderItems.Any(oi => oi.Id == log.OrderItemId && oi.OrderId == orderId));
+        }
     }
 }

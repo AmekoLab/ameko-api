@@ -67,6 +67,60 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .ToListAsync(token);
         }
 
+        public async Task<int> CountInProgressOrdersForCustomerShopAsync(Guid customerId, Guid shopId, CancellationToken token = default)
+        {
+            var inProgressStatuses = new[]
+            {
+                OrderStatus.Pending,
+                OrderStatus.Processing,
+                OrderStatus.Shipped,
+                OrderStatus.Returning
+            };
+
+            return await _context.Orders
+                .AsNoTracking()
+                .Where(o => o.CustomerId == customerId && o.ShopId == shopId && inProgressStatuses.Contains(o.OrderStatus) && !o.IsDeleted)
+                .CountAsync(token);
+        }
+
+        public async Task<int> CountMonthlyOrdersForCustomerAsync(Guid customerId, DateTime fromUtc, DateTime toUtc, CancellationToken token = default)
+        {
+            var excludedStatuses = new[]
+            {
+                OrderStatus.InCart,
+                OrderStatus.Cancelled,
+                OrderStatus.Refunded
+            };
+
+            return await _context.Orders
+                .AsNoTracking()
+                .Where(o => o.CustomerId == customerId
+                    && !o.IsDeleted
+                    && o.CreatedAt >= fromUtc
+                    && o.CreatedAt < toUtc
+                    && !excludedStatuses.Contains(o.OrderStatus))
+                .CountAsync(token);
+        }
+
+        public async Task<int> CountMonthlyOrdersForShopAsync(Guid shopId, DateTime fromUtc, DateTime toUtc, CancellationToken token = default)
+        {
+            var excludedStatuses = new[]
+            {
+                OrderStatus.InCart,
+                OrderStatus.Cancelled,
+                OrderStatus.Refunded
+            };
+
+            return await _context.Orders
+                .AsNoTracking()
+                .Where(o => o.ShopId == shopId
+                    && !o.IsDeleted
+                    && o.CreatedAt >= fromUtc
+                    && o.CreatedAt < toUtc
+                    && !excludedStatuses.Contains(o.OrderStatus))
+                .CountAsync(token);
+        }
+
 
         public async Task AddOrderItemAsync(OrderItem item)
         {
@@ -237,6 +291,17 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                           && o.UpdatedAt.HasValue
                           && o.UpdatedAt.Value <= warrantyThreshold
                           && !o.IsDeleted)
+                .ToListAsync(token);
+        }
+
+        public async Task<List<Order>> GetOrdersPendingAssemblyInitAsync(DateTime thresholdUtc, CancellationToken token = default)
+        {
+            return await _context.Orders
+                .Include(o => o.OrderItems)
+                .Where(o => o.OrderStatus == OrderStatus.Processing
+                    && o.PaymentStatus == PaymentStatus.Paid
+                    && o.CreatedAt <= thresholdUtc
+                    && !o.IsDeleted)
                 .ToListAsync(token);
         }
 

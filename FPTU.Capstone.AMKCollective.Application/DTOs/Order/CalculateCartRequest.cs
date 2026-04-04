@@ -17,5 +17,9 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
         // 3. Danh sách mã giảm giá của từng Shop (Nếu khách có chọn)
         // Key: ShopId (ID của ShopProfile), Value: VoucherCode
         public Dictionary<Guid, string> AppliedShopVoucherCodes { get; set; } = new Dictionary<Guid, string>();
+
+        // 4. Nhiều voucher riêng của từng Shop (chỉ dùng nếu cần stacking voucher tặng riêng)
+        // Key: ShopId (ID của ShopProfile), Value: List of VoucherCode
+        public Dictionary<Guid, List<string>>? AppliedShopVoucherCodeGroups { get; set; }
     }
 }

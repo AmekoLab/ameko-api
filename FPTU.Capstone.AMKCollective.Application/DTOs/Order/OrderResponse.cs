@@ -29,6 +29,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
         public string ReceiverName { get; set; } = string.Empty; 
         public string ReceiverPhone { get; set; } = string.Empty; 
         public string ShippingAddress { get; set; } = string.Empty; 
+        public DateTime? ExpectedDeliveryDate { get; set; }
         public string? Note { get; set; }
         public bool HasCancelRequest { get; set; }
         // 4. Thời gian

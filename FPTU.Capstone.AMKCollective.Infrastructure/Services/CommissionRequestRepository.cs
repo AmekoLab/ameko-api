@@ -46,6 +46,33 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .ToListAsync();
         }
 
+        public async Task<int> CountActiveRequestsForUserAsync(Guid userId)
+        {
+            var activeStatuses = new[]
+            {
+                CommissionStatus.PendingTarget,
+                CommissionStatus.OpenPool,
+                CommissionStatus.Quoted,
+                CommissionStatus.Completed
+            };
+
+            return await _context.CommissionRequests
+                .AsNoTracking()
+                .Where(r => r.UserId == userId && activeStatuses.Contains(r.Status))
+                .CountAsync();
+        }
+
+        public async Task<List<CommissionRequest>> GetExpiredShopResponseRequestsAsync(DateTime now)
+        {
+            return await _context.CommissionRequests
+                .Include(r => r.TargetedShop)
+                .Include(r => r.User)
+                .Where(r => r.Status == CommissionStatus.PendingTarget
+                    && r.ShopResponseDeadlineAt.HasValue
+                    && r.ShopResponseDeadlineAt.Value <= now)
+                .ToListAsync();
+        }
+
         public async Task AddAsync(CommissionRequest request)
         {
             await _context.CommissionRequests.AddAsync(request);

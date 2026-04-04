@@ -302,6 +302,37 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
+        /// [Customer] Update shipping address before the order is shipped.
+        /// </summary>
+        [HttpPut("{orderId}/shipping-address")]
+        [Authorize]
+        public async Task<IActionResult> UpdateShippingAddress(Guid orderId, [FromBody] UpdateShippingAddressRequest request)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                await _orderService.UpdateShippingAddressAsync(userId, orderId, request);
+                return SuccessResponse("Shipping address updated successfully.");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<string>(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<string>(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<string>(ex.Message);
+            }
+        }
+
+        /// <summary>
         /// [Shop Owner] Lấy danh sách đơn hàng của Shop (Có phân trang và lọc theo trạng thái)
         /// </summary>
         [HttpGet("shop")]
@@ -365,7 +396,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         [HttpPut("shop/{orderId}/status")]
         [Authorize]
         [SwaggerOperation(Summary = "[Shop] Update order status", Description = "Updates the status of an order.")]
-        public async Task<IActionResult> UpdateOrderStatus(Guid orderId, [FromBody] OrderStatus newStatus)
+        public async Task<IActionResult> UpdateOrderStatus(Guid orderId, [FromBody] UpdateOrderStatusRequest request)
         {
             try
             {
@@ -375,7 +406,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 if (shop == null)
                     return ErrorResponse<object>("This account does not own a shop.");
 
-                await _orderService.UpdateOrderStatusAsync(shop.Id, orderId, newStatus);
+                await _orderService.UpdateOrderStatusAsync(shop.Id, orderId, request);
                 return SuccessResponse("Order status updated successfully.");
             }
             catch (KeyNotFoundException ex)
@@ -389,6 +420,42 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             catch (Exception ex)
             {
                 return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// [Shop Owner] Cancel order and refund customer.
+        /// </summary>
+        [HttpPost("shop/{orderId}/cancel")]
+        [Authorize]
+        public async Task<IActionResult> CancelOrderByShop(Guid orderId, [FromBody] ShopCancelOrderRequest request)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var shop = await _shopService.GetMyShopAsync(userId);
+
+                if (shop == null)
+                    return ErrorResponse<object>("This account does not own a shop.");
+
+                await _orderService.CancelOrderByShopAsync(shop.Id, orderId, request.Reason);
+                return SuccessResponse("Order cancelled successfully.");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<string>(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<string>(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<string>(ex.Message);
             }
         }
 

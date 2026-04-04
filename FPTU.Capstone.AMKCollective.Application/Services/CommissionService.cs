@@ -1,5 +1,6 @@
 using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Commission;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Reputation;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
@@ -10,6 +11,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Text.Json;
 
@@ -20,11 +22,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly CommissionSettings _commissionSettings;
-        public CommissionService(IUnitOfWork unitOfWork, IMapper mapper, IOptions<CommissionSettings> commissionSettings)
+        private readonly INotificationService _notificationService;
+        private readonly ReputationSettings _reputationSettings;
+        private readonly IReputationService _reputationService;
+
+        public CommissionService(IUnitOfWork unitOfWork, IMapper mapper, IOptions<CommissionSettings> commissionSettings, INotificationService notificationService, IOptions<ReputationSettings> reputationSettings, IReputationService reputationService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _commissionSettings = commissionSettings.Value;
+            _notificationService = notificationService;
+            _reputationSettings = reputationSettings.Value;
+            _reputationService = reputationService;
         }
 
         public async Task<IEnumerable<CommissionRequestResponse>> GetUserRequestsAsync(Guid userId)
@@ -73,20 +82,96 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<IEnumerable<CommissionRequestResponse>>(requests);
         }
 
-        public async Task<Guid> CreateRequestAsync(Guid userId, CreateCommissionRequest requestDto)
+        public async Task<(bool Success, Guid? RequestId, string ErrorMessage)> CreateRequestAsync(Guid userId, CreateCommissionRequest requestDto)
         {
             var request = _mapper.Map<CommissionRequest>(requestDto);
             request.UserId = userId;
 
-            // Có chỉ định thì chờ shop không thì ném lên chợ chung
-            request.Status = requestDto.TargetedShopId.HasValue
-                ? CommissionStatus.PendingTarget
-                : CommissionStatus.OpenPool;
+            if (!requestDto.IsDraft)
+            {
+                var activeCount = await _unitOfWork.CommissionRequests.CountActiveRequestsForUserAsync(userId);
+                if (activeCount >= _commissionSettings.MaxActiveRequests)
+                {
+                    return (false, null, "You have reached the maximum number of active commission requests.");
+                }
+            }
+
+            if (requestDto.IsDraft)
+            {
+                request.Status = CommissionStatus.Draft;
+                request.TargetedShopId = null;
+            }
+            else
+            {
+                // Có chỉ định thì chờ shop không thì ném lên chợ chung
+                request.Status = requestDto.TargetedShopId.HasValue
+                    ? CommissionStatus.PendingTarget
+                    : CommissionStatus.OpenPool;
+            }
+
+            var shopResponseHours = requestDto.ShopResponseWindowHours ?? _commissionSettings.DefaultShopResponseHours;
+            if (shopResponseHours <= 0)
+            {
+                shopResponseHours = _commissionSettings.DefaultShopResponseHours;
+            }
+
+            var customerResponseHours = requestDto.CustomerResponseWindowHours ?? _commissionSettings.DefaultCustomerResponseHours;
+            if (customerResponseHours <= 0)
+            {
+                customerResponseHours = _commissionSettings.DefaultCustomerResponseHours;
+            }
+
+            request.ShopResponseWindowHours = shopResponseHours;
+            request.CustomerResponseWindowHours = customerResponseHours;
+            request.ShopResponseDeadlineAt = requestDto.IsDraft ? null : DateTime.UtcNow.AddHours(shopResponseHours);
+            request.ReminderCount = 0;
+            request.LastReminderAt = null;
 
             await _unitOfWork.CommissionRequests.AddAsync(request);
             await _unitOfWork.CommitAsync();
 
-            return request.Id;
+            return (true, request.Id, string.Empty);
+        }
+
+        public async Task<(bool Success, string ErrorMessage)> UpdateRequestAsync(Guid userId, Guid requestId, UpdateCommissionRequest requestDto)
+        {
+            var request = await _unitOfWork.CommissionRequests.GetByIdAsync(requestId);
+            if (request == null) return (false, "The request does not exist.");
+
+            if (request.UserId != userId) return (false, "You do not have permission to perform actions on this request.");
+
+            if (request.Status != CommissionStatus.Draft)
+            {
+                return (false, "Only draft requests can be edited.");
+            }
+
+            if (request.Quotes.Any(q => q.Status == QuoteStatus.PendingUserDecision || q.Status == QuoteStatus.Accepted))
+            {
+                return (false, "This request already has active offers and cannot be edited.");
+            }
+
+            request.Title = requestDto.Title;
+            request.Description = requestDto.Description;
+            request.ReferenceImages = requestDto.ReferenceImages;
+            request.MinBudget = requestDto.MinBudget;
+            request.MaxBudget = requestDto.MaxBudget;
+            request.Quantity = requestDto.Quantity;
+            request.TargetedShopId = requestDto.TargetedShopId;
+
+            if (requestDto.ShopResponseWindowHours.HasValue)
+            {
+                request.ShopResponseWindowHours = requestDto.ShopResponseWindowHours.Value;
+            }
+
+            if (requestDto.CustomerResponseWindowHours.HasValue)
+            {
+                request.CustomerResponseWindowHours = requestDto.CustomerResponseWindowHours.Value;
+            }
+
+            await _unitOfWork.CommissionRequests.UpdateAsync(request);
+            await _unitOfWork.CommitAsync();
+
+            return (true, string.Empty);
         }
 
         public async Task<(bool Success, string ErrorMessage)> SubmitQuoteAsync(Guid shopUserId, Guid requestId, SubmitQuoteRequest quoteDto)
@@ -115,8 +200,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 return (false, "This request is closed and cannot accept additional quotations.");
             }
 
+            if (request.Status == CommissionStatus.Draft || request.Status == CommissionStatus.RejectedByShop)
+            {
+                return (false, "This request is not published for quotations yet.");
+            }
+
             // Check shop đã báo giá chưa (tránh báo giá trùng)
-            if (request.Quotes.Any(q => q.ShopId == shop.Id))
+            if (request.Quotes.Any(q => q.ShopId == shop.Id && q.Status != QuoteStatus.Revoked))
             {
                 return (false, "Your shop has already submitted a quotation for this request.");
             }
@@ -126,6 +216,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             quote.ShopId = shop.Id;
             quote.Status = QuoteStatus.PendingUserDecision;
             quote.ExpiredAt = DateTime.UtcNow.AddDays(_commissionSettings.QuoteValidityDays);
+            var customerDecisionHours = request.CustomerResponseWindowHours > 0
+                ? request.CustomerResponseWindowHours
+                : _commissionSettings.DefaultCustomerResponseHours;
+            quote.CustomerDecisionDeadlineAt = DateTime.UtcNow.AddHours(customerDecisionHours);
 
             // Chuyển trạng thái của Request sang Quoted (nếu chưa Quoted)
             if (request.Status == CommissionStatus.OpenPool || request.Status == CommissionStatus.PendingTarget)
@@ -171,14 +265,38 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (request.UserId != userId) return (false, "You do not have permission to perform this action.");
 
             // Chỉ cho phép đẩy lên chợ nếu Shop đã từ chối, hoặc ngay từ đầu đang chờ Shop nhưng khách đổi ý
-            if (request.Status != CommissionStatus.RejectedByShop && request.Status != CommissionStatus.PendingTarget)
+            if (request.Status != CommissionStatus.RejectedByShop &&
+                request.Status != CommissionStatus.PendingTarget &&
+                request.Status != CommissionStatus.Draft)
             {
                 return (false, "You can only publish this request to the public board if it has been rejected by the shop or is pending approval.");
             }
 
-            // Xóa Target và đẩy lên Pool
-            request.TargetedShopId = null;
-            request.Status = CommissionStatus.OpenPool;
+            if (request.Status == CommissionStatus.Draft)
+            {
+                if (request.TargetedShopId.HasValue)
+                {
+                    request.Status = CommissionStatus.PendingTarget;
+                }
+                else
+                {
+                    request.Status = CommissionStatus.OpenPool;
+                }
+            }
+            else
+            {
+                // Xóa Target và đẩy lên Pool
+                request.TargetedShopId = null;
+                request.Status = CommissionStatus.OpenPool;
+            }
+
+            if (!request.ShopResponseDeadlineAt.HasValue)
+            {
+                var responseHours = request.ShopResponseWindowHours > 0
+                    ? request.ShopResponseWindowHours
+                    : _commissionSettings.DefaultShopResponseHours;
+                request.ShopResponseDeadlineAt = DateTime.UtcNow.AddHours(responseHours);
+            }
 
             await _unitOfWork.CommissionRequests.UpdateAsync(request);
             await _unitOfWork.CommitAsync();
@@ -331,23 +449,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var shop = await _unitOfWork.Shops.GetByUserIdAsync(shopUserId);
             if (shop == null || quote.ShopId != shop.Id) return (false, "You do not have permission to perform actions on this request.");
 
-            // Chỉ cho sửa nếu khách chưa duyệt
-            if (quote.Status != QuoteStatus.PendingUserDecision)
-            {
-                return (false, "You cannot modify the quotation once the customer has made their decision.");
-            }
-
-            // Cập nhật thông tin
-            quote.QuotedPrice = updateDto.QuotedPrice;
-            quote.EstimatedDays = updateDto.EstimatedDays;
-            quote.ShopNotes = updateDto.ShopNotes;
-            // [Fix #5] Reset ExpiredAt — giá mới, thời hạn chấp nhận cũng phải tính lại
-            quote.ExpiredAt = DateTime.UtcNow.AddDays(_commissionSettings.QuoteValidityDays);
-
-            await _unitOfWork.CommissionQuotes.UpdateAsync(quote);
-            await _unitOfWork.CommitAsync();
-
-            return (true, string.Empty);
+            return (false, "Updating a quotation is not allowed. Please revoke and submit a new quotation.");
         }
 
         public async Task<IEnumerable<CommissionRequestResponse>> GetShopTargetedRequestsAsync(Guid shopUserId)
@@ -366,6 +468,162 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             var quotes = await _unitOfWork.CommissionQuotes.GetQuotesByShopIdAsync(shop.Id);
             return _mapper.Map<IEnumerable<CommissionQuoteResponse>>(quotes);
+        }
+
+        public async Task ProcessCommissionRemindersAsync(CancellationToken cancellationToken = default)
+        {
+            var now = DateTime.UtcNow;
+            var reminderInterval = TimeSpan.FromHours(_commissionSettings.ReminderIntervalHours);
+            var maxReminders = _commissionSettings.MaxReminderCount;
+
+            var expiredShopRequests = await _unitOfWork.CommissionRequests.GetExpiredShopResponseRequestsAsync(now);
+            foreach (var request in expiredShopRequests)
+            {
+                if (request.Status != CommissionStatus.PendingTarget || !request.ShopResponseDeadlineAt.HasValue)
+                {
+                    continue;
+                }
+
+                bool reminderDue = request.ReminderCount < maxReminders
+                    && (request.LastReminderAt == null || now - request.LastReminderAt.Value >= reminderInterval);
+
+                if (reminderDue && request.TargetedShop != null)
+                {
+                    request.ReminderCount += 1;
+                    request.LastReminderAt = now;
+                    await _unitOfWork.CommissionRequests.UpdateAsync(request);
+
+                    await _notificationService.SendNotificationAsync(
+                        request.TargetedShop.UserId,
+                        "Commission request needs a response",
+                        $"Please respond to the commission request \"{request.Title}\".",
+                        "System",
+                        referenceId: request.Id.ToString(),
+                        referenceType: "CommissionRequest",
+                        redirectUrl: $"/shop/commission/requests/{request.Id}",
+                        actorId: request.UserId);
+
+                    continue;
+                }
+
+                bool autoRejectDue = request.ReminderCount >= maxReminders
+                    && request.LastReminderAt.HasValue
+                    && now - request.LastReminderAt.Value >= reminderInterval;
+
+                if (autoRejectDue)
+                {
+                    request.Status = CommissionStatus.RejectedByShop;
+                    await _unitOfWork.CommissionRequests.UpdateAsync(request);
+
+                    await _notificationService.SendNotificationAsync(
+                        request.UserId,
+                        "Commission request timed out",
+                        "The targeted shop did not respond in time. You can publish the request to the public board.",
+                        "System",
+                        referenceId: request.Id.ToString(),
+                        referenceType: "CommissionRequest",
+                        redirectUrl: $"/commissions/{request.Id}");
+                }
+            }
+
+            var expiredQuotes = await _unitOfWork.CommissionQuotes.GetExpiredCustomerDecisionQuotesAsync(now);
+            var processedRequests = new HashSet<Guid>();
+
+            foreach (var quote in expiredQuotes)
+            {
+                if (quote.Status != QuoteStatus.PendingUserDecision)
+                {
+                    continue;
+                }
+
+                var request = quote.CommissionRequest;
+                if (request == null || request.Status == CommissionStatus.Completed || request.Status == CommissionStatus.Canceled)
+                {
+                    continue;
+                }
+
+                bool reminderDue = quote.CustomerReminderCount < maxReminders
+                    && (quote.LastCustomerReminderAt == null || now - quote.LastCustomerReminderAt.Value >= reminderInterval);
+
+                if (reminderDue)
+                {
+                    quote.CustomerReminderCount += 1;
+                    quote.LastCustomerReminderAt = now;
+                    await _unitOfWork.CommissionQuotes.UpdateAsync(quote);
+
+                    var shopName = quote.Shop?.ShopName ?? "a shop";
+                    await _notificationService.SendNotificationAsync(
+                        request.UserId,
+                        "Commission quotation awaiting your response",
+                        $"Please review the quotation from {shopName} for \"{request.Title}\".",
+                        "System",
+                        referenceId: quote.Id.ToString(),
+                        referenceType: "CommissionQuote",
+                        redirectUrl: $"/commissions/{request.Id}",
+                        actorId: quote.Shop?.UserId);
+
+                    continue;
+                }
+
+                bool autoCancelDue = quote.CustomerReminderCount >= maxReminders
+                    && quote.LastCustomerReminderAt.HasValue
+                    && now - quote.LastCustomerReminderAt.Value >= reminderInterval;
+
+                if (!autoCancelDue || !processedRequests.Add(request.Id))
+                {
+                    continue;
+                }
+
+                request.Status = CommissionStatus.Canceled;
+                foreach (var pendingQuote in request.Quotes.Where(q => q.Status == QuoteStatus.PendingUserDecision))
+                {
+                    pendingQuote.Status = QuoteStatus.Rejected;
+                }
+
+                var user = await _unitOfWork.Users.GetByIdAsync(request.UserId);
+                if (user != null)
+                {
+                    user.YMonthlyAutoCancels += 1;
+                    user.TotalAutoCancels += 1;
+                    user.SlowResponseViolationCount += 1;
+                    int newScore = await _reputationService.AdjustReputationAsync(
+                        ReputationTargetType.Customer,
+                        user.Id,
+                        -_reputationSettings.PointsDeductNoResponseAfterAccept,
+                        $"Commission request #{request.Id} auto-cancelled");
+                    user.CurrentReputationScore = newScore;
+                    if (user.YMonthlyAutoCancels >= _reputationSettings.MaxMonthlyAutoCancels)
+                    {
+                        user.Status = AccountStatus.Suspended;
+                    }
+                    await _unitOfWork.Users.UpdateAsync(user);
+                }
+
+                await _unitOfWork.CommissionRequests.UpdateAsync(request);
+
+                await _notificationService.SendNotificationAsync(
+                    request.UserId,
+                    "Commission request canceled due to no response",
+                    $"Your commission request \"{request.Title}\" was canceled because no response was received in time.",
+                    "System",
+                    referenceId: request.Id.ToString(),
+                    referenceType: "CommissionRequest",
+                    redirectUrl: $"/commissions/{request.Id}");
+
+                foreach (var pendingQuote in request.Quotes.Where(q => q.Shop != null))
+                {
+                    await _notificationService.SendNotificationAsync(
+                        pendingQuote.Shop.UserId,
+                        "Commission request canceled",
+                        $"The commission request \"{request.Title}\" was canceled due to no customer response.",
+                        "System",
+                        referenceId: request.Id.ToString(),
+                        referenceType: "CommissionRequest",
+                        redirectUrl: $"/shop/commission/requests/{request.Id}");
+                }
+            }
+
+            await _unitOfWork.CommitAsync();
         }
     }
 }
