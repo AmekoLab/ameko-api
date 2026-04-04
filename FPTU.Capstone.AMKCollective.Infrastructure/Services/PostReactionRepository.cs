@@ -27,7 +27,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             return await _context.PostReactions
                 .Include(pr => pr.User)
-                .Where(pr => pr.PostId == postId)
+                .Where(pr => pr.PostId == postId && !pr.IsDeleted)
                 .OrderByDescending(pr => pr.CreatedAt)
                 .ToListAsync(ct);
         }

@@ -21,5 +21,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Settings
         public decimal SystemVoucherShopShareRate { get; set; } = 0.3m;
         public decimal SystemVoucherShopShareCap { get; set; } = 50000m;
         public int ShopAssemblyInitTimeoutHours { get; set; } = 48;
+        public int CustomerResponseSlaHours { get; set; } = 24;
+        public int CustomerResponseReminderMaxCount { get; set; } = 3;
     }
 }

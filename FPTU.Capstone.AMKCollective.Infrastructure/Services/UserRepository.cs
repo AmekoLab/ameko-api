@@ -116,5 +116,23 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Where(u => u.CreatedAt >= fromUtc && u.CreatedAt <= toUtc)
                 .ToListAsync(token);
         }
+
+        public async Task<int> DeleteUnverifiedAccountsOlderThanAsync(DateTime thresholdUtc, CancellationToken token = default)
+        {
+            var usersToDelete = await _context.Users
+                .Where(u => !u.IsDeleted
+                            && !u.EmailConfirmed
+                            && u.Status == AccountStatus.PendingVerification
+                            && u.CreatedAt <= thresholdUtc)
+                .ToListAsync(token);
+
+            if (usersToDelete.Count == 0)
+            {
+                return 0;
+            }
+
+            _context.Users.RemoveRange(usersToDelete);
+            return usersToDelete.Count;
+        }
     }
 }

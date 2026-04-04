@@ -22,7 +22,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<List<PostComment>> GetByPostIdAsync(int postId, CancellationToken ct = default)
         {
             return await _context.PostComments
-                .Where(c => c.PostId == postId)
+                .Where(c => c.PostId == postId && !c.IsDeleted)
                 .Include(c => c.User)
                 .OrderByDescending(c => c.CreatedAt)
                 .ToListAsync(ct);
@@ -31,7 +31,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<List<PostComment>> GetByPostIdCursorPagedAsync(int postId, DateTime? createdAt, int? id, int pageSize, CancellationToken ct = default)
         {
             var query = _context.PostComments
-                .Where(c => c.PostId == postId)
+                .Where(c => c.PostId == postId && !c.IsDeleted)
                 .AsQueryable();
 
             if (createdAt.HasValue && id.HasValue)
@@ -45,6 +45,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Take(pageSize + 1)
                 .Include(c => c.User)
                 .ToListAsync(ct);
+        }
+
+        public async Task<PostComment?> GetByIdAsync(int id, CancellationToken ct = default)
+        {
+            return await _context.PostComments
+                .Include(c => c.User)
+                .Include(c => c.Post)
+                .FirstOrDefaultAsync(c => c.Id == id, ct);
         }
 
         public async Task AddAsync(PostComment comment, CancellationToken ct = default)

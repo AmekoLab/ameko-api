@@ -34,6 +34,8 @@ public class PostFeedResponse
     public string Role { get; set; } = string.Empty;
     
     public ProductPreviewDto? Product { get; set; }
+    
+    public string? CurrentUserReaction { get; set; }
 }
 
 public class CreatePostDto
@@ -110,4 +112,25 @@ public class CommentResponse
     public string? AvatarUrl { get; set; }
     public string Content { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
+    
+    // Edit History fields
+    public bool IsEdited { get; set; }
+    public List<CommentEditHistory> EditHistory { get; set; } = new();
+}
+
+public class UpdateCommentDto
+{
+    public string Content { get; set; } = string.Empty;
+}
+
+public class CommentEditHistory
+{
+    public string Content { get; set; } = string.Empty;
+    public DateTime EditedAt { get; set; }
+}
+
+public class CommentInternalData
+{
+    public string CurrentContent { get; set; } = string.Empty;
+    public List<CommentEditHistory> History { get; set; } = new();
 }

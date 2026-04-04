@@ -40,6 +40,7 @@ namespace FPTU.Capstone.AMKCollective.Tests
                 Email = email,
                 HashedPassword = CreatePasswordHash(password),
                 Status = AccountStatus.Active,
+                EmailConfirmed = true,
                 Username = "testuser"
             };
 
@@ -63,6 +64,47 @@ namespace FPTU.Capstone.AMKCollective.Tests
             // Assert
             Assert.NotNull(result);
             Assert.Equal(email, result.Email);
+            Assert.True(result.EmailConfirmed);
+            Assert.Equal(AccountStatus.Active.ToString(), result.AccountStatus);
+        }
+
+        [Fact]
+        public async Task LoginAsync_WithUnverifiedEmail_ReturnsLoginResponseForFrontendRedirect()
+        {
+            // Arrange
+            var email = "unverified@example.com";
+            var password = "password123";
+            var user = new User
+            {
+                Id = Guid.NewGuid(),
+                Email = email,
+                HashedPassword = CreatePasswordHash(password),
+                Status = AccountStatus.Active,
+                EmailConfirmed = false,
+                Username = "unverified"
+            };
+
+            var mockUnitOfWork = new Mock<IUnitOfWork>();
+            mockUnitOfWork.Setup(u => u.Users.GetByEmailAsync(email)).ReturnsAsync(user);
+            mockUnitOfWork.Setup(u => u.CommitAsync()).Returns(Task.CompletedTask);
+
+            var mockEmailService = new Mock<IEmailService>();
+            var mockMapper = new Mock<IMapper>();
+            mockMapper.Setup(m => m.Map<LoginResponse>(It.IsAny<User>()))
+                .Returns(new LoginResponse { Email = email });
+
+            var mockTokenService = new Mock<ITokenService>();
+            mockTokenService.Setup(t => t.CreateToken(It.IsAny<User>())).Returns("jwt_token");
+
+            var service = CreateUserService(mockUnitOfWork.Object, mockEmailService.Object, mockMapper.Object, mockTokenService.Object);
+
+            // Act
+            var result = await service.LoginAsync(new LoginRequest { Email = email, Password = password });
+
+            // Assert
+            Assert.NotNull(result);
+            Assert.False(result.EmailConfirmed);
+            Assert.Equal(AccountStatus.Active.ToString(), result.AccountStatus);
         }
 
         [Fact]
@@ -131,8 +173,8 @@ namespace FPTU.Capstone.AMKCollective.Tests
         {
             // Arrange
             var mockUnitOfWork = new Mock<IUnitOfWork>();
-            mockUnitOfWork.Setup(u => u.Users.GetByUsernameAsync(It.IsAny<string>())).ReturnsAsync((User)null);
-            mockUnitOfWork.Setup(u => u.Users.GetByEmailAsync(It.IsAny<string>())).ReturnsAsync((User)null);
+            mockUnitOfWork.Setup(u => u.Users.GetByUsernameAsync(It.IsAny<string>())).ReturnsAsync((User?)null);
+            mockUnitOfWork.Setup(u => u.Users.GetByEmailAsync(It.IsAny<string>())).ReturnsAsync((User?)null);
             mockUnitOfWork.Setup(u => u.Users.GetRoleByNameAsync(It.IsAny<RoleType>())).ReturnsAsync(new Role { Name = RoleType.Customer });
             mockUnitOfWork.Setup(u => u.Users.AddAsync(It.IsAny<User>())).Returns(Task.CompletedTask);
             mockUnitOfWork.Setup(u => u.CommitAsync()).Returns(Task.CompletedTask);

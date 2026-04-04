@@ -38,7 +38,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [SwaggerResponse(200, "Successfully retrieved feed", typeof(ApiResponse<CursorPagedResult<PostFeedResponse>>))]
         public async Task<IActionResult> GetFeed([FromQuery] string? cursor, [FromQuery] int pageSize = 20, CancellationToken cancellationToken = default)
         {
-            var feed = await _communityService.GetFeedAsync(cursor, pageSize, cancellationToken);
+            var feed = await _communityService.GetFeedAsync(TryGetCurrentUserId(), cursor, pageSize, cancellationToken);
             return SuccessResponse(feed);
         }
 
@@ -71,7 +71,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [SwaggerResponse(404, "Post not found")]
         public async Task<IActionResult> GetPostById(int id, CancellationToken cancellationToken = default)
         {
-            var post = await _communityService.GetPostByIdAsync(id, cancellationToken);
+            var post = await _communityService.GetPostByIdAsync(id, TryGetCurrentUserId(), cancellationToken);
             return SuccessResponse(post);
         }
 
@@ -122,6 +122,31 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             await _communityService.ReactToPostAsync(postId, userId, reactionType, cancellationToken);
             return SuccessResponse(new { success = true });
         }
+        [HttpDelete("posts/{postId}/reactions")]
+        [Authorize]
+        [SwaggerOperation(Summary = "Soft Delete Reaction", Description = "Removes the current user's reaction from a specific post (Soft Delete).")]
+        [SwaggerResponse(200, "Reaction hidden successfully")]
+        [SwaggerResponse(401, "Unauthorized")]
+        public async Task<IActionResult> UnreactToPost(int postId, CancellationToken cancellationToken = default)
+        {
+            Guid userId = GetCurrentUserId();
+            await _communityService.RemoveReactionAsync(postId, userId, cancellationToken);
+            return SuccessResponse(new { success = true });
+        }
+
+        [HttpDelete("posts/{postId}/reactions/{targetUserId}/hard")]
+        [Authorize]
+        [SwaggerOperation(Summary = "Hard Delete Reaction (Admin Only)", Description = "Permanently deletes a reaction. Only accessible to Admins.")]
+        [SwaggerResponse(200, "Reaction deleted permanently")]
+        [SwaggerResponse(401, "Unauthorized")]
+        [SwaggerResponse(403, "Forbidden")]
+        public async Task<IActionResult> HardDeleteReaction(int postId, Guid targetUserId, CancellationToken cancellationToken = default)
+        {
+            Guid adminUserId = GetCurrentUserId();
+            string role = GetCurrentUserRole();
+            await _communityService.HardDeleteReactionAsync(postId, targetUserId, role, cancellationToken);
+            return SuccessResponse(new { success = true }, "Reaction deleted permanently");
+        }
 
         [HttpGet("posts/{postId}/reactions")]
         [AllowAnonymous]
@@ -139,7 +164,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [SwaggerResponse(200, "Successfully retrieved user posts", typeof(ApiResponse<CursorPagedResult<PostFeedResponse>>))]
         public async Task<IActionResult> GetUserPosts(Guid userId, [FromQuery] string? cursor, [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default)
         {
-            var results = await _communityService.GetPostsByUserIdAsync(userId, cursor, pageSize, cancellationToken);
+            var results = await _communityService.GetPostsByUserIdAsync(userId, TryGetCurrentUserId(), cursor, pageSize, cancellationToken);
             return SuccessResponse(results);
         }
 
@@ -168,8 +193,49 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [SwaggerResponse(200, "Successfully retrieved comments", typeof(ApiResponse<CursorPagedResult<CommentResponse>>))]
         public async Task<IActionResult> GetPostComments(int postId, [FromQuery] string? cursor, [FromQuery] int pageSize = 5, CancellationToken cancellationToken = default)
         {
-            var results = await _communityService.GetPostCommentsAsync(postId, cursor, pageSize, cancellationToken);
-            return SuccessResponse(results);
+            var comments = await _communityService.GetPostCommentsAsync(postId, cursor, pageSize, cancellationToken);
+            return SuccessResponse(comments);
+        }
+
+        [HttpPut("comments/{commentId}")]
+        [Authorize]
+        [SwaggerOperation(Summary = "Edit Comment", Description = "Edits an existing comment. Preserves edit history.")]
+        [SwaggerResponse(200, "Comment updated successfully", typeof(ApiResponse<CommentResponse>))]
+        public async Task<IActionResult> UpdateComment(int commentId, [FromBody] UpdateCommentDto request, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                Guid userId = GetCurrentUserId();
+                var result = await _communityService.UpdateCommentAsync(commentId, userId, request, cancellationToken);
+                return SuccessResponse(result, "Comment updated successfully");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
+        }
+        [HttpDelete("comments/{commentId}/soft-delete")]
+        [Authorize]
+        [SwaggerOperation(Summary = "Soft Delete Comment (Owner/Admin)", Description = "BR: Hides a comment so it doesn't appear in feeds. Accessible to the Comment Author, the Post Author, and Admins.")]
+        [SwaggerResponse(200, "Comment hidden successfully")]
+        public async Task<IActionResult> SoftDeleteComment(int commentId, CancellationToken cancellationToken = default)
+        {
+            Guid userId = GetCurrentUserId();
+            string role = GetCurrentUserRole();
+            await _communityService.SoftDeleteCommentAsync(commentId, userId, role, cancellationToken);
+            return SuccessResponse("Comment hidden successfully");
+        }
+
+        [HttpDelete("comments/{commentId}")]
+        [Authorize]
+        [SwaggerOperation(Summary = "Hard Delete Comment (Admin Only)", Description = "BR: Deletes a comment completely from the database. Only accessible to Admins.")]
+        [SwaggerResponse(200, "Comment deleted successfully")]
+        public async Task<IActionResult> DeleteComment(int commentId, CancellationToken cancellationToken = default)
+        {
+            Guid userId = GetCurrentUserId();
+            string role = GetCurrentUserRole();
+            await _communityService.HardDeleteCommentAsync(commentId, userId, role, cancellationToken);
+            return SuccessResponse("Comment deleted permanently");
         }
     }
 }

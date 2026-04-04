@@ -13,5 +13,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Settings
         public int OrderCancellationTimeoutMinutes { get; set; }
         public int CommissionReminderMinutes { get; set; }
         public int AssemblyTrackingTimeoutMinutes { get; set; }
+        public int UnverifiedAccountCleanupMinutes { get; set; } = 60;
     }
 }

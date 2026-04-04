@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json;
 using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Community;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
@@ -36,33 +37,58 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _configuration = configuration;
         }
 
-        public async Task<CursorPagedResult<PostFeedResponse>> GetFeedAsync(string? cursor, int pageSize, CancellationToken cancellationToken)
+        public async Task<CursorPagedResult<PostFeedResponse>> GetFeedAsync(Guid? currentUserId, string? cursor, int pageSize, CancellationToken cancellationToken)
         {
             var decodedCursor = CursorHelper.DecodeCursor(cursor);
             var posts = await _unitOfWork.CommunityPosts.GetFeedCursorPagedAsync(decodedCursor?.CreatedAt, decodedCursor?.Id, pageSize, cancellationToken);
             
-            return await MapPostsToFeedResponse(posts, pageSize, cancellationToken);
+            return await MapPostsToFeedResponse(posts, pageSize, currentUserId, cancellationToken);
         }
 
-        public async Task<CursorPagedResult<PostFeedResponse>> GetPostsByUserIdAsync(Guid userId, string? cursor, int pageSize, CancellationToken cancellationToken = default)
+        public async Task<CursorPagedResult<PostFeedResponse>> GetPostsByUserIdAsync(Guid userId, Guid? currentUserId, string? cursor, int pageSize, CancellationToken cancellationToken = default)
         {
             var decodedCursor = CursorHelper.DecodeCursor(cursor);
             var posts = await _unitOfWork.CommunityPosts.GetByUserIdCursorPagedAsync(userId, decodedCursor?.CreatedAt, decodedCursor?.Id, pageSize, cancellationToken);
             
-            return await MapPostsToFeedResponse(posts, pageSize, cancellationToken);
+            return await MapPostsToFeedResponse(posts, pageSize, currentUserId, cancellationToken);
         }
 
         private async Task<CursorPagedResult<CommentResponse>> MapCommentsToResponse(List<PostComment> comments, int pageSize)
         {
-            var responseItems = comments.Select(c => new CommentResponse
+            var responseItems = comments.Select(c =>
             {
-                Id = c.Id,
-                UserId = c.UserId,
-                Username = c.User?.Username ?? "Unknown",
-                FullName = c.User != null ? $"{c.User.FirstName} {c.User.LastName}" : "Unknown",
-                AvatarUrl = c.User?.Image,
-                Content = c.Content,
-                CreatedAt = c.CreatedAt
+                var response = new CommentResponse
+                {
+                    Id = c.Id,
+                    UserId = c.UserId,
+                    Username = c.User?.Username ?? "Unknown",
+                    FullName = c.User != null ? $"{c.User.FirstName} {c.User.LastName}" : "Unknown",
+                    AvatarUrl = c.User?.Image,
+                    CreatedAt = c.CreatedAt
+                };
+
+                try
+                {
+                    if (c.Content.StartsWith("{") && c.Content.Contains("\"CurrentContent\""))
+                    {
+                        var parsedData = JsonSerializer.Deserialize<CommentInternalData>(c.Content);
+                        if (parsedData != null)
+                        {
+                            response.Content = parsedData.CurrentContent;
+                            response.IsEdited = parsedData.History.Any();
+                            response.EditHistory = parsedData.History;
+                            return response;
+                        }
+                    }
+                }
+                catch { }
+
+                // Fallback for old pure string comments
+                response.Content = c.Content;
+                response.IsEdited = false;
+                response.EditHistory = new List<CommentEditHistory>();
+                
+                return response;
             }).ToList();
 
             bool hasMore = responseItems.Count > pageSize;
@@ -84,7 +110,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         }
 
 
-        private async Task<CursorPagedResult<PostFeedResponse>> MapPostsToFeedResponse(List<CommunityPost> posts, int pageSize, CancellationToken cancellationToken)
+        private async Task<CursorPagedResult<PostFeedResponse>> MapPostsToFeedResponse(List<CommunityPost> posts, int pageSize, Guid? currentUserId, CancellationToken cancellationToken)
         {
             var responseItems = posts.Take(pageSize + 1).Select(p => new PostFeedResponse
             {
@@ -99,8 +125,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 CreatedAt = p.CreatedAt,
                 AssembledProductId = p.AssembledProductId,
                 AttachmentUrls = p.Attachments.Select(a => a.FileUrl).ToList(),
-                ReactionCount = p.PostReactions.Count,
-                CommentCount = p.PostComments.Count
+                ReactionCount = p.PostReactions.Count(r => !r.IsDeleted),
+                CommentCount = p.PostComments.Count(c => !c.IsDeleted),
+                CurrentUserReaction = currentUserId.HasValue 
+                    ? p.PostReactions.FirstOrDefault(r => r.UserId == currentUserId.Value)?.Type.ToString() 
+                    : null
             }).ToList();
 
             bool hasMore = responseItems.Count > pageSize;
@@ -177,7 +206,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return response;
         }
 
-        public async Task<PostFeedResponse> GetPostByIdAsync(int id, CancellationToken cancellationToken = default)
+        public async Task<PostFeedResponse> GetPostByIdAsync(int id, Guid? currentUserId, CancellationToken cancellationToken = default)
         {
             var post = await _unitOfWork.CommunityPosts.GetByIdAsync(id, cancellationToken);
             if (post == null) throw new KeyNotFoundException("Post not found");
@@ -195,8 +224,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 CreatedAt = post.CreatedAt,
                 AssembledProductId = post.AssembledProductId,
                 AttachmentUrls = post.Attachments.Select(a => a.FileUrl).ToList(),
-                ReactionCount = post.PostReactions.Count,
-                CommentCount = post.PostComments.Count
+                ReactionCount = post.PostReactions.Count(r => !r.IsDeleted),
+                CommentCount = post.PostComments.Count(c => !c.IsDeleted),
+                CurrentUserReaction = currentUserId.HasValue 
+                    ? post.PostReactions.FirstOrDefault(r => r.UserId == currentUserId.Value)?.Type.ToString() 
+                    : null
             };
             
             await _postEnricher.EnrichAsync(new[] { responseItem }, cancellationToken);
@@ -228,7 +260,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _unitOfWork.CommunityPosts.Update(post);
             await _unitOfWork.CommitAsync();
 
-            return await GetPostByIdAsync(post.Id, cancellationToken);
+            return await GetPostByIdAsync(post.Id, userId, cancellationToken);
         }
 
         public async Task DeletePostAsync(int id, Guid userId, CancellationToken cancellationToken = default)
@@ -271,16 +303,45 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     await _notificationQueue.QueueNotificationAsync(notificationItem);
                 }
             }
-            else if (existingReaction.Type == type)
+            else if (existingReaction.Type == type && !existingReaction.IsDeleted)
             {
-                _unitOfWork.PostReactions.Remove(existingReaction);
+                // Soft delete if reacting with the same type again
+                existingReaction.IsDeleted = true;
+                _unitOfWork.PostReactions.Update(existingReaction);
             }
             else
             {
+                // Toggle back or update type
                 existingReaction.Type = type;
+                existingReaction.IsDeleted = false;
                 _unitOfWork.PostReactions.Update(existingReaction);
             }
 
+            await _unitOfWork.CommitAsync();
+        }
+
+        public async Task RemoveReactionAsync(int postId, Guid userId, CancellationToken cancellationToken = default)
+        {
+            var existingReaction = await _unitOfWork.PostReactions.GetByUserAndPostAsync(postId, userId, cancellationToken);
+            if (existingReaction != null && !existingReaction.IsDeleted)
+            {
+                existingReaction.IsDeleted = true;
+                _unitOfWork.PostReactions.Update(existingReaction);
+                await _unitOfWork.CommitAsync();
+            }
+        }
+
+        public async Task HardDeleteReactionAsync(int postId, Guid userId, string userRole, CancellationToken cancellationToken = default)
+        {
+            var existingReaction = await _unitOfWork.PostReactions.GetByUserAndPostAsync(postId, userId, cancellationToken);
+            if (existingReaction == null) throw new KeyNotFoundException("Reaction not found");
+
+            if (!string.Equals(userRole, "Admin", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new UnauthorizedAccessException("Only Admins are authorized to perform a hard delete on a reaction");
+            }
+
+            _unitOfWork.PostReactions.Remove(existingReaction);
             await _unitOfWork.CommitAsync();
         }
 
@@ -348,7 +409,105 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var decodedCursor = CursorHelper.DecodeCursor(cursor);
             var comments = await _unitOfWork.PostComments.GetByPostIdCursorPagedAsync(postId, decodedCursor?.CreatedAt, decodedCursor?.Id, pageSize, cancellationToken);
+            
             return await MapCommentsToResponse(comments, pageSize);
+        }
+
+        public async Task<CommentResponse> UpdateCommentAsync(int commentId, Guid userId, UpdateCommentDto request, CancellationToken cancellationToken = default)
+        {
+            var comment = await _unitOfWork.PostComments.GetByIdAsync(commentId, cancellationToken);
+            if (comment == null) throw new KeyNotFoundException("Comment not found");
+            if (comment.UserId != userId) throw new UnauthorizedAccessException("You are not authorized to update this comment");
+
+            // Sanitize
+            var newContentStr = await _moderationService.ProcessContentAsync(userId, request.Content, "Comment", 0, cancellationToken);
+
+            CommentInternalData data;
+            try
+            {
+                if (comment.Content.StartsWith("{") && comment.Content.Contains("\"CurrentContent\""))
+                {
+                    data = JsonSerializer.Deserialize<CommentInternalData>(comment.Content) ?? new CommentInternalData();
+                }
+                else
+                {
+                    data = new CommentInternalData { CurrentContent = comment.Content };
+                }
+            }
+            catch
+            {
+                data = new CommentInternalData { CurrentContent = comment.Content };
+            }
+
+            int maxEditsPerDay = _configuration.GetValue<int>("SecuritySettings:MaxCommentEditsPerDay", 10);
+            int editsToday = data.History.Count(h => h.EditedAt.Date == DateTime.UtcNow.Date);
+
+            if (editsToday >= maxEditsPerDay)
+            {
+                throw new InvalidOperationException($"You have reached the limit of {maxEditsPerDay} edits per day for this comment.");
+            }
+
+            // Save old content into history
+            data.History.Insert(0, new CommentEditHistory 
+            { 
+                Content = data.CurrentContent, 
+                EditedAt = DateTime.UtcNow 
+            });
+            
+            // Set new content
+            data.CurrentContent = newContentStr;
+
+            comment.Content = JsonSerializer.Serialize(data);
+            
+            _unitOfWork.PostComments.Update(comment);
+            await _unitOfWork.CommitAsync();
+
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            return new CommentResponse
+            {
+                Id = comment.Id,
+                UserId = comment.UserId,
+                Username = user?.Username ?? "Unknown",
+                FullName = user != null ? $"{user.FirstName} {user.LastName}" : "Unknown",
+                AvatarUrl = user?.Image,
+                Content = data.CurrentContent,
+                CreatedAt = comment.CreatedAt,
+                IsEdited = data.History.Any(),
+                EditHistory = data.History
+            };
+        }
+
+        public async Task SoftDeleteCommentAsync(int commentId, Guid userId, string userRole, CancellationToken cancellationToken = default)
+        {
+            var comment = await _unitOfWork.PostComments.GetByIdAsync(commentId, cancellationToken);
+            if (comment == null) throw new KeyNotFoundException("Comment not found");
+            
+            bool isCommentOwner = comment.UserId == userId;
+            bool isPostOwner = comment.Post != null && comment.Post.UserId == userId;
+            bool isAdmin = string.Equals(userRole, "Admin", StringComparison.OrdinalIgnoreCase);
+
+            if (!isCommentOwner && !isPostOwner && !isAdmin)
+            {
+                throw new UnauthorizedAccessException("You are not authorized to delete this comment");
+            }
+
+            comment.IsDeleted = true;
+            _unitOfWork.PostComments.Update(comment);
+            await _unitOfWork.CommitAsync();
+        }
+
+        public async Task HardDeleteCommentAsync(int commentId, Guid userId, string userRole, CancellationToken cancellationToken = default)
+        {
+            var comment = await _unitOfWork.PostComments.GetByIdAsync(commentId, cancellationToken);
+            if (comment == null) throw new KeyNotFoundException("Comment not found");
+
+            if (!string.Equals(userRole, "Admin", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new UnauthorizedAccessException("Only Admins are authorized to perform a hard delete on a comment");
+            }
+
+            _unitOfWork.PostComments.Remove(comment);
+            await _unitOfWork.CommitAsync();
         }
     }
 }
