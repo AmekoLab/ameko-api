@@ -209,6 +209,10 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
                 var result = await _communityService.UpdateCommentAsync(commentId, userId, request, cancellationToken);
                 return SuccessResponse(result, "Comment updated successfully");
             }
+            catch (UnauthorizedAccessException ex)
+            {
+                return ForbiddenResponse<object>(ex.Message);
+            }
             catch (InvalidOperationException ex)
             {
                 return ErrorResponse<string>(ex.Message);

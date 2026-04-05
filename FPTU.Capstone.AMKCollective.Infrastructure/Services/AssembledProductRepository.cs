@@ -53,6 +53,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return await _context.AssembledProducts
                 .Include(ap => ap.ProductAssembledDetails)
                     .ThenInclude(pad => pad.BaseKit)
+                        .ThenInclude(bk => bk.Shop)   // needed for ShopName + LogoUrl
                 .Include(ap => ap.ProductAssembledDetails)
                     .ThenInclude(pad => pad.Component)
                 .FirstOrDefaultAsync(ap => ap.Id == id);
