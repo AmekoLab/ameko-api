@@ -60,6 +60,14 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         }
 
         /// <summary>
+        /// Returns a forbidden error response (403)
+        /// </summary>
+        protected IActionResult ForbiddenResponse<T>(string message = "Forbidden")
+        {
+            return StatusCode(403, ApiResponse<T>.ErrorResponse(message));
+        }
+
+        /// <summary>
         /// Returns an unauthorized error response
         /// </summary>
         protected IActionResult UnauthorizedResponse<T>(string message = "Unauthorized")
