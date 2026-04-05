@@ -79,7 +79,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Vouchers.AddAsync(voucher);
             await _unitOfWork.CommitAsync();
 
-            var creator = await _unitOfWork.Users.GetByIdAsync(userId);
+            var creator = await _unitOfWork.Users.GetByIdAsync(userId)
+                ?? throw new UnauthorizedAccessException("User not found.");
             voucher.Creator = creator;
 
             return _mapper.Map<VoucherResponse>(voucher);
@@ -92,12 +93,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             string code = "NEGO_" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
 
             // Kiểm tra quyền và lấy ShopId chuẩn xác
-            var currentUser = await _unitOfWork.Users.GetByIdAsync(userId);
-            if (currentUser == null)
-            {
-                throw new UnauthorizedAccessException("User not found or session is invalid.");
-            }
-            bool isAdmin = currentUser?.Role?.Name == RoleType.Admin;
+            var currentUser = await _unitOfWork.Users.GetByIdAsync(userId)
+                ?? throw new UnauthorizedAccessException("User not found or session is invalid.");
+            bool isAdmin = currentUser.Role?.Name == RoleType.Admin;
 
             var scope = VoucherScope.Shop;
             Guid? actualShopId = null;
@@ -154,12 +152,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             string code = "REFUND_" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
 
             // 1. Kiểm tra quyền và lấy ShopId chuẩn xác
-            var currentUser = await _unitOfWork.Users.GetByIdAsync(userId);
-            if (currentUser == null)
-            {
-                throw new UnauthorizedAccessException("User not found or session is invalid.");
-            }
-            bool isAdmin = currentUser?.Role?.Name == RoleType.Admin;
+            var currentUser = await _unitOfWork.Users.GetByIdAsync(userId)
+                ?? throw new UnauthorizedAccessException("User not found or session is invalid.");
+            bool isAdmin = currentUser.Role?.Name == RoleType.Admin;
 
             var scope = VoucherScope.Shop;
             Guid? actualShopId = null;
@@ -272,7 +267,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 if (isIncomingSystemPromo)
                 {
                     // Chỉ được 1 mã của Sàn cho toàn bộ giỏ hàng
-                    if (existingVouchers.Any(v => v.CreatorId == null && v.Type == VoucherType.Promotion))
+                    if (existingVouchers.Any(v => v.Scope == VoucherScope.System && v.Type == VoucherType.Promotion))
                         throw new Exception("You can only apply ONE System Promotion voucher per order.");
                 }
                 else if (isIncomingShopVoucher)

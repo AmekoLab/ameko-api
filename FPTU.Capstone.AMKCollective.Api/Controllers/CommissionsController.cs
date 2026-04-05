@@ -187,6 +187,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// <param name="quoteId">The ID of the quote to update.</param>
         /// <param name="request">The updated quotation details.</param>
         /// <returns>Success or error message.</returns>
+        [Obsolete("Updating a quotation is not supported. Revoke and submit a new quote instead.")]
         [HttpPut("quotes/{quoteId}")]
         [Authorize]
         public async Task<IActionResult> UpdateQuote(Guid quoteId, [FromBody] SubmitQuoteRequest request)

@@ -32,6 +32,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             return await _context.CommissionRequests
                 .Include(r => r.TargetedShop)
+                .Include(r => r.User)
+                .Include(r => r.Quotes)
+                    .ThenInclude(q => q.Shop)
                 .Where(r => r.UserId == userId)
                 .OrderByDescending(r => r.CreatedAt)
                 .ToListAsync();

@@ -51,6 +51,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data
         public DbSet<Cart> Carts { get; set; }
         public DbSet<CartItem> CartItems { get; set; }
         public DbSet<QualityScoreSnapshot> QualityScoreSnapshots { get; set; }
+        public DbSet<ReputationLog> ReputationLogs { get; set; } = null!;
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

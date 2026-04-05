@@ -1,10 +1,13 @@
+using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Reputation;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
+using FPTU.Capstone.AMKCollective.Domain.Entities;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace FPTU.Capstone.AMKCollective.Application.Services
@@ -29,6 +32,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             user.CurrentReputationScore = newScore;
 
             await _unitOfWork.Users.UpdateAsync(user);
+            await AddReputationLogAsync(ReputationTargetType.Customer, userId, delta, newScore, reason);
             await _unitOfWork.CommitAsync();
 
             return newScore;
@@ -51,9 +55,75 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             shop.CurrentQualityScore = newScore;
 
             await _unitOfWork.Shops.UpdateAsync(shop);
+            await AddReputationLogAsync(ReputationTargetType.Shop, shopId, delta, newScore, reason);
             await _unitOfWork.CommitAsync();
 
             return newScore;
+        }
+
+        public async Task<UserReputationSummaryDto> GetUserReputationAsync(Guid userId)
+        {
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            if (user == null) throw new KeyNotFoundException("User not found");
+
+            return new UserReputationSummaryDto
+            {
+                UserId = user.Id,
+                CurrentScore = user.CurrentReputationScore,
+                MonthlyAutoCancels = user.YMonthlyAutoCancels,
+                TotalAutoCancels = user.TotalAutoCancels,
+                SlowResponseViolationCount = user.SlowResponseViolationCount,
+                ConsecutiveSuccesses = user.ConsecutiveSuccesses,
+                Gate = GetCustomerGate(user.CurrentReputationScore)
+            };
+        }
+
+        public async Task<PaginatedResult<ReputationLogDto>> GetUserReputationLogsAsync(Guid userId, int pageNumber, int pageSize)
+        {
+            var (items, totalCount) = await _unitOfWork.ReputationLogs.GetByTargetAsync(
+                ReputationTargetType.Customer.ToString(), userId, pageNumber, pageSize);
+
+            var mapped = items.Select(MapLog).ToList();
+            return new PaginatedResult<ReputationLogDto>(mapped, totalCount, pageNumber, pageSize);
+        }
+
+        public async Task<PaginatedResult<ReputationLogDto>> GetShopReputationLogsAsync(Guid shopId, int pageNumber, int pageSize)
+        {
+            var (items, totalCount) = await _unitOfWork.ReputationLogs.GetByTargetAsync(
+                ReputationTargetType.Shop.ToString(), shopId, pageNumber, pageSize);
+
+            var mapped = items.Select(MapLog).ToList();
+            return new PaginatedResult<ReputationLogDto>(mapped, totalCount, pageNumber, pageSize);
+        }
+
+        private async Task AddReputationLogAsync(ReputationTargetType targetType, Guid targetId, int delta, int scoreAfter, string? reason)
+        {
+            var log = new ReputationLog
+            {
+                TargetType = targetType.ToString(),
+                TargetId = targetId,
+                Delta = delta,
+                ScoreAfter = scoreAfter,
+                Reason = reason
+            };
+
+            await _unitOfWork.ReputationLogs.AddAsync(log);
+        }
+
+        private static ReputationLogDto MapLog(ReputationLog log)
+        {
+            return new ReputationLogDto
+            {
+                Id = log.Id,
+                TargetType = log.TargetType,
+                TargetId = log.TargetId,
+                Delta = log.Delta,
+                ScoreAfter = log.ScoreAfter,
+                Reason = log.Reason,
+                ReferenceType = log.ReferenceType,
+                ReferenceId = log.ReferenceId,
+                CreatedAt = log.CreatedAt
+            };
         }
 
         public CustomerReputationGate GetCustomerGate(int score)

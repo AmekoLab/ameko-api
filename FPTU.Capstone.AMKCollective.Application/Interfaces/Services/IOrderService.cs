@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 {
     public interface IOrderService
@@ -15,7 +14,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         //CUSTOMER SHOPPING
         Task AddToCartAsync(Guid userId, AddToCartRequest request, CancellationToken token = default);
 
-        Task<OrderResponse> GetMyCartAsync(Guid userId, CancellationToken token = default);
+        Task<OrderResponse?> GetMyCartAsync(Guid userId, CancellationToken token = default);
 
         Task RemoveItemFromCartAsync(Guid userId, Guid orderItemId, CancellationToken token = default);
 

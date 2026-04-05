@@ -38,6 +38,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         IFeedbackRepository Feedbacks { get; }
         IShopAnalyticsRepository ShopAnalytics { get; }
         IQualityScoreSnapshotRepository QualityScoreSnapshots { get; }
+        IReputationLogRepository ReputationLogs { get; }
         Task CommitAsync();
         void Rollback();
         /// <summary>

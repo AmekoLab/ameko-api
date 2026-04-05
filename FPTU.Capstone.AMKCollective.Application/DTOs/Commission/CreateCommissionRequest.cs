@@ -28,10 +28,10 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Commission
 
         public bool IsDraft { get; set; } = false;
 
-        [Range(1, 168, ErrorMessage = "Shop response window must be between 1 and 168 hours.")]
+        [Range(24, 72, ErrorMessage = "Shop response window must be between 24 and 72 hours.")]
         public int? ShopResponseWindowHours { get; set; }
 
-        [Range(1, 168, ErrorMessage = "Customer response window must be between 1 and 168 hours.")]
+        [Range(1, 72, ErrorMessage = "Customer response window must be between 1 and 72 hours.")]
         public int? CustomerResponseWindowHours { get; set; }
     }
 }

@@ -99,7 +99,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (requestDto.IsDraft)
             {
                 request.Status = CommissionStatus.Draft;
-                request.TargetedShopId = null;
             }
             else
             {
@@ -156,7 +155,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             request.MinBudget = requestDto.MinBudget;
             request.MaxBudget = requestDto.MaxBudget;
             request.Quantity = requestDto.Quantity;
-            request.TargetedShopId = requestDto.TargetedShopId;
+            if (requestDto.TargetedShopId.HasValue)
+            {
+                request.TargetedShopId = requestDto.TargetedShopId.Value;
+            }
 
             if (requestDto.ShopResponseWindowHours.HasValue)
             {
@@ -400,7 +402,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var activeQuotes = request.Quotes.Count(q => q.Status == QuoteStatus.PendingUserDecision && q.Id != quoteId);
             if (activeQuotes == 0 && request.Status == CommissionStatus.Quoted)
             {
-                request.Status = CommissionStatus.OpenPool;
+                request.Status = request.TargetedShopId.HasValue
+                    ? CommissionStatus.PendingTarget
+                    : CommissionStatus.OpenPool;
                 await _unitOfWork.CommissionRequests.UpdateAsync(request);
             }
 

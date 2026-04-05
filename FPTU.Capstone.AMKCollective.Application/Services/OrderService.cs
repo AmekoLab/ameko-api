@@ -89,7 +89,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
         }
 
-        public async Task<OrderResponse> GetMyCartAsync(Guid userId, CancellationToken token = default)
+        public async Task<OrderResponse?> GetMyCartAsync(Guid userId, CancellationToken token = default)
         {
             var cart = await _unitOfWork.Carts.GetCartByUserIdAsync(userId);
             if (cart == null || !cart.CartItems.Any()) return null;
@@ -219,9 +219,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         vouchers.Add(sv);
                     }
 
-                    if (shopVoucherError == null && vouchers.Count > 1 && vouchers.Any(v => v.TargetUserId != userId))
+                    if (shopVoucherError == null)
                     {
-                        shopVoucherError = "Only private shop vouchers can be stacked.";
+                        var publicCount = vouchers.Count(v => !v.TargetUserId.HasValue);
+                        if (publicCount > 1)
+                        {
+                            shopVoucherError = "Only one public shop voucher can be used per shop.";
+                        }
                     }
 
                     if (shopVoucherError == null)
@@ -1404,8 +1408,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 decimal systemDiscountForThisOrder = 0;
                 decimal currentOrderRemain = order.SubTotal;
 
-                var shopInfo = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
-                Guid shopOwnerId = shopInfo != null ? shopInfo.UserId : Guid.Empty;
+                Guid shopOwnerId = Guid.Empty;
+                if (order.ShopId.HasValue)
+                {
+                    var shopInfo = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+                    shopOwnerId = shopInfo != null ? shopInfo.UserId : Guid.Empty;
+                }
 
                 // Xử lý mã của Shop
                 var matchedShopVoucher = shopVouchers.FirstOrDefault(v => v.CreatorId == shopOwnerId);
@@ -1927,7 +1935,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 {
                     try
                     {
-                        using var doc = JsonSerializer.Deserialize<JsonDocument>(item.DesignConfig);
+                        using var doc = JsonDocument.Parse(item.DesignConfig);
                         var root = doc.RootElement;
                         if (root.TryGetProperty("Price", out var priceProp)) currentPrice = priceProp.GetDecimal();
                         if (root.TryGetProperty("Title", out var titleProp)) name = titleProp.GetString() ?? "Custom Request";
@@ -2329,8 +2337,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         vouchers.Add(sv);
                     }
 
-                    if (vouchers.Count > 1 && vouchers.Any(v => v.TargetUserId != userId))
-                        throw new InvalidOperationException("Only private shop vouchers can be stacked.");
+                    var publicCount = vouchers.Count(v => !v.TargetUserId.HasValue);
+                    if (publicCount > 1)
+                        throw new InvalidOperationException("Only one public shop voucher can be used per shop.");
 
                     foreach (var sv in vouchers)
                     {
@@ -2485,6 +2494,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 // Tự động lấy HttpContext từ hệ thống
                 var context = _httpContextAccessor.HttpContext;
+                if (context == null)
+                    throw new InvalidOperationException("HttpContext is not available for VnPay payment.");
                 return await _vnPayService.CreatePaymentUrlAsync(paymentRequest, userId, context);
             }
             else // Mặc định là Stripe
@@ -2506,7 +2517,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     if (baseKit != null)
                     {
                         if (itemResponse.ShopId == Guid.Empty) itemResponse.ShopId = baseKit.ShopId;
-                        if (string.IsNullOrEmpty(itemResponse.ProductImage)) itemResponse.ProductImage = baseKit.ThumbnailURL;
+                        if (string.IsNullOrEmpty(itemResponse.ProductImage)) itemResponse.ProductImage = baseKit.ThumbnailURL ?? string.Empty;
                     }
 
                     if (itemResponse.OrderItemComponents != null && itemResponse.OrderItemComponents.Any())
@@ -2517,7 +2528,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             if (partInfo != null)
                             {
                                 comp.PartName = partInfo.Name;
-                                comp.PartImageUrl = partInfo.ThumbnailURL;
+                                comp.PartImageUrl = partInfo.ThumbnailURL ?? string.Empty;
                                 if (comp.PartPriceSnapshot == 0) comp.PartPriceSnapshot = partInfo.Price;
                             }
                         }
