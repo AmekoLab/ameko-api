@@ -50,7 +50,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public int ResubmitCount { get; set; } = 0;
         public DateTime? LastResubmitTime { get; set; }
         // Reputation system
-        public int CurrentQualityScore { get; set; } = 50;
+        public int CurrentQualityScore { get; set; } = 100;
         public ShopBadge Badge { get; set; } = ShopBadge.Basic;
 
 

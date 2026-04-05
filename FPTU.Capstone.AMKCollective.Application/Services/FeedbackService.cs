@@ -4,9 +4,11 @@ using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
+using Microsoft.Extensions.Hosting;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -17,12 +19,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IStorageService _storageService;
         private readonly IMapper _mapper;
+        private readonly HashSet<string> _badWords;
 
-        public FeedbackService(IUnitOfWork unitOfWork, IStorageService storageService, IMapper mapper)
+        public FeedbackService(IUnitOfWork unitOfWork, IStorageService storageService, IMapper mapper, IHostEnvironment environment)
         {
             _unitOfWork = unitOfWork;
             _storageService = storageService;
             _mapper = mapper;
+            _badWords = LoadBadWords(environment.ContentRootPath);
         }
 
         public async Task<FeedbackResponse> CreateFeedbackAsync(Guid userId, Guid orderId, CreateFeedbackRequest request)
@@ -46,6 +50,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (order.ShopId == null)
                 throw new Exception("Order does not belong to any shop.");
+
+            ValidateNoBadWords(request.Comment, "Comment");
 
             // 3. Handle image upload via IStorageService.UploadAsync
             var feedbackImages = new List<FeedbackImage>();
@@ -100,6 +106,52 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return response;
         }
 
+        public async Task<FeedbackResponse> UpdateFeedbackAsync(Guid userId, Guid feedbackId, UpdateFeedbackRequest request)
+        {
+            var feedback = await _unitOfWork.Feedbacks.GetByIdAsync(feedbackId);
+            if (feedback == null)
+                throw new Exception("Feedback not found.");
+
+            if (feedback.FromUserId != userId)
+                throw new UnauthorizedAccessException("You do not have permission to update this feedback.");
+
+            if (feedback.EditCount >= 1)
+                throw new Exception("You have already edited this feedback once.");
+
+            if (!string.IsNullOrEmpty(feedback.ShopReply))
+                throw new Exception("Feedback cannot be edited after the shop has replied.");
+
+            ValidateNoBadWords(request.Comment, "Comment");
+
+            feedback.Rating = request.Rating;
+            feedback.Comment = request.Comment;
+            feedback.EditCount += 1;
+
+            if (request.Images != null && request.Images.Any())
+            {
+                if (request.Images.Count > 5)
+                    throw new Exception("You can only upload a maximum of 5 images.");
+
+                feedback.Images.Clear();
+                foreach (var file in request.Images)
+                {
+                    using var stream = file.OpenReadStream();
+                    var imageUrl = await _storageService.UploadAsync(stream, file.FileName, "feedbacks");
+                    if (!string.IsNullOrEmpty(imageUrl))
+                    {
+                        feedback.Images.Add(new FeedbackImage { ImageUrl = imageUrl });
+                    }
+                }
+            }
+
+            _unitOfWork.Feedbacks.Update(feedback);
+            await _unitOfWork.CommitAsync();
+
+            var response = _mapper.Map<FeedbackResponse>(feedback);
+            response.ImageUrls = feedback.Images.Select(img => img.ImageUrl).ToList();
+            return response;
+        }
+
         public async Task<FeedbackResponse> ReplyFeedbackAsync(Guid shopUserId, Guid feedbackId, ReplyFeedbackRequest request)
         {
             var feedback = await _unitOfWork.Feedbacks.GetByIdAsync(feedbackId);
@@ -113,6 +165,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (!string.IsNullOrEmpty(feedback.ShopReply))
                 throw new Exception("This feedback has already been replied to.");
 
+            ValidateNoBadWords(request.Reply, "Reply");
+
             feedback.ShopReply = request.Reply;
             feedback.ShopRepliedAt = DateTime.UtcNow;
 
@@ -122,6 +176,35 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var response = _mapper.Map<FeedbackResponse>(feedback);
             response.ImageUrls = feedback.Images.Select(img => img.ImageUrl).ToList();
             return response;
+        }
+
+        private HashSet<string> LoadBadWords(string contentRootPath)
+        {
+            var filePath = Path.Combine(contentRootPath, "VietnameseBadWord.txt");
+            if (!File.Exists(filePath))
+            {
+                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            var words = File.ReadAllLines(filePath)
+                .Select(line => line.Trim())
+                .Where(line => !string.IsNullOrEmpty(line))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            return words;
+        }
+
+        private void ValidateNoBadWords(string? text, string fieldName)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return;
+
+            foreach (var badWord in _badWords)
+            {
+                if (text.Contains(badWord, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new Exception($"{fieldName} contains inappropriate language.");
+                }
+            }
         }
 
         public async Task<PaginatedResult<FeedbackResponse>> GetShopFeedbacksAsync(Guid shopId, int pageNumber, int pageSize)

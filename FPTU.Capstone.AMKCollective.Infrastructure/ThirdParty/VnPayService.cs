@@ -1,6 +1,7 @@
 ﻿using FPTU.Capstone.AMKCollective.Application.DTOs.Payment;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
+using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using Microsoft.AspNetCore.Http;
@@ -19,12 +20,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
         private readonly VnPaySettings _vnpaySettings;
         private readonly IUnitOfWork _unitOfWork;
         private readonly IServiceProvider _serviceProvider;
+        private readonly OrderSettings _orderSettings;
 
-        public VnPayService(IOptions<VnPaySettings> vnpaySettings, IUnitOfWork unitOfWork, IServiceProvider serviceProvider)
+        public VnPayService(IOptions<VnPaySettings> vnpaySettings, IUnitOfWork unitOfWork, IServiceProvider serviceProvider, IOptions<OrderSettings> orderOptions)
         {
             _vnpaySettings = vnpaySettings.Value;
             _unitOfWork = unitOfWork;
             _serviceProvider = serviceProvider;
+            _orderSettings = orderOptions.Value;
         }
 
         public async Task<string> CreatePaymentUrlAsync(CreateCheckoutSessionRequest request, Guid requestingUserId, HttpContext context)
@@ -116,7 +119,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                                 var shopProfile = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
                                 if (shopProfile != null)
                                 {
-                                    decimal shopRevenue = order.TotalAmount + order.SystemDiscountAmount;
+                                    decimal shopRevenue = ShopRevenueCalculator.CalculateShopRevenue(
+                                        order,
+                                        _orderSettings.ShopPayoutRate,
+                                        _orderSettings.SystemVoucherShopShareRate,
+                                        _orderSettings.SystemVoucherShopShareCap);
                                     shopPendingSales.Add((shopProfile.UserId, order.Id, shopRevenue));
                                 }
                             }

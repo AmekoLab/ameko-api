@@ -44,7 +44,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         private ICartItemRepository? _cartItems;
         private IFeedbackRepository? _feedbacks;
         private IShopAnalyticsRepository? _shopAnalytics;
-        private IQualityScoreSnapshotRepository _qualityScoreSnapshots;
+        private IQualityScoreSnapshotRepository? _qualityScoreSnapshots;
+        private IReputationLogRepository? _reputationLogs;
 
         public UnitOfWork(ApplicationDbContext context)
         {
@@ -93,6 +94,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public IShopAnalyticsRepository ShopAnalytics => _shopAnalytics ??= new ShopAnalyticsRepository(_context);
 
         public IQualityScoreSnapshotRepository QualityScoreSnapshots => _qualityScoreSnapshots ??= new QualityScoreSnapshotRepository(_context);
+        public IReputationLogRepository ReputationLogs => _reputationLogs ??= new ReputationLogRepository(_context);
 
         public async Task CommitAsync()
         {

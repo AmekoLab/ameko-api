@@ -290,6 +290,8 @@ namespace FPTU.Capstone.AMKCollective.Tests
                     PaymentCancelPath = "https://cancel"
                 }),
                 Options.Create(new SystemSettings()),
+                Options.Create(new ReputationSettings()),
+                new Mock<IReputationService>().Object,
                 new Mock<IVnPayService>().Object,
                 new Mock<IHttpContextAccessor>().Object);
         }

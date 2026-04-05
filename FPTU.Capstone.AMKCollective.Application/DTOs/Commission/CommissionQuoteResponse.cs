@@ -22,5 +22,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Commission
 
         public DateTime CreatedAt { get; set; }
         public DateTime ExpiredAt { get; set; }
+        public DateTime? CustomerDecisionDeadlineAt { get; set; }
     }
 }

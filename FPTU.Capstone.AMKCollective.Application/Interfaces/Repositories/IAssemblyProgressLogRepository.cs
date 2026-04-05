@@ -16,5 +16,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         void Update(AssemblyProgressLog log);
         void UpdateRange(IEnumerable<AssemblyProgressLog> logs);
         void Delete(AssemblyProgressLog log);
+        Task<bool> HasLogsForOrderAsync(Guid orderId);
     }
 }

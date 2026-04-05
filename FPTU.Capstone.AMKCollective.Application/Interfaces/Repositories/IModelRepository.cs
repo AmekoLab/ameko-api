@@ -24,7 +24,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task UpdateAsync(Model part, CancellationToken token = default);
         Task DeleteAsync(Guid id, CancellationToken token = default);
         Task<bool> ExistsAsync(Guid id, CancellationToken token = default);
-        /// <summary>[Fix #3] Kiểm tra part có đang được tham chiếu trong Order active (InCart/Pending) không.</summary>
+        /// <summary>[Fix #3] Kiem tra part co dang duoc tham chieu trong order chua hoan thanh khong.</summary>
         Task<bool> IsPartInActiveOrderAsync(Guid partId, CancellationToken token = default);
     }
 }

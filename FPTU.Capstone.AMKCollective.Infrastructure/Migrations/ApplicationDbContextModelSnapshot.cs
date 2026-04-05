@@ -411,6 +411,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("char(36)");
 
+                    b.Property<DateTime?>("CustomerDecisionDeadlineAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("CustomerReminderCount")
+                        .HasColumnType("int");
+
                     b.Property<int>("EstimatedDays")
                         .HasColumnType("int");
 
@@ -419,6 +425,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime?>("LastCustomerReminderAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<decimal>("QuotedPrice")
                         .HasColumnType("decimal(18,2)");
@@ -459,12 +468,18 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("char(36)");
 
+                    b.Property<int>("CustomerResponseWindowHours")
+                        .HasColumnType("int");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasColumnType("longtext");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime?>("LastReminderAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<decimal?>("MaxBudget")
                         .HasColumnType("decimal(18,2)");
@@ -477,6 +492,15 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
                     b.Property<string>("ReferenceImages")
                         .HasColumnType("longtext");
+
+                    b.Property<int>("ReminderCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ShopResponseDeadlineAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("ShopResponseWindowHours")
+                        .HasColumnType("int");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -643,6 +667,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("char(36)");
+
+                    b.Property<int>("EditCount")
+                        .HasColumnType("int");
 
                     b.Property<Guid>("FromUserId")
                         .HasColumnType("char(36)");
@@ -1099,6 +1126,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
                     b.Property<decimal>("DiscountAmount")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("ExpectedDeliveryDate")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
@@ -1785,6 +1815,62 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.ToTable("RefreshTokens", (string)null);
                 });
 
+            modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.ReputationLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("Delta")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<string>("ReferenceId")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("ReferenceType")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<int>("ScoreAfter")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TargetId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TargetType", "TargetId", "CreatedAt");
+
+                    b.ToTable("ReputationLogs", (string)null);
+                });
+
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.Role", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2066,6 +2152,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("char(36)");
 
+                    b.Property<int>("CurrentReputationScore")
+                        .HasColumnType("int");
+
                     b.Property<DateOnly?>("DateOfBirth")
                         .HasColumnType("date");
 
@@ -2113,6 +2202,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
                     b.Property<Guid>("RoleId")
                         .HasColumnType("char(36)");
+
+                    b.Property<int>("SlowResponseViolationCount")
+                        .HasColumnType("int");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -2169,6 +2261,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                             Id = new Guid("00000000-0000-0000-0000-000000000001"),
                             ConsecutiveSuccesses = 0,
                             CreatedAt = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            CurrentReputationScore = 100,
                             Email = "noreply@amkcollective.com",
                             EmailConfirmed = true,
                             FirstName = "AMK",
@@ -2177,6 +2270,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                             LastName = "System",
                             PhoneNumberConfirmed = false,
                             RoleId = new Guid("11111111-1111-1111-1111-111111111111"),
+                            SlowResponseViolationCount = 0,
                             Status = 0,
                             TotalAutoCancels = 0,
                             Username = "systembot",

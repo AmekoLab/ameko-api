@@ -12,6 +12,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<CommissionQuote?> GetByIdAsync(Guid id);
         Task<IEnumerable<CommissionQuote>> GetByRequestIdAsync(Guid requestId);
         Task<IEnumerable<CommissionQuote>> GetQuotesByShopIdAsync(Guid shopId);
+        Task<List<CommissionQuote>> GetExpiredCustomerDecisionQuotesAsync(DateTime now);
         Task AddAsync(CommissionQuote quote);
         Task UpdateAsync(CommissionQuote quote);
     }

@@ -82,22 +82,14 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Apply Voucher to Order (Supports Stacking - Maximum 2 vouchers per order).
-        /// Business Rules:
-        ///   Promotion + Compensation - Allowed
-        ///   Negotiation + Compensation - Allowed
-        ///   Promotion + Promotion - Not Allowed
-        ///   Promotion + Negotiation - Not Allowed
-        ///   Compensation + Compensation - Not Allowed
+        /// Apply Voucher to Order (Single voucher only).
         /// </summary>
         [HttpPost("apply")]
         public async Task<IActionResult> ApplyVoucher([FromBody] ApplyVoucherRequest request)
         {
             try
             {
-                var userId = GetCurrentUserId();
-                var result = await _voucherService.ApplyVoucherAsync(userId, request.OrderId, request.Code);
-                return SuccessResponse(result, "Voucher applied successfully");
+                return ErrorResponse<object>("This endpoint is disabled. Apply vouchers at checkout instead.");
             }
             catch (Exception ex)
             {
@@ -114,9 +106,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var userId = GetCurrentUserId();
-                var result = await _voucherService.RemoveSpecificVoucherAsync(userId, orderId, voucherCode);
-                return SuccessResponse(result, "Voucher removed successfully");
+                return ErrorResponse<object>("This endpoint is disabled. Update vouchers at checkout instead.");
             }
             catch (Exception ex)
             {
@@ -133,9 +123,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var userId = GetCurrentUserId();
-                await _voucherService.RemoveAllVouchersAsync(userId, orderId);
-                return SuccessResponse("All vouchers removed from order");
+                return ErrorResponse<object>("This endpoint is disabled. Update vouchers at checkout instead.");
             }
             catch (Exception ex)
             {

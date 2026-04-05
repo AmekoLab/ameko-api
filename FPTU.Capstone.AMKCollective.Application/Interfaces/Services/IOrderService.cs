@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 {
     public interface IOrderService
@@ -15,7 +14,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         //CUSTOMER SHOPPING
         Task AddToCartAsync(Guid userId, AddToCartRequest request, CancellationToken token = default);
 
-        Task<OrderResponse> GetMyCartAsync(Guid userId, CancellationToken token = default);
+        Task<OrderResponse?> GetMyCartAsync(Guid userId, CancellationToken token = default);
 
         Task RemoveItemFromCartAsync(Guid userId, Guid orderItemId, CancellationToken token = default);
 
@@ -36,8 +35,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<List<OrderResponse>> GetShopOrdersAsync(Guid shopId, OrderStatus? status, int page, int size, CancellationToken token = default);
 
         Task<OrderResponse> GetShopOrderDetailAsync(Guid shopId, Guid orderId, CancellationToken token = default);
+        Task CancelOrderByShopAsync(Guid shopId, Guid orderId, string reason, CancellationToken token = default);
 
-        Task UpdateOrderStatusAsync(Guid shopId, Guid orderId, OrderStatus newStatus, CancellationToken token = default);
+        Task UpdateOrderStatusAsync(Guid shopId, Guid orderId, DTOs.Order.UpdateOrderStatusRequest request, CancellationToken token = default);
 
         Task<OrderIssueResponse> RequestCancelOrderAsync(Guid userId, DTOs.OrderIssues.CancelOrderRequest request, CancellationToken token = default);
 
@@ -45,10 +45,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 
         Task<CheckoutResponse> RepayAsync(Guid userId, RepayRequest request, CancellationToken token = default);
         Task<OrderResponse> GetOrderDetailAsync(Guid userId, Guid orderId);
+        Task UpdateShippingAddressAsync(Guid userId, Guid orderId, DTOs.Order.UpdateShippingAddressRequest request, CancellationToken token = default);
 
         // BACKGROUND WORKER - Release held funds after warranty period
         Task ReleaseFundsForEligibleOrdersAsync(CancellationToken token = default);
         Task CancelAbandonedOrdersAsync(CancellationToken token = default);
+        Task AutoCancelOrdersWithoutAssemblyAsync(CancellationToken token = default);
         
 
         }

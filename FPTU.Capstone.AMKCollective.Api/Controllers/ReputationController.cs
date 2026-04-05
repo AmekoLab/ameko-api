@@ -12,11 +12,13 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
     {
         private readonly IQualityScoreService _qualityScoreService;
         private readonly IShopService _shopService;
+        private readonly IReputationService _reputationService;
 
-        public ReputationController(IQualityScoreService qualityScoreService, IShopService shopService)
+        public ReputationController(IQualityScoreService qualityScoreService, IShopService shopService, IReputationService reputationService)
         {
             _qualityScoreService = qualityScoreService;
             _shopService = shopService;
+            _reputationService = reputationService;
         }
 
         // USER
@@ -88,6 +90,58 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 if (shop == null) return UnauthorizedResponse<object>("User does not own any shop.");
                 var data = await _qualityScoreService.GetBadgeHistoryAsync(shop.Id);
                 return SuccessResponse(data, "Fetched badge history successfully.");
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
+        // CUSTOMER
+        [HttpGet("me")]
+        [Authorize]
+        public async Task<IActionResult> GetMyReputation()
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var data = await _reputationService.GetUserReputationAsync(userId);
+                return SuccessResponse(data, "Fetched user reputation successfully.");
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
+        [HttpGet("me/logs")]
+        [Authorize]
+        public async Task<IActionResult> GetMyReputationLogs([FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 20)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var data = await _reputationService.GetUserReputationLogsAsync(userId, pageNumber, pageSize);
+                return SuccessResponse(data, "Fetched reputation logs successfully.");
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
+        [HttpGet("my-shop/logs")]
+        [Authorize]
+        public async Task<IActionResult> GetMyShopReputationLogs([FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 20)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var shop = await _shopService.GetMyShopAsync(userId);
+                if (shop == null) return UnauthorizedResponse<object>("User does not own any shop.");
+
+                var data = await _reputationService.GetShopReputationLogsAsync(shop.Id, pageNumber, pageSize);
+                return SuccessResponse(data, "Fetched shop reputation logs successfully.");
             }
             catch (Exception ex)
             {

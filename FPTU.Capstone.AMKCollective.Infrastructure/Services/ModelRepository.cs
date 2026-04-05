@@ -135,16 +135,21 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return await _context.Models.AnyAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
         }
 
-        /// <summary>[Fix #3] Kiểm tra part có đang xuất hiện trong Order InCart hoặc Pending không.</summary>
+        /// <summary>[Fix #3] Kiem tra part co dang xuat hien trong order chua hoan thanh khong.</summary>
         public async Task<bool> IsPartInActiveOrderAsync(Guid partId, CancellationToken token = default)
         {
+            var closedStatuses = new[]
+            {
+                Domain.Enums.OrderStatus.Completed,
+                Domain.Enums.OrderStatus.Cancelled,
+                Domain.Enums.OrderStatus.Refunded,
+                Domain.Enums.OrderStatus.Returned
+            };
+
             return await _context.OrderItems
                 .AsNoTracking()
                 .Where(oi => oi.ProductId == partId && !oi.IsDeleted)
-                .AnyAsync(oi =>
-                    oi.Order.OrderStatus == Domain.Enums.OrderStatus.InCart ||
-                    oi.Order.OrderStatus == Domain.Enums.OrderStatus.Pending,
-                    token);
+                .AnyAsync(oi => !closedStatuses.Contains(oi.Order.OrderStatus), token);
         }
 
         public async Task<bool> UpdateStockAsync(Guid id, int quantityChange, bool includeDeleted = false,CancellationToken cancellationToken = default)

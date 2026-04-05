@@ -34,10 +34,12 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public AccountStatus Status { get; set; } = AccountStatus.PendingVerification;
 
         // Reputation Point 
+        public int CurrentReputationScore { get; set; } = 100;
         public int YMonthlyAutoCancels { get; set; }  // Số lần hủy tự động trong tháng
         public int TotalAutoCancels { get; set; }  // Tổng số lần hủy tự động
+        public int SlowResponseViolationCount { get; set; }  // So lan vi pham phan hoi cham
         public int ConsecutiveSuccesses { get; set; } // Số đơn hàng thành công s
-                                                      // System
+                                  // System
         public string? VerificationCode { get; set; }
         public DateTime? VerificationCodeExpiryTime { get; set; }
         public string? ResetPasswordToken { get; set; }

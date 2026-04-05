@@ -85,6 +85,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
             RegisterOptions<SystemSettings>(builder, "SystemSettings");
             RegisterOptions<VnPaySettings>(builder, "Vnpay");
             RegisterOptions<QualityScoreSettings>(builder, "QualityScoreSettings");
+            RegisterOptions<ReputationSettings>(builder, "ReputationSettings");
         }
 
         private void RegisterOptions<T>(ContainerBuilder builder, string sectionName) where T : class, new()
