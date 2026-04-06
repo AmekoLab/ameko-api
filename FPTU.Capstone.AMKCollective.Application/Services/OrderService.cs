@@ -2265,7 +2265,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(mappedItem.AssembledProductId.Value);
                         if (assembledProduct != null)
                         {
-                            if (assembledProduct.Quantity < mappedItem.Quantity) throw new InvalidOperationException($"Sản phẩm '{mappedItem.ProductName}' đã hết hàng.");
+                            if (assembledProduct.Quantity < mappedItem.Quantity) throw new InvalidOperationException($"'{mappedItem.ProductName}' is out of stock.");
                             assembledProduct.Quantity -= mappedItem.Quantity;
                             // Đã sửa: Dùng UpdateAsync thay vì Update
                             await _unitOfWork.AssembledProducts.UpdateAsync(assembledProduct);
