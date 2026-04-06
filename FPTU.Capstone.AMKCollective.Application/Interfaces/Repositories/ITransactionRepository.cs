@@ -1,4 +1,5 @@
-﻿using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,5 +13,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task AddAsync(Transaction transaction);
         Task<List<Transaction>> GetByWalletIdAsync(Guid walletId);
         Task<(List<Transaction> Items, int TotalCount)> GetTransactionsByFilterAsync(PaymentFilterRequest filter);
+
+        /// <summary>
+        /// Kiểm tra xem transaction với orderId và type đã tồn tại chưa (dùng cho idempotency check).
+        /// Query trực tiếp DB, không load toàn bộ dữ liệu.
+        /// </summary>
+        Task<bool> ExistsByOrderAndTypeAsync(Guid walletId, Guid orderId, TransactionType type);
     }
 }

@@ -498,12 +498,46 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 await RefundItemStockAsync(item);
             }
 
-            if (order.PaymentStatus == PaymentStatus.Paid && order.OrderGroupId.HasValue)
+            if (order.PaymentStatus == PaymentStatus.Paid)
             {
-                await _paymentService.RefundPaymentAsync(order.OrderGroupId.Value);
+                await _walletService.RefundToWalletAsync(
+                    order.CustomerId,
+                    order.TotalAmount,
+                    $"Refund for cancelled order #{order.Id}");
+
+                if (order.ShopId.HasValue)
+                {
+                    var shopProfile = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+                    if (shopProfile != null)
+                    {
+                        decimal shopRevenue = ShopRevenueCalculator.CalculateShopRevenue(
+                            order,
+                            _orderSettings.ShopPayoutRate,
+                            _orderSettings.SystemVoucherShopShareRate,
+                            _orderSettings.SystemVoucherShopShareCap);
+
+                        await _walletService.DeductFundsForRefundAsync(
+                            shopProfile.UserId,
+                            order.Id,
+                            shopRevenue,
+                            order.OrderStatus == OrderStatus.Completed);
+                    }
+                }
+
                 order.PaymentStatus = PaymentStatus.Refunded;
-                var group = await _unitOfWork.OrderGroups.GetByIdAsync(order.OrderGroupId.Value);
-                if (group != null) group.PaymentStatus = PaymentStatus.Refunded;
+                if (order.OrderGroupId.HasValue)
+                {
+                    var payment = await _unitOfWork.Payments.GetPaymentByOrderGroupIdAsync(order.OrderGroupId.Value);
+                    if (payment != null && payment.Status != PaymentStatus.Refunded)
+                    {
+                        payment.Status = PaymentStatus.Refunded;
+                        payment.Description = $"Refunded to internal wallet for cancelled order #{order.Id}";
+                        _unitOfWork.Payments.Update(payment);
+                    }
+
+                    var group = await _unitOfWork.OrderGroups.GetByIdAsync(order.OrderGroupId.Value);
+                    if (group != null) group.PaymentStatus = PaymentStatus.Refunded;
+                }
             }
 
             order.OrderStatus = OrderStatus.Cancelled;
@@ -2231,7 +2265,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(mappedItem.AssembledProductId.Value);
                         if (assembledProduct != null)
                         {
-                            if (assembledProduct.Quantity < mappedItem.Quantity) throw new InvalidOperationException($"Sản phẩm '{mappedItem.ProductName}' đã hết hàng.");
+                            if (assembledProduct.Quantity < mappedItem.Quantity) throw new InvalidOperationException($"'{mappedItem.ProductName}' is out of stock.");
                             assembledProduct.Quantity -= mappedItem.Quantity;
                             // Đã sửa: Dùng UpdateAsync thay vì Update
                             await _unitOfWork.AssembledProducts.UpdateAsync(assembledProduct);

@@ -41,6 +41,27 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
 
         //SHOP
+        [HttpGet("my-current")]
+        [Authorize]
+        public async Task<IActionResult> GetMyCurrentReputation()
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var shop = await _shopService.GetMyShopAsync(userId);
+                if (shop == null) return UnauthorizedResponse<object>("User does not own any shop.");
+
+                var data = await _qualityScoreService.GetCurrentReputationAsync(shop.Id);
+                if (data == null) return NotFoundResponse<object>("Shop not found.");
+
+                return SuccessResponse(data, "Fetched current reputation successfully.");
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
         [HttpGet("my-breakdown")]
         [Authorize]
         public async Task<IActionResult> GetMyReputationBreakdown()

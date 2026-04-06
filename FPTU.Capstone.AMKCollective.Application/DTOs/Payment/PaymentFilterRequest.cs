@@ -12,6 +12,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Payment
         public Guid? UserId { get; set; } // Admin dùng để lọc theo User cụ thể
         public PaymentType? Type { get; set; }
         public PaymentStatus? Status { get; set; }
+        public string? ShopName { get; set; }
         public DateTime? FromDate { get; set; }
         public DateTime? ToDate { get; set; }
 

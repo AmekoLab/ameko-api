@@ -143,7 +143,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 WalletId = wallet.Id,
                 Amount = totalDeduct,
                 Type = TransactionType.Withdrawal,
-                Description = $"Withdrawal request to {shop.BankName} - {shop.BankAccountNumber} (Amount: {request.Amount:N0}, Fee: {feeAmount:N0})",
+                Description = $"Withdrawal request to {shop.BankName} - {shop.BankAccountNumber} - {shop.BankAccountName} (Amount: {request.Amount:N0}, Fee: {feeAmount:N0})",
                 Currency = "VND",
                 CreatedAt = DateTime.UtcNow
             };
@@ -184,8 +184,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(shopId);
             if (wallet == null) return;
 
-            var existing = (await _unitOfWork.Transactions.GetByWalletIdAsync(wallet.Id))
-                .Any(t => t.RelatedOrderId == orderId && t.Type == TransactionType.SalesPending);
+            // [FIX B1] Query trực tiếp DB thay vì load tất cả transactions vào memory
+            var existing = await _unitOfWork.Transactions.ExistsByOrderAndTypeAsync(
+                wallet.Id, orderId, TransactionType.SalesPending);
             if (existing) return;
 
             await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, 0, amount);
@@ -271,13 +272,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, 0, -amount, true);
             }
 
+            // [FIX B2] OrderRefund = cộng tiền cho buyer; đây là trừ tiền shop nên dùng ManualAdjustment
             var transaction = new Transaction
             {
                 WalletId = wallet.Id,
                 RelatedOrderId = orderId,
                 Amount = amount,
-                Type = TransactionType.OrderRefund,
-                Description = $"Refund deduction for Order #{orderId}",
+                Type = TransactionType.ManualAdjustment,
+                Description = $"[REFUND DEDUCTION] Funds deducted from shop for order #{orderId} refund",
                 Currency = "VND",
                 CreatedAt = DateTime.UtcNow
             };
@@ -292,7 +294,65 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var (items, totalCount) = await _unitOfWork.Transactions.GetTransactionsByFilterAsync(filter);
             var mappedItems = _mapper.Map<List<WalletTransactionResponse>>(items);
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                var transaction = items[i];
+                var dto = mappedItems[i];
+
+                dto.ShopName = transaction.Wallet?.User?.ShopProfile?.ShopName;
+
+                if (transaction.Type == TransactionType.Withdrawal)
+                {
+                    ApplyWithdrawalDetailsFromDescription(transaction.Description, dto);
+                }
+            }
+
             return new PaginatedResult<WalletTransactionResponse>(mappedItems, totalCount, filter.PageNumber, filter.PageSize);
+        }
+
+        private static void ApplyWithdrawalDetailsFromDescription(string? description, WalletTransactionResponse dto)
+        {
+            if (string.IsNullOrWhiteSpace(description)) return;
+
+            const string prefix = "Withdrawal request to ";
+            var amountIndex = description.IndexOf("(Amount:", StringComparison.OrdinalIgnoreCase);
+
+            if (description.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                var bankSectionEnd = amountIndex > prefix.Length ? amountIndex : description.Length;
+                var bankSection = description.Substring(prefix.Length, bankSectionEnd - prefix.Length).Trim();
+                var parts = bankSection.Split(" - ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+                if (parts.Length > 0) dto.BankName = parts[0];
+                if (parts.Length > 1) dto.BankAccountNumber = parts[1];
+                if (parts.Length > 2) dto.BankAccountName = parts[2];
+            }
+
+            var feeIndex = description.IndexOf("Fee:", StringComparison.OrdinalIgnoreCase);
+            if (feeIndex > -1)
+            {
+                var feeStart = feeIndex + "Fee:".Length;
+                var feeEnd = description.IndexOf(")", feeStart, StringComparison.OrdinalIgnoreCase);
+                var feeText = feeEnd > feeStart
+                    ? description.Substring(feeStart, feeEnd - feeStart)
+                    : description.Substring(feeStart);
+
+                if (decimal.TryParse(FilterDigits(feeText), out var feeAmount))
+                {
+                    dto.FeeAmount = feeAmount;
+                }
+            }
+        }
+
+        private static string FilterDigits(string input)
+        {
+            var buffer = new StringBuilder();
+            foreach (var ch in input)
+            {
+                if (char.IsDigit(ch)) buffer.Append(ch);
+            }
+            return buffer.ToString();
         }
 
 
@@ -387,6 +447,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 await CreateWalletAsync(request.UserId);
                 wallet = await _unitOfWork.Wallets.GetByUserIdAsync(request.UserId);
             }
+
+            // [FIX B3] Guard null sau CreateWalletAsync tránh NullReferenceException
+            if (wallet == null)
+                throw new InvalidOperationException("Failed to retrieve or create wallet for the specified user.");
 
             await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, request.Amount, 0, true);
 
@@ -666,14 +730,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return result != PasswordVerificationResult.Failed;
         }
 
-        private string CreatePasswordHash(string password)
-        {
-            using var hmac = new HMACSHA512();
-            var salt = Convert.ToBase64String(hmac.Key);
-            var hash = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(password)));
-            return $"{salt}:{hash}";
-        }
-
         private bool VerifyPasswordHash(string password, string storedFullHash)
         {
             var parts = storedFullHash.Split(':');
@@ -685,6 +741,72 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             using var hmac = new HMACSHA512(salt);
             var computedHash = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(password)));
             return computedHash == storedHash;
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        // Withdrawal History – Shop & Admin
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>Shop xem lịch sử rút tiền của mình với đầy đủ Status.</summary>
+        public async Task<PaginatedResult<WithdrawalSummaryResponse>> GetMyWithdrawalHistoryAsync(Guid userId, int pageIndex, int pageSize)
+        {
+            var (items, totalCount) = await _unitOfWork.WithdrawalRequests.GetByUserIdPagedAsync(userId, pageIndex, pageSize);
+            var mapped = items.Select(w => MapToWithdrawalSummary(w)).ToList();
+            return new PaginatedResult<WithdrawalSummaryResponse>(mapped, totalCount, pageIndex, pageSize);
+        }
+
+        /// <summary>Admin xem danh sách đơn rút đang Pending từ WithdrawalRequest table (fix endpoint broken).</summary>
+        public async Task<PaginatedResult<WithdrawalSummaryResponse>> GetAdminPendingWithdrawalsAsync(int pageIndex, int pageSize, string? shopName = null)
+        {
+            var (items, totalCount) = await _unitOfWork.WithdrawalRequests.GetPendingPagedAsync(pageIndex, pageSize, shopName);
+            var mapped = items.Select(w => MapToWithdrawalSummary(w)).ToList();
+            return new PaginatedResult<WithdrawalSummaryResponse>(mapped, totalCount, pageIndex, pageSize);
+        }
+
+        /// <summary>Admin xem lịch sử đơn rút đã xử lý (Completed / Rejected).</summary>
+        public async Task<PaginatedResult<WithdrawalSummaryResponse>> GetAdminProcessedWithdrawalsAsync(int pageIndex, int pageSize)
+        {
+            var (items, totalCount) = await _unitOfWork.WithdrawalRequests.GetProcessedPagedAsync(pageIndex, pageSize);
+            var mapped = items.Select(w => MapToWithdrawalSummary(w)).ToList();
+            return new PaginatedResult<WithdrawalSummaryResponse>(mapped, totalCount, pageIndex, pageSize);
+        }
+
+        /// <summary>Admin xem thông tin ví của một user/shop cụ thể.</summary>
+        public async Task<WalletResponse?> GetWalletByUserIdForAdminAsync(Guid targetUserId)
+        {
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(targetUserId);
+            if (wallet == null) return null;
+            return _mapper.Map<WalletResponse>(wallet);
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        // Private helpers
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Map WithdrawalRequest entity → WithdrawalSummaryResponse.
+        /// FeeAmount được tính lại theo config hiện tại.
+        /// </summary>
+        private WithdrawalSummaryResponse MapToWithdrawalSummary(WithdrawalRequest w)
+        {
+            decimal feeAmount = w.Amount * _walletSettings.WithdrawalFeePercent;
+            return new WithdrawalSummaryResponse
+            {
+                Id = w.Id,
+                Amount = w.Amount,
+                FeeAmount = feeAmount,
+                TotalDeducted = w.Amount + feeAmount,
+                BankName = w.BankName,
+                BankAccountNumber = w.BankAccountNumber,
+                BankAccountName = w.BankAccountName,
+                Status = w.Status.ToString(),
+                AdminMessage = w.AdminMessage,
+                EvidenceUrl = w.EvidenceUrl,
+                ShopName = w.User?.ShopProfile?.ShopName,
+                UserId = w.UserId,
+                RequestedAt = w.RequestedAt,
+                ProcessedAt = w.ProcessedAt
+            };
         }
     }
 }

@@ -16,6 +16,7 @@ using System.IdentityModel.Tokens.Jwt;
 using FPTU.Capstone.AMKCollective.API.Workers;
 using FPTU.Capstone.AMKCollective.Application.BackgroundServices;
 using FPTU.Capstone.AMKCollective.Infrastructure.Hubs;
+using FPTU.Capstone.AMKCollective.Api.Middlewares;
 
 internal class Program
 {
@@ -197,7 +198,11 @@ internal class Program
         builder.Services.AddSingleton<INotificationQueue, NotificationQueue>();
         builder.Services.AddHostedService<NotificationBackgroundWorker>();
 
+        builder.Services.AddScoped<GlobalExceptionMiddleware>();
+
         var app = builder.Build();
+
+        app.UseMiddleware<GlobalExceptionMiddleware>();
 
         // if (app.Environment.IsDevelopment())
         // {
