@@ -380,7 +380,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             //==================TRANSACTION=======================//
             CreateMap<Transaction, WalletTransactionResponse>()
                 .ForMember(dest => dest.Type, opt => opt.MapFrom(src => src.Type.ToString()))
-                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => "Completed")) 
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src =>
+                    src.Type == TransactionType.SalesPending ? "Pending" : "Completed"))
                 .ForMember(dest => dest.FeeAmount, opt => opt.MapFrom(src => 0m));
 
             CreateMap<Transaction, HeldTransactionResponse>()

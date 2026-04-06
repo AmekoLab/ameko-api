@@ -63,19 +63,30 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return (items, totalCount);
         }
 
-        public async Task<(List<WithdrawalRequest> Items, int TotalCount)> GetPendingPagedAsync(int pageIndex, int pageSize)
+        public async Task<(List<WithdrawalRequest> Items, int TotalCount)> GetPendingPagedAsync(int pageIndex, int pageSize, string? shopName = null)
         {
-            var query = _dbSet.Where(w => w.Status == WithdrawalStatus.Pending);
-            
-            var totalCount = await query.CountAsync();
-            var items = await query
+            var query = _dbSet
                 .Include(w => w.User)
                 .ThenInclude(u => u!.ShopProfile)
+                .Where(w => w.Status == WithdrawalStatus.Pending)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(shopName))
+            {
+                var pattern = $"%{shopName.Trim()}%";
+                query = query.Where(w =>
+                    w.User != null &&
+                    w.User.ShopProfile != null &&
+                    EF.Functions.Like(w.User.ShopProfile.ShopName, pattern));
+            }
+
+            var totalCount = await query.CountAsync();
+            var items = await query
                 .OrderBy(w => w.RequestedAt)
                 .Skip((pageIndex - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync();
-                
+
             return (items, totalCount);
         }
 

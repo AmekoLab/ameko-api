@@ -15,6 +15,10 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Wallet
         public string Type { get; set; }   // Enum converted to string
         public string Status { get; set; } // Enum converted to string
         public string? Description { get; set; }
+        public string? ShopName { get; set; }
+        public string? BankName { get; set; }
+        public string? BankAccountNumber { get; set; }
+        public string? BankAccountName { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 }

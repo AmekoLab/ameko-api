@@ -164,25 +164,19 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// [Admin] Retrieves a list of pending withdrawal requests that require approval.
+        /// [Admin] Retrieves a paginated list of PENDING withdrawal requests that require approval.
+        /// Data is sourced from the WithdrawalRequest table (has proper Status field).
         /// </summary>
         [HttpGet("admin/withdrawals/pending")]
         // [Authorize(Roles = "Admin")] // TODO: Bỏ comment khi deploy production
-        public async Task<IActionResult> GetPendingWithdrawals()
+        public async Task<IActionResult> GetPendingWithdrawals(
+            [FromQuery] int pageIndex = 1,
+            [FromQuery] int pageSize = 20,
+            [FromQuery] string? shopName = null)
         {
             try
             {
-                // Tái sử dụng hàm Filter, chỉ set cứng Type và Status
-                var filter = new PaymentFilterRequest
-                {
-                    Type = PaymentType.Withdrawal,
-                    Status = PaymentStatus.Pending,
-                    PageSize = 100, // Lấy nhiều chút
-                    SortBy = "CreatedAt",
-                    IsAscending = true // Cũ nhất lên đầu để xử lý trước
-                };
-
-                var result = await _walletService.GetTransactionsByFilterAsync(filter);
+                var result = await _walletService.GetAdminPendingWithdrawalsAsync(pageIndex, pageSize, shopName);
                 return SuccessResponse(result, "Get pending withdrawals successfully");
             }
             catch (Exception ex)
@@ -506,6 +500,82 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 var userId = GetCurrentUserId();
                 var result = await _walletService.GetHeldTransactionsAsync(userId);
                 return SuccessResponse(result, "Held transactions retrieved successfully.");
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        // [SHOP] Withdrawal History – với đầy đủ Status
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// [Shop] Retrieves the shop's withdrawal request history with full status details.
+        /// </summary>
+        /// <remarks>
+        /// Use this instead of GET /wallet/transactions?Type=4 when you need:
+        /// - Withdrawal status (Pending / Completed / Rejected)
+        /// - Admin message / rejection reason
+        /// - Evidence image URL (bank transfer receipt)
+        /// </remarks>
+        [HttpGet("my/withdrawals")]
+        [ProducesResponseType(typeof(ApiResponse<PaginatedResult<WithdrawalSummaryResponse>>), 200)]
+        [ProducesResponseType(typeof(ApiResponse<object>), 500)]
+        public async Task<IActionResult> GetMyWithdrawalHistory([FromQuery] int pageIndex = 1, [FromQuery] int pageSize = 10)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var result = await _walletService.GetMyWithdrawalHistoryAsync(userId, pageIndex, pageSize);
+                return SuccessResponse(result, "Withdrawal history retrieved successfully.");
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        // [ADMIN] Withdrawal Management – new endpoints
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// [Admin] Retrieves all processed withdrawal requests (Completed or Rejected).
+        /// </summary>
+        [HttpGet("admin/withdrawals/processed")]
+        // [Authorize(Roles = "Admin")]
+        [ProducesResponseType(typeof(ApiResponse<PaginatedResult<WithdrawalSummaryResponse>>), 200)]
+        public async Task<IActionResult> GetProcessedWithdrawals([FromQuery] int pageIndex = 1, [FromQuery] int pageSize = 10)
+        {
+            try
+            {
+                var result = await _walletService.GetAdminProcessedWithdrawalsAsync(pageIndex, pageSize);
+                return SuccessResponse(result, "Get processed withdrawals successfully");
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// [Admin] Retrieves wallet info (balance + held balance) of a specific user or shop.
+        /// </summary>
+        [HttpGet("admin/users/{userId}/wallet")]
+        // [Authorize(Roles = "Admin")]
+        [ProducesResponseType(typeof(ApiResponse<WalletResponse>), 200)]
+        [ProducesResponseType(typeof(ApiResponse<object>), 404)]
+        public async Task<IActionResult> GetUserWalletForAdmin(Guid userId)
+        {
+            try
+            {
+                var wallet = await _walletService.GetWalletByUserIdForAdminAsync(userId);
+                if (wallet == null)
+                    return NotFoundResponse<WalletResponse>("Wallet not found for specified user.");
+
+                return SuccessResponse(wallet, "Wallet retrieved successfully.");
             }
             catch (Exception ex)
             {

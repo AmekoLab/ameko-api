@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Application.DTOs.Wallet;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Wallet;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -37,6 +37,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task ResetPinWithOtpAsync(Guid userId, ResetWalletPinRequest request);
 
         Task PayOrderGroupWithWalletAsync(Guid userId, Guid orderGroupId, decimal amount);
+
+        // --- Withdrawal History ---
+        /// <summary>Shop xem lịch sử rút tiền của mình (từ WithdrawalRequest table — có đầy đủ Status).</summary>
+        Task<PaginatedResult<WithdrawalSummaryResponse>> GetMyWithdrawalHistoryAsync(Guid userId, int pageIndex, int pageSize);
+
+        // --- Admin ---
+        /// <summary>Admin xem danh sách đơn rút tiền đang Pending (fix cho endpoint bị broken).</summary>
+        Task<PaginatedResult<WithdrawalSummaryResponse>> GetAdminPendingWithdrawalsAsync(int pageIndex, int pageSize, string? shopName = null);
+
+        /// <summary>Admin xem lịch sử đơn rút đã xử lý (Completed / Rejected).</summary>
+        Task<PaginatedResult<WithdrawalSummaryResponse>> GetAdminProcessedWithdrawalsAsync(int pageIndex, int pageSize);
+
+        /// <summary>Admin xem thông tin ví của một user/shop cụ thể.</summary>
+        Task<WalletResponse?> GetWalletByUserIdForAdminAsync(Guid targetUserId);
     }
 }
 

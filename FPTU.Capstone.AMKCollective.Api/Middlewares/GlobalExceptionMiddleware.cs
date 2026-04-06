@@ -34,7 +34,14 @@ public class GlobalExceptionMiddleware : IMiddleware
                     break;
                 case InvalidOperationException:
                     statusCode = HttpStatusCode.BadRequest;
-                    message = ex.Message;
+                    if (ex.Message?.IndexOf("stock", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        message = "Out of Stock";
+                    }
+                    else
+                    {
+                        message = ex.Message;
+                    }
                     break;
             }
 
