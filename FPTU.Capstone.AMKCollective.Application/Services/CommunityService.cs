@@ -128,7 +128,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 ReactionCount = p.PostReactions.Count(r => !r.IsDeleted),
                 CommentCount = p.PostComments.Count(c => !c.IsDeleted),
                 CurrentUserReaction = currentUserId.HasValue 
-                    ? p.PostReactions.FirstOrDefault(r => r.UserId == currentUserId.Value)?.Type.ToString() 
+                    ? p.PostReactions.FirstOrDefault(r => r.UserId == currentUserId.Value && !r.IsDeleted)?.Type.ToString() 
                     : null
             }).ToList();
 
@@ -227,7 +227,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 ReactionCount = post.PostReactions.Count(r => !r.IsDeleted),
                 CommentCount = post.PostComments.Count(c => !c.IsDeleted),
                 CurrentUserReaction = currentUserId.HasValue 
-                    ? post.PostReactions.FirstOrDefault(r => r.UserId == currentUserId.Value)?.Type.ToString() 
+                    ? post.PostReactions.FirstOrDefault(r => r.UserId == currentUserId.Value && !r.IsDeleted)?.Type.ToString() 
                     : null
             };
             
