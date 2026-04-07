@@ -226,6 +226,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         {
                             shopVoucherError = "Only one public shop voucher can be used per shop.";
                         }
+
+                        if (shopVoucherError == null)
+                        {
+                            var privateCount = vouchers.Count(v => v.TargetUserId.HasValue);
+                            if (privateCount > 1)
+                            {
+                                shopVoucherError = "Only one private shop voucher can be used per shop.";
+                            }
+                        }
                     }
 
                     if (shopVoucherError == null)
@@ -2384,6 +2393,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     var publicCount = vouchers.Count(v => !v.TargetUserId.HasValue);
                     if (publicCount > 1)
                         throw new InvalidOperationException("Only one public shop voucher can be used per shop.");
+
+                    var privateCount = vouchers.Count(v => v.TargetUserId.HasValue);
+                    if (privateCount > 1)
+                        throw new InvalidOperationException("Only one private shop voucher can be used per shop.");
 
                     foreach (var sv in vouchers)
                     {
