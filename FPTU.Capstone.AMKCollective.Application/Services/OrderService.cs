@@ -226,6 +226,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         {
                             shopVoucherError = "Only one public shop voucher can be used per shop.";
                         }
+
+                        if (shopVoucherError == null)
+                        {
+                            var privateCount = vouchers.Count(v => v.TargetUserId.HasValue);
+                            if (privateCount > 1)
+                            {
+                                shopVoucherError = "Only one private shop voucher can be used per shop.";
+                            }
+                        }
                     }
 
                     if (shopVoucherError == null)
@@ -820,11 +829,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         {
                             shopOwner.YMonthlyAutoCancels += 1;
                             shopOwner.TotalAutoCancels += 1;
-                            if (shopOwner.YMonthlyAutoCancels >= _reputationSettings.MaxMonthlyAutoCancels)
-                            {
-                                shopOwner.Status = AccountStatus.Suspended;
-                            }
                             await _unitOfWork.Users.UpdateAsync(shopOwner);
+
+                            if (shopOwner.YMonthlyAutoCancels >= _reputationSettings.MaxMonthlyAutoCancels && order.ShopId.HasValue)
+                            {
+                                var shop = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+                                if (shop != null)
+                                {
+                                    shop.Status = ShopStatus.Banned;
+                                    shop.IsActive = false;
+                                    await _unitOfWork.Shops.UpdateAsync(shop);
+                                }
+                            }
                         }
                     }
                     break;
@@ -2136,11 +2152,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     {
                         shopOwner.YMonthlyAutoCancels += 1;
                         shopOwner.TotalAutoCancels += 1;
+                        await _unitOfWork.Users.UpdateAsync(shopOwner);
+
                         if (shopOwner.YMonthlyAutoCancels >= _reputationSettings.MaxMonthlyAutoCancels)
                         {
-                            shopOwner.Status = AccountStatus.Suspended;
+                            shop.Status = ShopStatus.Banned;
+                            shop.IsActive = false;
+                            await _unitOfWork.Shops.UpdateAsync(shop, token);
                         }
-                        await _unitOfWork.Users.UpdateAsync(shopOwner);
                     }
                 }
             }
@@ -2374,6 +2393,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     var publicCount = vouchers.Count(v => !v.TargetUserId.HasValue);
                     if (publicCount > 1)
                         throw new InvalidOperationException("Only one public shop voucher can be used per shop.");
+
+                    var privateCount = vouchers.Count(v => v.TargetUserId.HasValue);
+                    if (privateCount > 1)
+                        throw new InvalidOperationException("Only one private shop voucher can be used per shop.");
 
                     foreach (var sv in vouchers)
                     {

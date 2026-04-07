@@ -49,6 +49,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
 
             builder.Property(a => a.Battery)
                 .HasMaxLength(255);
+
+            builder.Property(a => a.Rating)
+                .HasDefaultValue(0.0);
+
+            builder.Property(a => a.TotalReviews)
+                .HasDefaultValue(0);
         }
     }
 }

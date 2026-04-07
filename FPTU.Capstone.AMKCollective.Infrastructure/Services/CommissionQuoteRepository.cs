@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -68,6 +68,24 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                     && q.CustomerDecisionDeadlineAt.Value <= now)
                 .ToListAsync();
         }
+
+        /// <summary>
+        /// Lấy các quote có Status=Accepted và UpdatedAt ≤ acceptedBefore.
+        /// acceptedBefore = now - PaymentWindowHours (ví dụ: now - 48h).
+        /// Lưu ý: UpdatedAt chỉ được set 1 lần khi AcceptQuoteAsync (không thả touch sau đó).
+        /// </summary>
+        public async Task<List<CommissionQuote>> GetAcceptedQuotesPastPaymentDeadlineAsync(DateTime acceptedBefore)
+        {
+            return await _context.CommissionQuotes
+                .Include(q => q.Shop)
+                .Include(q => q.CommissionRequest)
+                    .ThenInclude(r => r.Quotes)
+                        .ThenInclude(rq => rq.Shop)
+                .Where(q =>
+                    q.Status == Domain.Enums.QuoteStatus.Accepted
+                    && q.UpdatedAt.HasValue
+                    && q.UpdatedAt.Value <= acceptedBefore)
+                .ToListAsync();
+        }
     }
 }
-

@@ -9,13 +9,15 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
 {
     public class FeedbackImage : BaseEntity
     {
-        public Guid FeedbackId { get; set; }
+        public Guid? FeedbackId { get; set; }
+        public Guid? AssembledProductFeedbackId { get; set; }
 
         [Required]
         [MaxLength(500)]
         public string ImageUrl { get; set; } = string.Empty;
 
         // Navigation Property
-        public virtual Feedback Feedback { get; set; } = null!;
+        public virtual Feedback? Feedback { get; set; }
+        public virtual AssembledProductFeedback? AssembledProductFeedback { get; set; }
     }
 }

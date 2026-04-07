@@ -36,6 +36,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         ICartRepository Carts { get; }
         ICartItemRepository CartItems { get; }
         IFeedbackRepository Feedbacks { get; }
+        IAssembledProductFeedbackRepository AssembledProductFeedbacks { get; }
         IShopAnalyticsRepository ShopAnalytics { get; }
         IQualityScoreSnapshotRepository QualityScoreSnapshots { get; }
         IReputationLogRepository ReputationLogs { get; }

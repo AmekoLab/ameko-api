@@ -43,6 +43,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         private ICartRepository? _carts;
         private ICartItemRepository? _cartItems;
         private IFeedbackRepository? _feedbacks;
+        private IAssembledProductFeedbackRepository? _assembledProductFeedbacks;
         private IShopAnalyticsRepository? _shopAnalytics;
         private IQualityScoreSnapshotRepository? _qualityScoreSnapshots;
         private IReputationLogRepository? _reputationLogs;
@@ -91,6 +92,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public ICartRepository Carts => _carts ??= new CartRepository(_context);
         public ICartItemRepository CartItems => _cartItems ??= new CartItemRepository(_context);
         public IFeedbackRepository Feedbacks => _feedbacks ??= new FeedbackRepository(_context);
+        public IAssembledProductFeedbackRepository AssembledProductFeedbacks => _assembledProductFeedbacks ??= new AssembledProductFeedbackRepository(_context);
         public IShopAnalyticsRepository ShopAnalytics => _shopAnalytics ??= new ShopAnalyticsRepository(_context);
 
         public IQualityScoreSnapshotRepository QualityScoreSnapshots => _qualityScoreSnapshots ??= new QualityScoreSnapshotRepository(_context);

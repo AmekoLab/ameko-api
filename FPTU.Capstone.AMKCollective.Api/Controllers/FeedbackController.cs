@@ -157,5 +157,28 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return ErrorResponse(ex.Message);
             }
         }
+
+        /// <summary>
+        /// Lay thong tin eligibility feedback cho mot don hang.
+        /// </summary>
+        [HttpGet("orders/{orderId}/feedback-eligibility")]
+        [Authorize]
+        public async Task<IActionResult> GetOrderFeedbackEligibility(Guid orderId)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var result = await _feedbackService.GetOrderFeedbackEligibilityAsync(userId, orderId);
+                return SuccessResponse(result, "Fetched feedback eligibility successfully.");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<object>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ErrorResponse(ex.Message);
+            }
+        }
     }
 }

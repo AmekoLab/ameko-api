@@ -232,5 +232,52 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             return await GetShopFeedbacksAsync(shop.Id, pageNumber, pageSize);
         }
+
+        public async Task<FeedbackEligibilityResponse> GetOrderFeedbackEligibilityAsync(Guid userId, Guid orderId)
+        {
+            var order = await _unitOfWork.Orders.GetByIdAsync(orderId);
+            if (order == null)
+                throw new Exception("Order not found.");
+
+            if (order.CustomerId != userId)
+                throw new UnauthorizedAccessException("You do not have permission to access this order.");
+
+            var isCompleted = order.OrderStatus == OrderStatus.Completed;
+            var hasCustomItems = order.OrderItems.Any(i => i.IsCustom);
+            var hasShopFeedback = await _unitOfWork.Feedbacks.ExistsByOrderIdAsync(orderId);
+            var canReviewShop = isCompleted && hasCustomItems && order.ShopId.HasValue && !hasShopFeedback;
+
+            var assembledItems = order.OrderItems
+                .Where(i => !i.IsCustom && i.AssembledProductId.HasValue)
+                .ToList();
+
+            var assembledItemIds = assembledItems.Select(i => i.Id).ToList();
+            var existingFeedbacks = await _unitOfWork.AssembledProductFeedbacks.GetByOrderItemIdsAsync(assembledItemIds);
+            var feedbackMap = existingFeedbacks
+                .GroupBy(f => f.OrderItemId)
+                .ToDictionary(g => g.Key, g => g.First().Id);
+
+            var assembledEligibility = assembledItems.Select(item =>
+            {
+                var hasFeedback = feedbackMap.TryGetValue(item.Id, out var feedbackId);
+                return new AssembledItemFeedbackEligibility
+                {
+                    OrderItemId = item.Id,
+                    AssembledProductId = item.AssembledProductId!.Value,
+                    HasFeedback = hasFeedback,
+                    CanReview = isCompleted && !hasFeedback,
+                    FeedbackId = hasFeedback ? feedbackId : null
+                };
+            }).ToList();
+
+            return new FeedbackEligibilityResponse
+            {
+                OrderId = order.Id,
+                IsOrderCompleted = isCompleted,
+                CanReviewShop = canReviewShop,
+                HasShopFeedback = hasShopFeedback,
+                AssembledItems = assembledEligibility
+            };
+        }
     }
 }

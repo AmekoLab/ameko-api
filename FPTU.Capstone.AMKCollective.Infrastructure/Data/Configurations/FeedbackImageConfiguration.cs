@@ -15,6 +15,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
         {
             // Tên bảng trong Database
             builder.ToTable("FeedbackImages");
+            builder.ToTable(t => t.HasCheckConstraint(
+                "CK_FeedbackImages_ExclusiveArc",
+                "(`FeedbackId` IS NOT NULL AND `AssembledProductFeedbackId` IS NULL) OR (`FeedbackId` IS NULL AND `AssembledProductFeedbackId` IS NOT NULL)"));
             builder.HasKey(fi => fi.Id);
             builder.Property(fi => fi.ImageUrl)
                 .IsRequired()
@@ -24,6 +27,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.HasOne(fi => fi.Feedback)
                 .WithMany(f => f.Images)
                 .HasForeignKey(fi => fi.FeedbackId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.HasOne(fi => fi.AssembledProductFeedback)
+                .WithMany(f => f.Images)
+                .HasForeignKey(fi => fi.AssembledProductFeedbackId)
                 .OnDelete(DeleteBehavior.Cascade);
         }
     }
