@@ -14,6 +14,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<FeedbackResponse> ReplyFeedbackAsync(Guid shopUserId, Guid feedbackId, ReplyFeedbackRequest request);
         Task<PaginatedResult<FeedbackResponse>> GetShopFeedbacksAsync(Guid shopId, int pageNumber, int pageSize);
         Task<PaginatedResult<FeedbackResponse>> GetMyShopFeedbacksAsync(Guid userId, int pageNumber, int pageSize);
+        Task<FeedbackEligibilityResponse> GetOrderFeedbackEligibilityAsync(Guid userId, Guid orderId);
     }
 }
 

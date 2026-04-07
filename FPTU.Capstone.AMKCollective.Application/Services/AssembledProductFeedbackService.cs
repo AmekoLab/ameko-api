@@ -219,6 +219,43 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return new PaginatedResult<AssembledProductFeedbackResponse>(responses, totalCount, pageNumber, pageSize);
         }
 
+        public async Task<AssembledProductFeedbackEligibilityResponse> GetEligibilityByProductIdAsync(Guid userId, Guid productId)
+        {
+            var orders = await _unitOfWork.Orders.GetOrdersByUserIdAsync(userId);
+            var completedOrders = orders.Where(o => o.OrderStatus == OrderStatus.Completed).ToList();
+
+            var orderItems = completedOrders
+                .SelectMany(o => o.OrderItems.Select(i => new { Order = o, Item = i }))
+                .Where(x => !x.Item.IsCustom && x.Item.AssembledProductId == productId)
+                .ToList();
+
+            var orderItemIds = orderItems.Select(x => x.Item.Id).ToList();
+            var existingFeedbacks = await _unitOfWork.AssembledProductFeedbacks.GetByOrderItemIdsAsync(orderItemIds);
+            var feedbackMap = existingFeedbacks
+                .GroupBy(f => f.OrderItemId)
+                .ToDictionary(g => g.Key, g => g.First().Id);
+
+            var items = orderItems.Select(x =>
+            {
+                var hasFeedback = feedbackMap.TryGetValue(x.Item.Id, out var feedbackId);
+                return new AssembledProductFeedbackEligibilityItem
+                {
+                    OrderId = x.Order.Id,
+                    OrderItemId = x.Item.Id,
+                    OrderCreatedAt = x.Order.CreatedAt,
+                    HasFeedback = hasFeedback,
+                    CanReview = !hasFeedback,
+                    FeedbackId = hasFeedback ? feedbackId : null
+                };
+            }).ToList();
+
+            return new AssembledProductFeedbackEligibilityResponse
+            {
+                ProductId = productId,
+                Items = items
+            };
+        }
+
         private HashSet<string> LoadBadWords(string contentRootPath)
         {
             var filePath = Path.Combine(contentRootPath, "VietnameseBadWord.txt");

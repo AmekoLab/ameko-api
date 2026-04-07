@@ -26,6 +26,22 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .FirstOrDefaultAsync(f => f.Id == feedbackId);
         }
 
+        public async Task<List<AssembledProductFeedback>> GetByOrderItemIdsAsync(IEnumerable<Guid> orderItemIds)
+        {
+            var ids = orderItemIds.Distinct().ToList();
+            if (!ids.Any()) return new List<AssembledProductFeedback>();
+
+            return await _context.AssembledProductFeedbacks
+                .AsNoTracking()
+                .Where(f => ids.Contains(f.OrderItemId))
+                .Select(f => new AssembledProductFeedback
+                {
+                    Id = f.Id,
+                    OrderItemId = f.OrderItemId
+                })
+                .ToListAsync();
+        }
+
         public async Task<(IEnumerable<AssembledProductFeedback> Items, int TotalCount)> GetByProductIdAsync(Guid productId, int pageNumber, int pageSize)
         {
             var query = _context.AssembledProductFeedbacks

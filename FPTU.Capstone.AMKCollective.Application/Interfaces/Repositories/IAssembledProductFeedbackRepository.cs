@@ -8,6 +8,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
     public interface IAssembledProductFeedbackRepository
     {
         Task<AssembledProductFeedback?> GetByIdAsync(Guid feedbackId);
+        Task<List<AssembledProductFeedback>> GetByOrderItemIdsAsync(IEnumerable<Guid> orderItemIds);
         Task<(IEnumerable<AssembledProductFeedback> Items, int TotalCount)> GetByProductIdAsync(Guid productId, int pageNumber, int pageSize);
         Task<(IEnumerable<AssembledProductFeedback> Items, int TotalCount)> GetByShopIdAsync(Guid shopId, int pageNumber, int pageSize);
         Task AddAsync(AssembledProductFeedback feedback);

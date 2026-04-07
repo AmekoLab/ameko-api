@@ -108,6 +108,29 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
+        /// Lay thong tin eligibility feedback cho assembled product.
+        /// </summary>
+        [HttpGet("assembled-products/{productId}/feedback-eligibility")]
+        [Authorize]
+        public async Task<IActionResult> GetAssembledProductFeedbackEligibility(Guid productId)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var result = await _feedbackService.GetEligibilityByProductIdAsync(userId, productId);
+                return SuccessResponse(result, "Fetched feedback eligibility successfully.");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<object>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ErrorResponse(ex.Message);
+            }
+        }
+
+        /// <summary>
         /// Kenh nguoi ban: Chu shop lay danh sach danh gia assembled product cua shop.
         /// </summary>
         [HttpGet("assembled-feedbacks/my-shop")]
