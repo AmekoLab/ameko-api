@@ -22,8 +22,12 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public string? Connection { get; set; }
         public string? Battery { get; set; }
 
+        public double Rating { get; set; } = 0;
+        public int TotalReviews { get; set; } = 0;
+
         // Navigation Properties
         public virtual ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
         public virtual ICollection<ProductAssembledDetail> ProductAssembledDetails { get; set; } = new List<ProductAssembledDetail>();
+        public virtual ICollection<AssembledProductFeedback> Feedbacks { get; set; } = new List<AssembledProductFeedback>();
     }
 }

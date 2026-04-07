@@ -1,6 +1,7 @@
 using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct;
+using FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProductFeedback;
 using FPTU.Capstone.AMKCollective.Application.DTOs.AssemblyTracking;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Chat;
@@ -396,6 +397,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // Feedback (Feedback -> DTO)
             // =========================================================
             CreateMap<Feedback, FeedbackResponse>()
+                .ForMember(dest => dest.FeedbackId, opt => opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.FromUserName, opt => opt.MapFrom(src => src.FromUser.Username))
+                .ForMember(dest => dest.FromUserAvatar, opt => opt.MapFrom(src => src.FromUser.Image))
+                .ForMember(dest => dest.CreatedDate, opt => opt.MapFrom(src => src.CreatedAt))
+                .ForMember(dest => dest.ImageUrls, opt => opt.Ignore());
+
+            // =========================================================
+            // Assembled Product Feedback (Entity -> DTO)
+            // =========================================================
+            CreateMap<AssembledProductFeedback, AssembledProductFeedbackResponse>()
                 .ForMember(dest => dest.FeedbackId, opt => opt.MapFrom(src => src.Id))
                 .ForMember(dest => dest.FromUserName, opt => opt.MapFrom(src => src.FromUser.Username))
                 .ForMember(dest => dest.FromUserAvatar, opt => opt.MapFrom(src => src.FromUser.Image))

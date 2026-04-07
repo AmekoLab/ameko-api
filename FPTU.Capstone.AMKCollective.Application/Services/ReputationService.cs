@@ -23,7 +23,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _settings = options.Value;
         }
 
-        public async Task<int> AdjustCustomerScoreAsync(Guid userId, int delta, string? reason = null)
+        public async Task<int> AdjustCustomerScoreAsync(Guid userId, int delta, string? reason = null, string? referenceType = null, string? referenceId = null)
         {
             var user = await _unitOfWork.Users.GetByIdAsync(userId);
             if (user == null) throw new KeyNotFoundException("User not found");
@@ -32,21 +32,21 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             user.CurrentReputationScore = newScore;
 
             await _unitOfWork.Users.UpdateAsync(user);
-            await AddReputationLogAsync(ReputationTargetType.Customer, userId, delta, newScore, reason);
+            await AddReputationLogAsync(ReputationTargetType.Customer, userId, delta, newScore, reason, referenceType, referenceId);
             await _unitOfWork.CommitAsync();
 
             return newScore;
         }
 
-        public Task<int> AdjustReputationAsync(ReputationTargetType targetType, Guid targetId, int delta, string? reason = null)
+        public Task<int> AdjustReputationAsync(ReputationTargetType targetType, Guid targetId, int delta, string? reason = null, string? referenceType = null, string? referenceId = null)
         {
             return targetType switch
             {
-                ReputationTargetType.Shop => AdjustShopScoreAsync(targetId, delta, reason),
-                _ => AdjustCustomerScoreAsync(targetId, delta, reason)
+                ReputationTargetType.Shop => AdjustShopScoreAsync(targetId, delta, reason, referenceType, referenceId),
+                _ => AdjustCustomerScoreAsync(targetId, delta, reason, referenceType, referenceId)
             };
         }
-        public async Task<int> AdjustShopScoreAsync(Guid shopId, int delta, string? reason = null)
+        public async Task<int> AdjustShopScoreAsync(Guid shopId, int delta, string? reason = null, string? referenceType = null, string? referenceId = null)
         {
             var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
             if (shop == null) throw new KeyNotFoundException("Shop not found");
@@ -55,7 +55,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             shop.CurrentQualityScore = newScore;
 
             await _unitOfWork.Shops.UpdateAsync(shop);
-            await AddReputationLogAsync(ReputationTargetType.Shop, shopId, delta, newScore, reason);
+            await AddReputationLogAsync(ReputationTargetType.Shop, shopId, delta, newScore, reason, referenceType, referenceId);
             await _unitOfWork.CommitAsync();
 
             return newScore;
@@ -96,7 +96,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return new PaginatedResult<ReputationLogDto>(mapped, totalCount, pageNumber, pageSize);
         }
 
-        private async Task AddReputationLogAsync(ReputationTargetType targetType, Guid targetId, int delta, int scoreAfter, string? reason)
+        private async Task AddReputationLogAsync(
+            ReputationTargetType targetType,
+            Guid targetId,
+            int delta,
+            int scoreAfter,
+            string? reason,
+            string? referenceType = null,
+            string? referenceId = null)
         {
             var log = new ReputationLog
             {
@@ -104,7 +111,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 TargetId = targetId,
                 Delta = delta,
                 ScoreAfter = scoreAfter,
-                Reason = reason
+                Reason = reason,
+                ReferenceType = referenceType,
+                ReferenceId = referenceId
             };
 
             await _unitOfWork.ReputationLogs.AddAsync(log);

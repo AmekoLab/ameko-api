@@ -23,6 +23,8 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct
         public string? PCB { get; set; }
         public string? Connection { get; set; }
         public string? Battery { get; set; }
+        public double Rating { get; set; }
+        public int TotalReviews { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 

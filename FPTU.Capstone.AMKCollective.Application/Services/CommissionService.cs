@@ -329,6 +329,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // 1. Cập nhật statuses
             quote.Status = QuoteStatus.Accepted;
+            // Ghi lại thời điểm accept chính xác — dùng làm mốc đếm PaymentWindowHours.
+            // QUAN TRỌNG: Đây là noi DUY NHẤT được phép set UpdatedAt cho quote Accepted.
+            // Không một code path nào khác được touch UpdatedAt sau bước này.
+            quote.UpdatedAt = DateTime.UtcNow;
             request.Status = CommissionStatus.Completed;
 
             foreach (var otherQuote in request.Quotes.Where(q => q.Id != quoteId))
@@ -594,7 +598,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         ReputationTargetType.Customer,
                         user.Id,
                         -_reputationSettings.PointsDeductNoResponseAfterAccept,
-                        $"Commission request #{request.Id} auto-cancelled");
+                        $"Commission request #{request.Id} auto-cancelled",
+                        referenceType: "CommissionRequest",
+                        referenceId: request.Id.ToString());
                     user.CurrentReputationScore = newScore;
                     if (user.YMonthlyAutoCancels >= _reputationSettings.MaxMonthlyAutoCancels)
                     {
@@ -624,6 +630,121 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         referenceId: request.Id.ToString(),
                         referenceType: "CommissionRequest",
                         redirectUrl: $"/shop/commission/requests/{request.Id}");
+                }
+            }
+
+            await _unitOfWork.CommitAsync();
+
+            // =====================================================================
+            // Quote đã Accepted nhưng user chưa checkout trong PaymentWindowHours
+            // Logic: Quote.UpdatedAt = thời điểm accept (set 1 lần duy nhất ở AcceptQuoteAsync)
+            //        CartItem vẫn tồn tại = chưa checkout/thanh toán
+            //        CartItem không có = đã thanh toán → bỏ qua
+            // Customer Reminder fields (CustomerReminderCount, LastCustomerReminderAt) được tái dụng
+            //   an toàn vì Phase 2 chỉ xử lý PendingUserDecision quotes, Phase 3 xử lý Accepted quotes.
+            // =====================================================================
+            var paymentCutoff = now.AddHours(-_commissionSettings.PaymentWindowHours);
+            var unpaidAcceptedQuotes = await _unitOfWork.CommissionQuotes
+                .GetAcceptedQuotesPastPaymentDeadlineAsync(paymentCutoff);
+
+            foreach (var quote in unpaidAcceptedQuotes)
+            {
+                var request = quote.CommissionRequest;
+                if (request == null || request.Status != CommissionStatus.Completed)
+                    continue;
+
+                // Kiểm tra CartItem có tồn tại không — null = đã thanh toán
+                var cartItem = await _unitOfWork.CartItems.FindByQuoteIdAsync(quote.Id);
+                if (cartItem == null)
+                    continue; // Không có cart item → đã checkout, bỏ qua
+
+                // Gửi reminder trước rồi mới cancel
+                bool paymentReminderDue =
+                    quote.CustomerReminderCount < maxReminders
+                    && (quote.LastCustomerReminderAt == null
+                        || now - quote.LastCustomerReminderAt.Value >= reminderInterval);
+
+                if (paymentReminderDue)
+                {
+                    // Không set quote.UpdatedAt — giữ nguyên làm mốc thời gian accept
+                    quote.CustomerReminderCount += 1;
+                    quote.LastCustomerReminderAt = now;
+                    await _unitOfWork.CommissionQuotes.UpdateAsync(quote);
+
+                    var shopName = quote.Shop?.ShopName ?? "the shop";
+                    await _notificationService.SendNotificationAsync(
+                        request.UserId,
+                        "Payment required for accepted commission",
+                        $"You accepted a quote from {shopName} for \"{request.Title}\". " +
+                        $"Please complete payment, otherwise your order will be automatically cancelled.",
+                        "System",
+                        referenceId: quote.Id.ToString(),
+                        referenceType: "CommissionQuote",
+                        redirectUrl: "/cart",
+                        actorId: quote.Shop?.UserId);
+                    continue;
+                }
+
+                bool paymentAutoCancel =
+                    quote.CustomerReminderCount >= maxReminders
+                    && quote.LastCustomerReminderAt.HasValue
+                    && now - quote.LastCustomerReminderAt.Value >= reminderInterval;
+
+                if (!paymentAutoCancel) continue;
+
+                // ===== AUTO-CANCEL: user accept nhưng không thanh toán =====
+
+                // 1. Xóa CartItem — giải phóng giỏ hàng
+                _unitOfWork.CartItems.Remove(cartItem);
+
+                // 2. Hủy CommissionRequest vĩnh viễn (Option A)
+                request.Status = CommissionStatus.Canceled;
+                await _unitOfWork.CommissionRequests.UpdateAsync(request);
+
+                // 3. Trừ reputation user
+                var user = await _unitOfWork.Users.GetByIdAsync(request.UserId);
+                if (user != null)
+                {
+                    user.YMonthlyAutoCancels += 1;
+                    user.TotalAutoCancels += 1;
+                    user.SlowResponseViolationCount += 1;
+                    int newScore = await _reputationService.AdjustReputationAsync(
+                        ReputationTargetType.Customer,
+                        user.Id,
+                        -_reputationSettings.PointsDeductNoResponseAfterAccept,
+                        $"Commission #{request.Id} auto-cancelled: payment not received within {_commissionSettings.PaymentWindowHours}h after acceptance",
+                        referenceType: "CommissionRequest",
+                        referenceId: request.Id.ToString());
+                    user.CurrentReputationScore = newScore;
+                    if (user.YMonthlyAutoCancels >= _reputationSettings.MaxMonthlyAutoCancels)
+                        user.Status = AccountStatus.Suspended;
+                    await _unitOfWork.Users.UpdateAsync(user);
+                }
+
+                // 4. Thông báo cho user
+                await _notificationService.SendNotificationAsync(
+                    request.UserId,
+                    "Commission cancelled: payment not received",
+                    $"Your accepted commission \"{request.Title}\" was automatically cancelled " +
+                    $"because payment was not completed within {_commissionSettings.PaymentWindowHours} hours.",
+                    "System",
+                    referenceId: request.Id.ToString(),
+                    referenceType: "CommissionRequest",
+                    redirectUrl: $"/commissions/{request.Id}");
+
+                // 5. Thông báo cho shop — giải phóng shop
+                if (quote.Shop != null)
+                {
+                    await _notificationService.SendNotificationAsync(
+                        quote.Shop.UserId,
+                        "Commission cancelled by system",
+                        $"The commission \"{request.Title}\" was cancelled because the customer " +
+                        $"did not complete payment within {_commissionSettings.PaymentWindowHours} hours.",
+                        "System",
+                        referenceId: request.Id.ToString(),
+                        referenceType: "CommissionRequest",
+                        redirectUrl: $"/shop/commission/requests/{request.Id}",
+                        actorId: request.UserId);
                 }
             }
 
