@@ -103,11 +103,10 @@ internal class Program
         builder.Services.AddAuthorization();
         #endregion
 
-        #region Configure Settings  
-        // Configure EmailSettings
+        // Configure Settings  
         builder.Services.Configure<FPTU.Capstone.AMKCollective.Application.DTOs.Settings.EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
         builder.Services.Configure<FPTU.Capstone.AMKCollective.Application.DTOs.Settings.SecuritySettings>(builder.Configuration.GetSection("SecuritySettings"));
-        #endregion
+        builder.Services.Configure<FPTU.Capstone.AMKCollective.Application.DTOs.Settings.AISettings>(builder.Configuration.GetSection("AISettings"));
 
         #region CORS
         // Configure CORS

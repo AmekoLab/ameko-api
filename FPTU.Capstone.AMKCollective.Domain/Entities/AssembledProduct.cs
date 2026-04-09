@@ -25,6 +25,11 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public double Rating { get; set; } = 0;
         public int TotalReviews { get; set; } = 0;
 
+        /// <summary>
+        /// JSON-serialized vector embedding for semantic search.
+        /// </summary>
+        public string? Embedding { get; set; }
+
         // Navigation Properties
         public virtual ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
         public virtual ICollection<ProductAssembledDetail> ProductAssembledDetails { get; set; } = new List<ProductAssembledDetail>();

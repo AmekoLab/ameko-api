@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Domain.Enums;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -23,6 +23,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public bool IsSystemValid { get; set; } = false; // System check logic (1.2)
         public string? ShopResponse { get; set; } // Shop phản hồi lý do từ chối
         public string? AdminNote { get; set; } // Ghi chú của Admin
+        public string? AIAnalysisResult { get; set; } // Kết quả phân tích của AI
 
         // Navigation Properties
         public virtual Order? Order { get; set; }

@@ -53,6 +53,11 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public int CurrentQualityScore { get; set; } = 100;
         public ShopBadge Badge { get; set; } = ShopBadge.Basic;
 
+        /// <summary>
+        /// JSON-serialized vector embedding for semantic search.
+        /// </summary>
+        public string? Embedding { get; set; }
+
 
         // Navigation Properties
         public virtual User User { get; set; } = null!;
