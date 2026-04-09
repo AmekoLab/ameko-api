@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using FPTU.Capstone.AMKCollective.Application.DTOs.AI;
+using FPTU.Capstone.AMKCollective.Application.Contracts.AI;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 
 namespace FPTU.Capstone.AMKCollective.Application.Interfaces.AI

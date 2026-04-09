@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using FPTU.Capstone.AMKCollective.Application.DTOs.AI;
+using FPTU.Capstone.AMKCollective.Application.Contracts.AI;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.AI;
 using System.Threading.Tasks;
 

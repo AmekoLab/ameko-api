@@ -94,5 +94,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty.AI
         {
             await _client.DeleteAsync(collectionName, new PointId { Uuid = id.ToString() });
         }
+
+        public async Task DeleteCollectionAsync(string collectionName)
+        {
+            var collections = await _client.ListCollectionsAsync();
+            if (collections.Contains(collectionName))
+            {
+                await _client.DeleteCollectionAsync(collectionName);
+            }
+        }
     }
 }

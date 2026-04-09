@@ -30,5 +30,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.AI
         /// Ensures a collection exists with the specified vector size.
         /// </summary>
         Task EnsureCollectionExistsAsync(string collectionName, ulong vectorSize);
+
+        /// <summary>
+        /// Deletes an entire collection.
+        /// </summary>
+        Task DeleteCollectionAsync(string collectionName);
     }
 }
