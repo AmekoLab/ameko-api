@@ -6,7 +6,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using FPTU.Capstone.AMKCollective.Application.DTOs.AI;
+using FPTU.Capstone.AMKCollective.Application.Contracts.AI;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Part;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.AI;
@@ -256,7 +256,7 @@ namespace FPTU.Capstone.AMKCollective.Tests
             var expectedVector = new float[] { 0.7f, 0.8f, 0.9f };
 
             _embeddingService.Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>())).ReturnsAsync(expectedVector);
-            _unitOfWork.Setup(x => x.Models.UpdateAsync(It.IsAny<Model>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            _unitOfWork.Setup(x => x.Models.UpdateEmbeddingAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             _unitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
 
             var service = CreateService();
@@ -280,7 +280,7 @@ namespace FPTU.Capstone.AMKCollective.Tests
             };
 
             _embeddingService.Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>())).ReturnsAsync(new float[] { 0.1f });
-            _unitOfWork.Setup(x => x.Models.UpdateAsync(It.IsAny<Model>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            _unitOfWork.Setup(x => x.Models.UpdateEmbeddingAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             _unitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
 
             var service = CreateService();
@@ -299,7 +299,7 @@ namespace FPTU.Capstone.AMKCollective.Tests
             var part = new Model { Id = Guid.NewGuid(), Name = "Test", ShopId = Guid.NewGuid(), Price = 100m };
 
             _embeddingService.Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>())).ReturnsAsync(expectedVector);
-            _unitOfWork.Setup(x => x.Models.UpdateAsync(It.IsAny<Model>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            _unitOfWork.Setup(x => x.Models.UpdateEmbeddingAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             _unitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
 
             var service = CreateService();
@@ -372,7 +372,7 @@ namespace FPTU.Capstone.AMKCollective.Tests
             _embeddingService.Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>())).ReturnsAsync(new float[] { 0.1f });
             _unitOfWork.Setup(x => x.Shops.UpdateAsync(It.IsAny<ShopProfile>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             _unitOfWork.Setup(x => x.AssembledProducts.UpdateAsync(It.IsAny<AssembledProduct>())).Returns(Task.CompletedTask);
-            _unitOfWork.Setup(x => x.Models.UpdateAsync(It.IsAny<Model>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            _unitOfWork.Setup(x => x.Models.UpdateEmbeddingAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             _unitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
 
             var service = CreateService();
@@ -555,6 +555,12 @@ namespace FPTU.Capstone.AMKCollective.Tests
                 .ReturnsAsync(new List<Guid>());
             _unitOfWork.Setup(x => x.Models.GetByIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>())).ReturnsAsync(new List<Model>());
 
+            var assembledRepo = new Mock<IAssembledProductRepository>();
+            assembledRepo
+                .Setup(x => x.GetByIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<AssembledProduct>());
+            _unitOfWork.Setup(x => x.AssembledProducts).Returns(assembledRepo.Object);
+
             var emptySettings = new AISettings();
             var service = new AIService(
                 _unitOfWork.Object, _embeddingService.Object, _qdrantService.Object,
@@ -562,6 +568,291 @@ namespace FPTU.Capstone.AMKCollective.Tests
 
             await Assert.ThrowsAsync<Exception>(() =>
                 service.GetRecommendationAsync(new AIRecommendationRequestDTO { UserPrompt = "test" }));
+        }
+
+        [Fact]
+        public async Task GetRecommendation_InvalidGuidId_DoesNotThrow_AndMapsToNull()
+        {
+            var shopId = Guid.NewGuid();
+            var partId = Guid.NewGuid();
+            var request = new AIRecommendationRequestDTO { UserPrompt = "office keyboard", ShopId = shopId };
+
+            _embeddingService.Setup(x => x.GenerateEmbeddingAsync(request.UserPrompt)).ReturnsAsync(new float[] { 0.2f });
+            _qdrantService.Setup(x => x.SearchAsync("parts", It.IsAny<float[]>(), It.IsAny<int>(), It.IsAny<Guid?>()))
+                .ReturnsAsync(new List<Guid> { partId });
+            _unitOfWork.Setup(x => x.Models.GetByIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<Model> { new() { Id = partId, Name = "Kit", Price = 500000, PartType = "Kit" } });
+
+            var aiJson = JsonSerializer.Serialize(new
+            {
+                KitId = partId,
+                SwitchId = "1",
+                KeycapId = Guid.NewGuid(),
+                Reasoning = "Valid reasoning",
+                TotalEstimatedPrice = 123456.78m
+            });
+
+            var handler = FakeHttpMessageHandler.WithFixedResponse(MakeLLMResponse(aiJson));
+            var service = CreateService(handler);
+
+            var result = await service.GetRecommendationAsync(request);
+
+            Assert.Equal(partId, result.KitId);
+            Assert.Null(result.SwitchId);
+            Assert.Equal("Valid reasoning", result.Reasoning);
+            Assert.Equal(123456.78m, result.TotalEstimatedPrice);
+        }
+
+        [Fact]
+        public async Task GetRecommendation_ReturnsPartItemMetadata_ForFeCardRendering()
+        {
+            var shopId = Guid.NewGuid();
+            var partId = Guid.NewGuid();
+            var request = new AIRecommendationRequestDTO { UserPrompt = "office build", ShopId = shopId };
+
+            _embeddingService.Setup(x => x.GenerateEmbeddingAsync(request.UserPrompt)).ReturnsAsync(new float[] { 0.25f });
+            _qdrantService.Setup(x => x.SearchAsync("parts", It.IsAny<float[]>(), It.IsAny<int>(), It.IsAny<Guid?>()))
+                .ReturnsAsync(new List<Guid> { partId });
+            _unitOfWork.Setup(x => x.Models.GetByIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<Model>
+                {
+                    new()
+                    {
+                        Id = partId,
+                        ShopId = shopId,
+                        Name = "Office Silent Switch",
+                        Price = 12000m,
+                        ThumbnailURL = "https://cdn.test/switch.png",
+                        PartType = "Switch",
+                        Shop = new ShopProfile { Id = shopId, ShopName = "Ameko Shop", LogoUrl = "https://cdn.test/logo.png" }
+                    }
+                });
+
+            var aiJson = JsonSerializer.Serialize(new
+            {
+                KitId = partId,
+                Reasoning = "Good choice",
+                TotalEstimatedPrice = 12000m
+            });
+
+            var handler = FakeHttpMessageHandler.WithFixedResponse(MakeLLMResponse(aiJson));
+            var service = CreateService(handler);
+
+            var result = await service.GetRecommendationAsync(request);
+
+            Assert.Single(result.Items);
+            Assert.Equal("part", result.Items[0].RecommendationKind);
+            Assert.Equal("https://cdn.test/switch.png", result.Items[0].ImageUrl);
+            Assert.Equal($"/shop/product/{partId}", result.Items[0].DetailPath);
+            Assert.Equal("Ameko Shop", result.Items[0].ShopName);
+            Assert.Equal("https://cdn.test/logo.png", result.Items[0].ShopAvatarUrl);
+        }
+
+        [Fact]
+        public async Task GetRecommendation_WithAssembledProductId_ReturnsAssembledItemMetadata()
+        {
+            var assembledId = Guid.NewGuid();
+            var shopId = Guid.NewGuid();
+            var request = new AIRecommendationRequestDTO
+            {
+                UserPrompt = "full assembled keyboard",
+                AssembledProductId = assembledId
+            };
+
+            _embeddingService.Setup(x => x.GenerateEmbeddingAsync(request.UserPrompt)).ReturnsAsync(new float[] { 0.3f });
+            _qdrantService.Setup(x => x.SearchAsync("builds", It.IsAny<float[]>(), It.IsAny<int>(), It.IsAny<Guid?>()))
+                .ReturnsAsync(new List<Guid> { assembledId });
+            _unitOfWork.Setup(x => x.Models.GetByIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<Model>());
+
+            var assembledRepo = new Mock<IAssembledProductRepository>();
+            assembledRepo.Setup(x => x.GetByIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>())).ReturnsAsync(
+                new List<AssembledProduct>
+                {
+                    new()
+                    {
+                        Id = assembledId,
+                        Name = "Assembled Neo65",
+                        Price = 4500000m,
+                        Image1 = "https://cdn.test/assembled.png"
+                    }
+                });
+            assembledRepo.Setup(x => x.GetByIdWithDetailsAsync(assembledId)).ReturnsAsync(
+                new AssembledProduct
+                {
+                    Id = assembledId,
+                    Name = "Assembled Neo65",
+                    Price = 4500000m,
+                    Image1 = "https://cdn.test/assembled.png",
+                    ProductAssembledDetails = new List<ProductAssembledDetail>
+                    {
+                        new()
+                        {
+                            BaseKit = new Model
+                            {
+                                Shop = new ShopProfile
+                                {
+                                    Id = shopId,
+                                    ShopName = "Assembled House",
+                                    LogoUrl = "https://cdn.test/shop-avatar.png"
+                                }
+                            }
+                        }
+                    }
+                });
+            _unitOfWork.Setup(x => x.AssembledProducts).Returns(assembledRepo.Object);
+
+            var aiJson = JsonSerializer.Serialize(new
+            {
+                AssembledProductId = assembledId,
+                Reasoning = "Pick this assembled build",
+                TotalEstimatedPrice = 4500000m
+            });
+
+            var handler = FakeHttpMessageHandler.WithFixedResponse(MakeLLMResponse(aiJson));
+            var service = CreateService(handler);
+
+            var result = await service.GetRecommendationAsync(request);
+
+            Assert.Equal(assembledId, result.AssembledProductId);
+            Assert.Single(result.Items);
+            Assert.Equal("assembled", result.Items[0].RecommendationKind);
+            Assert.Equal("https://cdn.test/assembled.png", result.Items[0].ImageUrl);
+            Assert.Equal($"/shop/assembled-product/{assembledId}", result.Items[0].DetailPath);
+            Assert.Equal("Assembled House", result.Items[0].ShopName);
+            Assert.Equal("https://cdn.test/shop-avatar.png", result.Items[0].ShopAvatarUrl);
+        }
+
+        [Fact]
+        public async Task GetRecommendation_GenericPrompt_DefaultsToAssembledMode()
+        {
+            var assembledId = Guid.NewGuid();
+            var request = new AIRecommendationRequestDTO
+            {
+                UserPrompt = "can you recommend a keyboard for office"
+            };
+
+            _embeddingService.Setup(x => x.GenerateEmbeddingAsync(request.UserPrompt)).ReturnsAsync(new float[] { 0.12f });
+            _qdrantService.Setup(x => x.SearchAsync("builds", It.IsAny<float[]>(), It.IsAny<int>(), It.IsAny<Guid?>()))
+                .ReturnsAsync(new List<Guid> { assembledId });
+
+            var assembledRepo = new Mock<IAssembledProductRepository>();
+            assembledRepo.Setup(x => x.GetByIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>())).ReturnsAsync(
+                new List<AssembledProduct>
+                {
+                    new()
+                    {
+                        Id = assembledId,
+                        Name = "Office Ready Board",
+                        Price = 2500000m,
+                        Image1 = "https://cdn.test/office-board.png"
+                    }
+                });
+            assembledRepo.Setup(x => x.GetByIdWithDetailsAsync(assembledId)).ReturnsAsync(
+                new AssembledProduct
+                {
+                    Id = assembledId,
+                    Name = "Office Ready Board",
+                    Price = 2500000m,
+                    Image1 = "https://cdn.test/office-board.png"
+                });
+            _unitOfWork.Setup(x => x.AssembledProducts).Returns(assembledRepo.Object);
+
+            var aiJson = JsonSerializer.Serialize(new
+            {
+                AssembledProductId = assembledId,
+                Reasoning = "Assembled is better for office user",
+                TotalEstimatedPrice = 2500000m
+            });
+
+            var handler = FakeHttpMessageHandler.WithFixedResponse(MakeLLMResponse(aiJson));
+            var service = CreateService(handler);
+            var result = await service.GetRecommendationAsync(request);
+
+            Assert.Equal(assembledId, result.AssembledProductId);
+            Assert.Single(result.Items);
+            Assert.Equal("assembled", result.Items[0].RecommendationKind);
+
+            _qdrantService.Verify(x => x.SearchAsync("builds", It.IsAny<float[]>(), It.IsAny<int>(), It.IsAny<Guid?>()), Times.Once);
+            _qdrantService.Verify(x => x.SearchAsync("parts", It.IsAny<float[]>(), It.IsAny<int>(), It.IsAny<Guid?>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task GetRecommendation_EnglishPrompt_SendsEnglishReasoningRule()
+        {
+            var shopId = Guid.NewGuid();
+            var partId = Guid.NewGuid();
+            var request = new AIRecommendationRequestDTO
+            {
+                UserPrompt = "Can you recommend a keyboard for office use?",
+                ShopId = shopId
+            };
+
+            _embeddingService.Setup(x => x.GenerateEmbeddingAsync(request.UserPrompt)).ReturnsAsync(new float[] { 0.11f });
+            _qdrantService.Setup(x => x.SearchAsync("parts", It.IsAny<float[]>(), It.IsAny<int>(), It.IsAny<Guid?>()))
+                .ReturnsAsync(new List<Guid> { partId });
+            _unitOfWork.Setup(x => x.Models.GetByIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<Model> { new() { Id = partId, Name = "Part", Price = 100m, ShopId = shopId } });
+
+            string? capturedRequestBody = null;
+            var handler = new FakeHttpMessageHandler(async httpRequest =>
+            {
+                capturedRequestBody = await httpRequest.Content!.ReadAsStringAsync();
+                var aiJson = JsonSerializer.Serialize(new
+                {
+                    KitId = partId,
+                    Reasoning = "English reasoning",
+                    TotalEstimatedPrice = 100m
+                });
+                return MakeLLMResponse(aiJson);
+            });
+
+            var service = CreateService(handler);
+            await service.GetRecommendationAsync(request);
+
+            Assert.NotNull(capturedRequestBody);
+            Assert.Contains("LANGUAGE RULE: Write the", capturedRequestBody);
+            Assert.Contains("in English only", capturedRequestBody);
+            Assert.Contains("Response Language: English", capturedRequestBody);
+        }
+
+        [Fact]
+        public async Task GetRecommendation_VietnamesePrompt_SendsVietnameseReasoningRule()
+        {
+            var shopId = Guid.NewGuid();
+            var partId = Guid.NewGuid();
+            var request = new AIRecommendationRequestDTO
+            {
+                UserPrompt = "Toi can ban phim van phong",
+                ShopId = shopId
+            };
+
+            _embeddingService.Setup(x => x.GenerateEmbeddingAsync(request.UserPrompt)).ReturnsAsync(new float[] { 0.11f });
+            _qdrantService.Setup(x => x.SearchAsync("parts", It.IsAny<float[]>(), It.IsAny<int>(), It.IsAny<Guid?>()))
+                .ReturnsAsync(new List<Guid> { partId });
+            _unitOfWork.Setup(x => x.Models.GetByIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<Model> { new() { Id = partId, Name = "Part", Price = 100m, ShopId = shopId } });
+
+            string? capturedRequestBody = null;
+            var handler = new FakeHttpMessageHandler(async httpRequest =>
+            {
+                capturedRequestBody = await httpRequest.Content!.ReadAsStringAsync();
+                var aiJson = JsonSerializer.Serialize(new
+                {
+                    KitId = partId,
+                    Reasoning = "Ly do bang tieng Viet",
+                    TotalEstimatedPrice = 100m
+                });
+                return MakeLLMResponse(aiJson);
+            });
+
+            var service = CreateService(handler);
+            await service.GetRecommendationAsync(request);
+
+            Assert.NotNull(capturedRequestBody);
+            Assert.Contains("LANGUAGE RULE: Write the", capturedRequestBody);
+            Assert.Contains("in Vietnamese only", capturedRequestBody);
+            Assert.Contains("Response Language: Vietnamese", capturedRequestBody);
         }
     }
 

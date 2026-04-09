@@ -22,6 +22,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         
         Task CreateAsync(Model part, CancellationToken token = default);
         Task UpdateAsync(Model part, CancellationToken token = default);
+        Task UpdateEmbeddingAsync(Guid partId, string? embedding, CancellationToken token = default);
         Task DeleteAsync(Guid id, CancellationToken token = default);
         Task<bool> ExistsAsync(Guid id, CancellationToken token = default);
         /// <summary>[Fix #3] Kiem tra part co dang duoc tham chieu trong order chua hoan thanh khong.</summary>

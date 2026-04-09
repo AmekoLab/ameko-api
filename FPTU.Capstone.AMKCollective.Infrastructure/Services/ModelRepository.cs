@@ -82,6 +82,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             return await _context.Models
                 .AsNoTracking()
+                .Include(x => x.Shop)
                 .Where(x => ids.Contains(x.Id) && !x.IsDeleted)
                 .ToListAsync(cancellationToken);
         }
@@ -118,6 +119,15 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             _context.Models.Update(part);
             await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        public async Task UpdateEmbeddingAsync(Guid partId, string? embedding, CancellationToken cancellationToken = default)
+        {
+            await _context.Models
+                .Where(x => x.Id == partId && !x.IsDeleted)
+                .ExecuteUpdateAsync(
+                    s => s.SetProperty(x => x.Embedding, embedding),
+                    cancellationToken);
         }
 
         public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
