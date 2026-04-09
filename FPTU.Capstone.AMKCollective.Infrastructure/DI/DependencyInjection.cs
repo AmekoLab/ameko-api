@@ -1,6 +1,8 @@
+using FPTU.Capstone.AMKCollective.Application.Interfaces.AI;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Infrastructure.Services;
+using FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty.AI;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
@@ -13,6 +15,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
             services.AddScoped<IWithdrawalRequestRepository, WithdrawalRequestRepository>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<ITokenService, TokenService>();
+            
+            // AI Services
+            services.AddScoped<IEmbeddingService, GoogleEmbeddingService>();
+            services.AddScoped<IQdrantService, QdrantService>();
 
             return services;
         }

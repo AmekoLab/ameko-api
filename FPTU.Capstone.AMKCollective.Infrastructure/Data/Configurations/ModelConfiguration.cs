@@ -46,6 +46,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(x => x.Specifications)
                 .HasColumnType("json");
 
+            builder.Property(x => x.Embedding)
+                .HasColumnType("json");
+
             builder.Property(x => x.Price)
                 .HasColumnType("decimal(18,2)")
                 .IsRequired();

@@ -1,6 +1,7 @@
 using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Shop;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.AI;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
@@ -22,6 +23,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IUserService _userService;
         private readonly IWalletService _walletService;
         private readonly IEmailService _emailService;
+        private readonly IAIService _aiService;
         private readonly ILogger<ShopService> _logger; 
 
         public ShopService(
@@ -31,6 +33,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             IUserService userService,
             IWalletService walletService,  
             IEmailService emailService,
+            IAIService aiService,
             ILogger<ShopService> logger) 
         {
             _unitOfWork = unitOfWork;
@@ -39,6 +42,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _userService = userService;
             _walletService = walletService;
             _emailService = emailService;
+            _aiService = aiService;
             _logger = logger; 
         }
 
@@ -138,6 +142,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Shops.CreateAsync(shop);
             await _unitOfWork.CommitAsync();
 
+            try { await _aiService.SyncShopAsync(shop); } catch { /* Ignore */ }
+
             return _mapper.Map<ShopResponse>(shop);
         }
 
@@ -190,6 +196,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
+
+            try { await _aiService.SyncShopAsync(shop); } catch { /* Ignore */ }
         }
 
         public async Task UpdateMyShopRejectedAsync(Guid userId, UpdateShopRejectedRequest request)
@@ -266,6 +274,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
+
+            try { await _aiService.SyncShopAsync(shop); } catch { /* Ignore */ }
         }
 
         public async Task<(IEnumerable<ShopDetailResponse> Items, int TotalCount)> GetShopForAdminAsync(string? searchTerm, ShopStatus? status, int page, int size)
@@ -310,6 +320,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
+
+            try { await _aiService.SyncShopAsync(shop); } catch { /* Ignore */ }
         }
 
         [Obsolete("This API is deprecated and disabled.")]

@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Domain.Enums;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -19,6 +19,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues
         public string Reason { get; set; }
         public string? Description { get; set; }
         public string? ShopResponse { get; set; }
+        public string? AIAnalysisResult { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 }

@@ -2,6 +2,7 @@ using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.AI;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
@@ -15,11 +16,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private readonly IAIService _aiService;
 
-        public AssembledProductService(IUnitOfWork unitOfWork, IMapper mapper)
+        public AssembledProductService(IUnitOfWork unitOfWork, IMapper mapper, IAIService aiService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
+            _aiService = aiService;
         }
 
         public async Task<PaginatedResult<AssembledProductResponse>> GetAllAsync(int pageNumber, int pageSize)
@@ -93,6 +96,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.AssembledProducts.AddAsync(assembledProduct);
             await _unitOfWork.CommitAsync();
 
+            try { await _aiService.SyncBuildAsync(assembledProduct); } catch { /* Ignore */ }
+
             return (assembledProduct.Id, null);
         }
 
@@ -155,6 +160,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             await _unitOfWork.CommitAsync();
+
+            try { await _aiService.SyncBuildAsync(assembledProduct); } catch { /* Ignore */ }
 
          
             var updatedEntity = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(id);

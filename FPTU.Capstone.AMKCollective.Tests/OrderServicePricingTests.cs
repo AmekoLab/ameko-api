@@ -293,7 +293,8 @@ namespace FPTU.Capstone.AMKCollective.Tests
                 Options.Create(new ReputationSettings()),
                 new Mock<IReputationService>().Object,
                 new Mock<IVnPayService>().Object,
-                new Mock<IHttpContextAccessor>().Object);
+                new Mock<IHttpContextAccessor>().Object,
+                new Mock<FPTU.Capstone.AMKCollective.Application.Interfaces.AI.IAIService>().Object);
         }
     }
 }

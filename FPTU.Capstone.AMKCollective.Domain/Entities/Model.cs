@@ -18,6 +18,11 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public int StockQuantity { get; set; }
         public bool IsActive { get; set; } = true;
 
+        /// <summary>
+        /// JSON-serialized vector embedding for semantic search.
+        /// </summary>
+        public string? Embedding { get; set; }
+
         // Navigation Properties
         public virtual ShopProfile Shop { get; set; } = null!;
         public virtual Category Category { get; set; } = null!;
