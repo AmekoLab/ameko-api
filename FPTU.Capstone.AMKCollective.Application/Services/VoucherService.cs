@@ -39,12 +39,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             var voucher = _mapper.Map<Voucher>(request);
             var currentUser = await _unitOfWork.Users.GetByIdAsync(userId);
-            bool isAdmin = currentUser?.Role?.Name == RoleType.Admin;
-
-            if (isAdmin)
-            {
-                throw new UnauthorizedAccessException("Admin cannot create negotiation vouchers.");
-            }
+            bool isAdmin = currentUser?.Role?.Name == RoleType.Admin;    
 
             if (isAdmin)
             {
@@ -96,6 +91,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var currentUser = await _unitOfWork.Users.GetByIdAsync(userId)
                 ?? throw new UnauthorizedAccessException("User not found or session is invalid.");
             bool isAdmin = currentUser.Role?.Name == RoleType.Admin;
+
+            if (isAdmin)
+            {
+                throw new UnauthorizedAccessException("Admin cannot create negotiation vouchers.");
+            }
 
             var scope = VoucherScope.Shop;
             Guid? actualShopId = null;

@@ -1851,6 +1851,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             var baseKit = await _unitOfWork.Models.GetByIdAsync(session.BaseKitId);
             if (baseKit == null || !baseKit.IsActive) throw new InvalidOperationException("Product is inactive or not found.");
+
+            if (baseKit.ShopId != Guid.Empty)
+            {
+                var shop = await _unitOfWork.Shops.GetByIdAsync(baseKit.ShopId);
+                if (shop != null && shop.UserId == cart.CustomerId)
+                    throw new InvalidOperationException("You cannot add your own shop product to cart.");
+            }
+
             if (baseKit.StockQuantity < request.Quantity) throw new InvalidOperationException($"Insufficient stock. Available: {baseKit.StockQuantity}");
 
             // Luôn build DesignConfig từ session.SelectedItemsJson hiện tại.
@@ -1895,6 +1903,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(request.ProductId.Value);
             if (assembledProduct == null) throw new KeyNotFoundException("Product not found.");
+
+            var firstDetail = assembledProduct.ProductAssembledDetails?.FirstOrDefault();
+            var targetModelId = firstDetail?.BaseKitId ?? firstDetail?.ComponentId;
+            if (targetModelId.HasValue)
+            {
+                var relatedModel = await _unitOfWork.Models.GetByIdAsync(targetModelId.Value);
+                if (relatedModel?.ShopId != Guid.Empty)
+                {
+                    var shop = await _unitOfWork.Shops.GetByIdAsync(relatedModel.ShopId);
+                    if (shop != null && shop.UserId == cart.CustomerId)
+                        throw new InvalidOperationException("You cannot add your own shop product to cart.");
+                }
+            }
 
             int currentStock = assembledProduct.Quantity ?? 0;
             if (currentStock < request.Quantity) throw new InvalidOperationException($"Insufficient stock. Available: {currentStock}");
