@@ -39,6 +39,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public DateTime? ShopResponseDeadlineAt { get; set; }
         public int ReminderCount { get; set; } = 0;
         public DateTime? LastReminderAt { get; set; }
+        public int CustomerRejectCount { get; set; } = 0;
 
         // Navigation Properties
         public virtual User User { get; set; } = null!;

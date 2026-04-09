@@ -111,6 +111,26 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
             return SuccessResponse(new { OrderId = result.OrderId }, "Quotation finalized successfully. Redirecting to the cart...");
         }
+
+        /// <summary>
+        /// Rejects a specific quote submitted by a shop.
+        /// </summary>
+        /// <param name="quoteId">The ID of the quote to reject.</param>
+        /// <returns>Success or error message.</returns>
+        [HttpPost("quotes/{quoteId}/reject")]
+        [Authorize]
+        public async Task<IActionResult> RejectQuote(Guid quoteId)
+        {
+            var userId = GetCurrentUserId();
+            var result = await _commissionService.RejectQuoteAsync(userId, quoteId);
+
+            if (!result.Success)
+            {
+                return ErrorResponse<object>(result.ErrorMessage);
+            }
+
+            return SuccessResponse<object>("Quotation rejected successfully.");
+        }
         /// <summary>
         /// Cancels a commission request.
         /// Only allowed if the request has not been completed (no quote accepted yet).

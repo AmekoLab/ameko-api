@@ -25,6 +25,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly INotificationService _notificationService;
         private readonly ReputationSettings _reputationSettings;
         private readonly IReputationService _reputationService;
+        private const int MaxCommissionQuantity = 50;
+        private const int MaxCustomerRejectCount = 3;
 
         public CommissionService(IUnitOfWork unitOfWork, IMapper mapper, IOptions<CommissionSettings> commissionSettings, INotificationService notificationService, IOptions<ReputationSettings> reputationSettings, IReputationService reputationService)
         {
@@ -84,6 +86,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<(bool Success, Guid? RequestId, string ErrorMessage)> CreateRequestAsync(Guid userId, CreateCommissionRequest requestDto)
         {
+            if (requestDto.Quantity < 1 || requestDto.Quantity > MaxCommissionQuantity)
+            {
+                return (false, null, $"Quantity must be between 1 and {MaxCommissionQuantity}.");
+            }
+
+            if (requestDto.TargetedShopId.HasValue)
+            {
+                var targetedShop = await _unitOfWork.Shops.GetByIdAsync(requestDto.TargetedShopId.Value);
+                if (targetedShop != null && targetedShop.UserId == userId)
+                {
+                    return (false, null, "You cannot create a commission request for your own shop.");
+                }
+            }
+
             var request = _mapper.Map<CommissionRequest>(requestDto);
             request.UserId = userId;
 
@@ -149,6 +165,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 return (false, "This request already has active offers and cannot be edited.");
             }
 
+            if (requestDto.Quantity < 1 || requestDto.Quantity > MaxCommissionQuantity)
+            {
+                return (false, $"Quantity must be between 1 and {MaxCommissionQuantity}.");
+            }
+
+            if (requestDto.TargetedShopId.HasValue)
+            {
+                var targetedShop = await _unitOfWork.Shops.GetByIdAsync(requestDto.TargetedShopId.Value);
+                if (targetedShop != null && targetedShop.UserId == userId)
+                {
+                    return (false, "You cannot create a commission request for your own shop.");
+                }
+            }
+
             request.Title = requestDto.Title;
             request.Description = requestDto.Description;
             request.ReferenceImages = requestDto.ReferenceImages;
@@ -207,10 +237,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 return (false, "This request is not published for quotations yet.");
             }
 
-            // Check shop đã báo giá chưa (tránh báo giá trùng)
-            if (request.Quotes.Any(q => q.ShopId == shop.Id && q.Status != QuoteStatus.Revoked))
+            // Check shop đã có báo giá pending (tránh báo giá trùng khi chưa có quyết định)
+            if (request.Quotes.Any(q => q.ShopId == shop.Id && q.Status == QuoteStatus.PendingUserDecision))
             {
-                return (false, "Your shop has already submitted a quotation for this request.");
+                return (false, "Your shop already has a pending quotation for this request.");
             }
 
             var quote = _mapper.Map<CommissionQuote>(quoteDto);
@@ -383,6 +413,69 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             return (true, cart.Id, string.Empty);
         }      
+
+        public async Task<(bool Success, string ErrorMessage)> RejectQuoteAsync(Guid userId, Guid quoteId)
+        {
+            var quote = await _unitOfWork.CommissionQuotes.GetByIdAsync(quoteId);
+            if (quote == null) return (false, "Quotation not found.");
+
+            var request = quote.CommissionRequest ?? await _unitOfWork.CommissionRequests.GetByIdAsync(quote.CommissionRequestId);
+            if (request == null) return (false, "Commission request not found.");
+
+            if (request.UserId != userId)
+                return (false, "You do not have permission to reject this quotation.");
+
+            if (request.Status == CommissionStatus.Completed || request.Status == CommissionStatus.Canceled)
+                return (false, "This request is closed and cannot be updated.");
+
+            if (quote.Status != QuoteStatus.PendingUserDecision)
+                return (false, "This quotation is no longer available for rejection.");
+
+            quote.Status = QuoteStatus.Rejected;
+            await _unitOfWork.CommissionQuotes.UpdateAsync(quote);
+
+            var allQuotes = request.Quotes?.ToList()
+                ?? (await _unitOfWork.CommissionQuotes.GetByRequestIdAsync(request.Id)).ToList();
+
+            request.CustomerRejectCount += 1;
+
+            // Chỉ auto-cancel nếu là targeted request (1 shop duy nhất)
+            bool isTargetedRequest = request.TargetedShopId.HasValue;
+
+            if (request.CustomerRejectCount >= MaxCustomerRejectCount && isTargetedRequest)
+            {
+                request.Status = CommissionStatus.Canceled;
+
+                foreach (var pendingQuote in allQuotes.Where(q => q.Status == QuoteStatus.PendingUserDecision))
+                {
+                    pendingQuote.Status = QuoteStatus.Rejected;
+                    await _unitOfWork.CommissionQuotes.UpdateAsync(pendingQuote);
+                }
+
+                await _unitOfWork.CommissionRequests.UpdateAsync(request);
+                await _unitOfWork.CommitAsync();
+                return (true, string.Empty);
+            }
+
+            bool hasPendingQuotes = allQuotes.Any(q => q.Status == QuoteStatus.PendingUserDecision);
+            bool requestUpdated = false;
+            if (!hasPendingQuotes && request.Status == CommissionStatus.Quoted)
+            {
+                request.Status = request.TargetedShopId.HasValue
+                    ? CommissionStatus.PendingTarget
+                    : CommissionStatus.OpenPool;
+                await _unitOfWork.CommissionRequests.UpdateAsync(request);
+                requestUpdated = true;
+            }
+
+            if (!requestUpdated)
+            {
+                await _unitOfWork.CommissionRequests.UpdateAsync(request);
+            }
+
+            await _unitOfWork.CommitAsync();
+            return (true, string.Empty);
+        }
 
         public async Task<(bool Success, string ErrorMessage)> RevokeQuoteAsync(Guid shopUserId, Guid quoteId)
         {

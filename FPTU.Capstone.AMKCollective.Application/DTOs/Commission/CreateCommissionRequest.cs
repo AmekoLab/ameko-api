@@ -23,7 +23,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Commission
         public decimal? MinBudget { get; set; }
 
         public decimal? MaxBudget { get; set; }
-        [Range(1, 1000, ErrorMessage = "Quantity must be greater than 0.")]
         public int Quantity { get; set; } = 1;
 
         public bool IsDraft { get; set; } = false;

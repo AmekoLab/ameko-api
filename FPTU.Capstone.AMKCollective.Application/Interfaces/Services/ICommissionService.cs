@@ -16,6 +16,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<(bool Success, Guid? RequestId, string ErrorMessage)> CreateRequestAsync(Guid userId, CreateCommissionRequest request);
         Task<(bool Success, string ErrorMessage)> UpdateRequestAsync(Guid userId, Guid requestId, UpdateCommissionRequest request);
         Task<(bool Success, Guid? OrderId, string ErrorMessage)> AcceptQuoteAsync(Guid userId, Guid quoteId);
+        Task<(bool Success, string ErrorMessage)> RejectQuoteAsync(Guid userId, Guid quoteId);
         Task<(bool Success, string ErrorMessage)> CancelRequestAsync(Guid userId, Guid requestId);
         Task<(bool Success, string ErrorMessage)> PublishToPoolAsync(Guid userId, Guid requestId);
         // Shop
