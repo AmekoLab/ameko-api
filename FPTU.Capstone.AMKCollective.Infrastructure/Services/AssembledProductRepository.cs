@@ -21,8 +21,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<(IEnumerable<AssembledProduct> Items, int TotalCount)> GetAllPagedAsync(int pageNumber, int pageSize)
         {
             var query = _context.AssembledProducts
+                .IgnoreQueryFilters() // Tuan Note: Essential to load shop info even if parts are soft-deleted
+                .AsNoTracking()
                 .Include(ap => ap.ProductAssembledDetails)
                     .ThenInclude(pad => pad.BaseKit)
+                        .ThenInclude(m => m.Shop)
+                .Include(ap => ap.ProductAssembledDetails)
+                    .ThenInclude(pad => pad.Component)
                         .ThenInclude(m => m.Shop)
                 .Where(ap => !ap.IsDeleted);
 
@@ -36,14 +41,20 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return (items, totalCount);
         }
 
-        public async Task<IEnumerable<AssembledProduct>> GetByShopIdAsync(Guid shopId)
+        public async Task<IEnumerable<AssembledProduct>> GetByShopIdAsync(Guid userId)
         {
-            //Tuan Note: Join with ProductAssembledDetail and Model to filter by ShopId
+            // Now strictly querying by CreatedBy which stores the UserId. 
+            // Avoids issue where soft-deleted components would omit the parent product.
             return await _context.AssembledProducts
+                .IgnoreQueryFilters()
+                .AsNoTracking()
                 .Include(ap => ap.ProductAssembledDetails)
                     .ThenInclude(pad => pad.BaseKit)
                         .ThenInclude(m => m.Shop)
-                .Where(ap => !ap.IsDeleted && ap.ProductAssembledDetails.Any(pad => pad.BaseKit.ShopId == shopId))
+                .Include(ap => ap.ProductAssembledDetails)
+                    .ThenInclude(pad => pad.Component)
+                        .ThenInclude(m => m.Shop)
+                .Where(ap => !ap.IsDeleted && ap.CreatedBy == userId)
                 .OrderByDescending(ap => ap.CreatedAt)
                 .ToListAsync();
         }
@@ -51,13 +62,17 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<AssembledProduct?> GetByIdWithDetailsAsync(Guid id)
         {
             return await _context.AssembledProducts
+                .IgnoreQueryFilters()
+                .AsNoTracking()
                 .Include(ap => ap.ProductAssembledDetails)
                     .ThenInclude(pad => pad.BaseKit)
-                        .ThenInclude(bk => bk.Shop)   // needed for ShopName + LogoUrl
+                        .ThenInclude(bk => bk.Shop)
                 .Include(ap => ap.ProductAssembledDetails)
                     .ThenInclude(pad => pad.Component)
+                        .ThenInclude(m => m.Shop)
                 .FirstOrDefaultAsync(ap => ap.Id == id);
         }
+
 
         public async Task<IEnumerable<AssembledProduct>> GetByIdsAsync(IEnumerable<Guid> ids, CancellationToken ct = default)
         {

@@ -356,6 +356,29 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var shopRole = await _unitOfWork.Users.GetRoleByNameAsync(RoleType.Shop);
             if (shopRole == null) return (false, "Shop role not found in system");
 
+            var shopProfile = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+            if (shopProfile == null)
+            {
+                return (false, "Shop profile is required before upgrading to Shop");
+            }
+
+            var missingFields = new List<string>();
+            if (string.IsNullOrWhiteSpace(shopProfile.ShopName)) missingFields.Add(nameof(shopProfile.ShopName));
+            if (string.IsNullOrWhiteSpace(shopProfile.Bio)) missingFields.Add(nameof(shopProfile.Bio));
+            if (string.IsNullOrWhiteSpace(shopProfile.Address)) missingFields.Add(nameof(shopProfile.Address));
+            if (string.IsNullOrWhiteSpace(shopProfile.PhoneNumber)) missingFields.Add(nameof(shopProfile.PhoneNumber));
+            if (string.IsNullOrWhiteSpace(shopProfile.ContactEmail)) missingFields.Add(nameof(shopProfile.ContactEmail));
+            if (string.IsNullOrWhiteSpace(shopProfile.CitizenId)) missingFields.Add(nameof(shopProfile.CitizenId));
+            if (string.IsNullOrWhiteSpace(shopProfile.TaxCode)) missingFields.Add(nameof(shopProfile.TaxCode));
+            if (string.IsNullOrWhiteSpace(shopProfile.BankName)) missingFields.Add(nameof(shopProfile.BankName));
+            if (string.IsNullOrWhiteSpace(shopProfile.BankAccountNumber)) missingFields.Add(nameof(shopProfile.BankAccountNumber));
+            if (string.IsNullOrWhiteSpace(shopProfile.BankAccountName)) missingFields.Add(nameof(shopProfile.BankAccountName));
+
+            if (missingFields.Count > 0)
+            {
+                return (false, $"Shop profile is incomplete. Missing: {string.Join(", ", missingFields)}");
+            }
+
             user.Role = shopRole;
             user.RoleId = shopRole.Id;
 

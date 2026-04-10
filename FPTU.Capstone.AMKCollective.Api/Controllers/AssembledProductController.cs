@@ -59,6 +59,24 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         }
 
         /// <summary>
+        /// Retrieves all assembled products belonging to the currently logged-in shop.
+        /// </summary>
+        /// <returns>A list of assembled products for the current shop.</returns>
+        [Authorize(Roles = "Shop")]
+        [HttpGet("my-products")]
+        [SwaggerOperation(
+            Summary = "Get current shop's assembled products",
+            Description = "Returns all assembled products belonging to the shop profile associated with the current user."
+        )]
+        [SwaggerResponse(200, "Successfully retrieved list", typeof(IEnumerable<AssembledProductResponse>))]
+        public async Task<IActionResult> GetMyProducts()
+        {
+            var userId = GetCurrentUserId();
+            var result = await _service.GetMyAssembledProductsAsync(userId);
+            return SuccessResponse(result);
+        }
+
+        /// <summary>
         /// Retrieves details of a specific assembled product by its ID.
         /// </summary>
         /// <param name="id">The unique identifier of the assembled product.</param>

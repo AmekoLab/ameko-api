@@ -1,6 +1,7 @@
 using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Part;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.AI;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
@@ -18,12 +19,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly IStorageService _storage;
+        private readonly IAIService _aiService;
 
-        public ProductService(IUnitOfWork unitOfWork, IMapper mapper, IStorageService storage)
+        public ProductService(IUnitOfWork unitOfWork, IMapper mapper, IStorageService storage, IAIService aiService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _storage = storage;
+            _aiService = aiService;
         }
 
         public async Task<(IEnumerable<PartResponse> Items, int TotalCount)> GetListAsync(GetPartsFilterRequest query)
@@ -94,6 +97,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Models.CreateAsync(entity);
             await _unitOfWork.CommitAsync();
 
+            try
+            {
+                await _aiService.SyncPartAsync(entity);
+            }
+            catch (Exception ex)
+            {
+                // Non-blocking sync failure
+                // In production, maybe queue this or log it properly
+            }
+
             // [FIX] Map response and manually assign Specifications to ensure it is returned
             var response = _mapper.Map<PartResponse>(entity);
             response.Specifications = entity.Specifications;
@@ -163,6 +176,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.Models.UpdateAsync(entity);
             await _unitOfWork.CommitAsync();
+
+            try
+            {
+                await _aiService.SyncPartAsync(entity);
+            }
+            catch (Exception ex)
+            {
+                // Non-blocking
+            }
         }
 
         public async Task DeleteAsync(Guid userId, Guid id)

@@ -1,3 +1,4 @@
+using FPTU.Capstone.AMKCollective.Application.Interfaces.AI;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Application.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,6 +22,10 @@ namespace FPTU.Capstone.AMKCollective.Application.DI
             services.AddScoped<IAdminDashboardService, AdminDashboardService>();
             services.AddScoped<IShopDashboardService, ShopDashboardService>();
             services.AddScoped<IReputationService, ReputationService>();
+            
+            // AI Services
+            services.AddHttpClient<IAIService, AIService>();
+            
             return services;
         }
     }

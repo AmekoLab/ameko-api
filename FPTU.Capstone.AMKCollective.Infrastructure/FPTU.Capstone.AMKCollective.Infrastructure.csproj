@@ -10,6 +10,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CloudinaryDotNet" Version="1.27.9" />
+    <PackageReference Include="Google.GenAI" Version="1.6.1" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageReference Include="Autofac" Version="8.4.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.0" />
@@ -19,6 +20,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.2" />
+    <PackageReference Include="Qdrant.Client" Version="1.17.0" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.1.2" />
     <PackageReference Include="Stripe.net" Version="50.2.0" />
   </ItemGroup>

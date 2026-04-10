@@ -8,6 +8,7 @@ using FPTU.Capstone.AMKCollective.Application.DTOs.Wallet;
 using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.AI;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using Microsoft.AspNetCore.Http;
@@ -37,9 +38,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IReputationService _reputationService;
         private readonly IVnPayService _vnPayService;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IAIService _aiService;
 
         public OrderService(IUnitOfWork unitOfWork, IMapper mapper, IPaymentService paymentService, IVoucherService voucher, IWalletService wallet, IOptions<OrderSettings> orderOptions,
-        IOptions<FrontendUrls> urlOptions, IOptions<SystemSettings> systemSettings, IOptions<ReputationSettings> reputationOptions, IReputationService reputationService, IVnPayService vnPayService, IHttpContextAccessor httpContextAccessor)
+        IOptions<FrontendUrls> urlOptions, IOptions<SystemSettings> systemSettings, IOptions<ReputationSettings> reputationOptions, IReputationService reputationService, IVnPayService vnPayService, IHttpContextAccessor httpContextAccessor,
+        IAIService aiService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
@@ -53,6 +56,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _reputationService = reputationService;
             _vnPayService = vnPayService;
             _httpContextAccessor = httpContextAccessor;
+            _aiService = aiService;
         }
 
         // =================================================================
@@ -598,7 +602,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<OrderIssueResponse> RequestCancelOrderAsync(Guid userId, DTOs.OrderIssues.CancelOrderRequest request, CancellationToken token = default)
         {
             // 1. Validate Order
-            var order = await _unitOfWork.Orders.GetByIdAsync(request.OrderId);
+            var order = await _unitOfWork.Orders.GetOrderDetailByIdAsync(request.OrderId);
             if (order == null) throw new KeyNotFoundException("Order not found.");
             if (order.CustomerId != userId) throw new UnauthorizedAccessException("Not your order.");
 
@@ -653,6 +657,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 // Theo BR: Status mặc định là Pending. Sau khi valid thì đổi thành InProgress để báo Shop
                 issue.Status = OrderIssueStatus.InProgress;
+
+                // AI Design Support: Thêm phân tích AI vào yêu cầu hủy
+                try {
+                    issue.AIAnalysisResult = await _aiService.AnalyzeOrderIssueAsync(issue, order);
+                } catch {
+                    issue.AIAnalysisResult = "AI processing failed.";
+                }
             }
 
             // 5. Save to DB

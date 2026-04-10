@@ -43,3 +43,4 @@ docker-compose.override.yml
 # OS junk
 .DS_Store
 Thumbs.db
+/implementation_plan.md

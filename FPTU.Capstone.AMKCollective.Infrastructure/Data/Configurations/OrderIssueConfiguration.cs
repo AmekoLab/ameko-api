@@ -32,6 +32,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(oi => oi.AdminNote)
                 .HasMaxLength(2000);
 
+            builder.Property(oi => oi.AIAnalysisResult)
+                .HasColumnType("longtext")
+                .IsRequired(false);
+
             // Relationships
             builder.HasOne(oi => oi.Order)
                 .WithMany(o => o.OrderIssues)

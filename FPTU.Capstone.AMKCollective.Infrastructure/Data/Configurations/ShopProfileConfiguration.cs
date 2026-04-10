@@ -70,6 +70,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .HasDefaultValue(ShopBadge.Basic)
                 .HasConversion<int>();
 
+            builder.Property(s => s.Embedding)
+                .HasColumnType("json");
+
             builder.HasIndex(s => s.ShopName);
             builder.HasIndex(s => s.UserId).IsUnique();
             builder.HasIndex(s => s.CitizenId)

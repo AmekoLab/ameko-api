@@ -55,6 +55,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
 
             builder.Property(a => a.TotalReviews)
                 .HasDefaultValue(0);
+
+            builder.Property(a => a.Embedding)
+                .HasColumnType("json");
         }
     }
 }
