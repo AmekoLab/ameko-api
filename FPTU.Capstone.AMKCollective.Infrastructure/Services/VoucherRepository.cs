@@ -49,6 +49,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             // Logic: Lấy voucher chưa xóa, Active, Trong thời hạn
             // VÀ (Là voucher public HOẶC Là voucher riêng của user này)
             return await _context.Vouchers
+                .Include(v => v.Creator)
+                .ThenInclude(u => u.ShopProfile)
                 .Where(v => !v.IsDeleted &&
                             v.Status == VoucherStatus.Active &&
                             v.StartDate <= now &&
