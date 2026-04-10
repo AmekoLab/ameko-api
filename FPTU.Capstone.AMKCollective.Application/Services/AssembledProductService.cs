@@ -29,6 +29,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             var (items, totalCount) = await _unitOfWork.AssembledProducts.GetAllPagedAsync(pageNumber, pageSize);
             var dtos = _mapper.Map<IEnumerable<AssembledProductResponse>>(items);
+            await PopulateShopInfoAsync(dtos);
 
             return new PaginatedResult<AssembledProductResponse>
             {
@@ -41,13 +42,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<IEnumerable<AssembledProductResponse>> GetByShopIdAsync(Guid shopId)
         {
-            // Tuan Note: Check if the provided shopId is actually a UserId. 
-            // The user explicitly stated that shopId in the context of their frontend is often the UserId.
-            var shopByUserId = await _unitOfWork.Shops.GetByUserIdAsync(shopId);
-            Guid actualShopId = shopByUserId != null ? shopByUserId.Id : shopId;
+            // Tuan Note: shopId can be UserId or ShopProfile.Id. 
+            // Since our repository now filters by CreatedBy (which is UserId), we must resolve the actual UserId.
+            Guid actualUserId = shopId;
+            var shopByProfileId = await _unitOfWork.Shops.GetByIdAsync(shopId);
+            if (shopByProfileId != null) 
+            {
+                actualUserId = shopByProfileId.UserId; // Found a shop by profile ID, extract its UserId
+            }
 
-            var items = await _unitOfWork.AssembledProducts.GetByShopIdAsync(actualShopId);
-            return _mapper.Map<IEnumerable<AssembledProductResponse>>(items);
+            var items = await _unitOfWork.AssembledProducts.GetByShopIdAsync(actualUserId);
+            var dtos = _mapper.Map<IEnumerable<AssembledProductResponse>>(items);
+            await PopulateShopInfoAsync(dtos);
+            return dtos;
         }
         
         public async Task<IEnumerable<AssembledProductResponse>> GetMyAssembledProductsAsync(Guid userId)
@@ -55,13 +62,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
             if (shop == null) return new List<AssembledProductResponse>();
             
-            return await GetByShopIdAsync(shop.Id);
+            // Pass userId directly as GetByShopIdAsync handles it correctly
+            return await GetByShopIdAsync(userId);
         }
 
         public async Task<AssembledProductDetailResponse?> GetByIdAsync(Guid id)
         {
             var item = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(id);
-            return _mapper.Map<AssembledProductDetailResponse>(item);
+            var dto = _mapper.Map<AssembledProductDetailResponse>(item);
+            if (dto != null)
+            {
+                await PopulateShopInfoAsync(new[] { dto });
+            }
+            return dto;
         }
 
         public async Task<(Guid Id, string? ErrorMessage)> CreateAsync(Guid userId, CreateAssembledProductRequest request)
@@ -93,7 +106,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var models = await _unitOfWork.Models.GetByIdsAsync(modelIds);
             if (models.Count() != modelIds.Count)
             {
-                 return (Guid.Empty, "One or more selected components do not exist");
+                 return (Guid.Empty, "One or more selected components do not exist or have been deleted");
             }
 
             foreach (var model in models)
@@ -102,9 +115,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 {
                     return (Guid.Empty, $"Component '{model.Name}' does not belong to your shop");
                 }
+                if (!model.IsActive)
+                {
+                    return (Guid.Empty, $"Component '{model.Name}' is no longer active");
+                }
             }
 
             var assembledProduct = _mapper.Map<AssembledProduct>(request);
+            assembledProduct.CreatedBy = userId; // Tuan Note: Track who created this product
             
             await _unitOfWork.AssembledProducts.AddAsync(assembledProduct);
             await _unitOfWork.CommitAsync();
@@ -122,8 +140,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
             if (shop == null) return (false, null, "User does not have an active shop profile");     
 
-            var productShopId = assembledProduct.ProductAssembledDetails.FirstOrDefault()?.BaseKit.ShopId;
-            if (productShopId != shop.Id)
+            // Verify permission using CreatedBy (which is the user's ID)
+            if (assembledProduct.CreatedBy != userId)
             {
                 return (false, null, "You do not have permission to update this product");
             }
@@ -149,7 +167,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 var models = await _unitOfWork.Models.GetByIdsAsync(modelIds);
                 if (models.Count() != modelIds.Count)
                 {
-                    return (false, null, "One or more selected components do not exist");
+                    return (false, null, "One or more selected components do not exist or have been deleted");
                 }
 
                 foreach (var model in models)
@@ -157,6 +175,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     if (model.ShopId != shop.Id)
                     {
                         return (false, null, $"Component '{model.Name}' does not belong to your shop");
+                    }
+                    if (!model.IsActive)
+                    {
+                        return (false, null, $"Component '{model.Name}' is no longer active");
                     }
                 }
 
@@ -179,6 +201,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
          
             var updatedEntity = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(id);
             var responseData = _mapper.Map<AssembledProductDetailResponse>(updatedEntity);
+            if (responseData != null)
+            {
+                await PopulateShopInfoAsync(new[] { responseData });
+            }
 
             return (true, responseData, null);
         }
@@ -204,6 +230,31 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
 
             return true;
+        }
+
+        private async Task PopulateShopInfoAsync(IEnumerable<AssembledProductResponse> dtos)
+        {
+            if (dtos == null) return;
+            var shopUserIds = dtos.Where(d => d.ShopId != Guid.Empty).Select(d => d.ShopId).Distinct().ToList();
+            var shopDict = new Dictionary<Guid, ShopProfile>();
+
+            foreach (var id in shopUserIds)
+            {
+                var shop = await _unitOfWork.Shops.GetByUserIdAsync(id);
+                if (shop != null)
+                {
+                    shopDict[id] = shop;
+                }
+            }
+
+            foreach (var dto in dtos)
+            {
+                if (shopDict.TryGetValue(dto.ShopId, out var shop))
+                {
+                    dto.ShopName = shop.ShopName;
+                    dto.LogoUrl = shop.LogoUrl;
+                }
+            }
         }
     }
 }
