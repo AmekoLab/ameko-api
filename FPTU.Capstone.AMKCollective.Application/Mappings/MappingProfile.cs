@@ -69,8 +69,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             //==================ASSEMBLED PRODUCT=======================//
             CreateMap<AssembledProduct, AssembledProductResponse>()
                 .ForMember(dest => dest.ShopId, opt => opt.MapFrom(src =>
-                    src.ProductAssembledDetails.FirstOrDefault() != null && src.ProductAssembledDetails.First().BaseKit != null
-                    ? src.ProductAssembledDetails.First().BaseKit.ShopId : Guid.Empty))
+                    src.ProductAssembledDetails.FirstOrDefault() != null && 
+                    src.ProductAssembledDetails.First().BaseKit != null && 
+                    src.ProductAssembledDetails.First().BaseKit.Shop != null
+                    ? src.ProductAssembledDetails.First().BaseKit.Shop.UserId : Guid.Empty))
                 .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src =>
                     src.ProductAssembledDetails.FirstOrDefault() != null &&
                     src.ProductAssembledDetails.First().BaseKit != null &&

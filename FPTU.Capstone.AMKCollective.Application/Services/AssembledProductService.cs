@@ -41,7 +41,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<IEnumerable<AssembledProductResponse>> GetByShopIdAsync(Guid shopId)
         {
-            var items = await _unitOfWork.AssembledProducts.GetByShopIdAsync(shopId);
+            // Tuan Note: Check if the provided shopId is actually a UserId. 
+            // The user explicitly stated that shopId in the context of their frontend is often the UserId.
+            var shopByUserId = await _unitOfWork.Shops.GetByUserIdAsync(shopId);
+            Guid actualShopId = shopByUserId != null ? shopByUserId.Id : shopId;
+
+            var items = await _unitOfWork.AssembledProducts.GetByShopIdAsync(actualShopId);
             return _mapper.Map<IEnumerable<AssembledProductResponse>>(items);
         }
         
