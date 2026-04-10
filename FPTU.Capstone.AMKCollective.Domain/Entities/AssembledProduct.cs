@@ -14,6 +14,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public string? Image3 { get; set; }
         public string? Description { get; set; }
         public int? Quantity { get; set; }
+        public bool IsActive { get; set; } = true;
 
         // Specification Fields
         public string? Layout { get; set; }

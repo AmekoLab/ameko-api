@@ -1930,8 +1930,27 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
             }
 
+            // Deep check components stock and status
+            if (assembledProduct.ProductAssembledDetails != null)
+            {
+                foreach (var detail in assembledProduct.ProductAssembledDetails)
+                {
+                    var component = detail.BaseKitId != Guid.Empty ? detail.BaseKit : detail.Component;
+                    if (component == null || component.IsDeleted || !component.IsActive)
+                    {
+                        throw new InvalidOperationException($"Linh kiện '{component?.Name ?? "không xác định"}' của sản phẩm này hiện không khả dụng.");
+                    }
+
+                    int requiredPartQty = (detail.Quantity > 0 ? detail.Quantity : 1) * request.Quantity;
+                    if (component.StockQuantity < requiredPartQty)
+                    {
+                        throw new InvalidOperationException($"Linh kiện '{component.Name}' không đủ tồn kho (Cần {requiredPartQty}, hiện có {component.StockQuantity}).");
+                    }
+                }
+            }
+
             int currentStock = assembledProduct.Quantity ?? 0;
-            if (currentStock < request.Quantity) throw new InvalidOperationException($"Insufficient stock. Available: {currentStock}");
+            if (currentStock < request.Quantity) throw new InvalidOperationException($"Sản phẩm lắp ráp không đủ số lượng sẵn có (Cần {request.Quantity}, hiện có {currentStock}).");
 
             var existingItem = cart.CartItems.FirstOrDefault(x => !x.IsCustom && x.AssembledProductId == request.ProductId.Value);
 
@@ -1974,8 +1993,26 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     name = $"{baseKit.Name} (Custom Build)";
                     image = baseKit.ThumbnailURL ?? "";
                     shopId = baseKit.ShopId;
-                    // Hàm riêng parse JSON linh kiện cộng giá
                     currentPrice += ParseCustomBuilderPrice(item.DesignConfig, componentsDto);
+
+                    if (baseKit.IsDeleted || !baseKit.IsActive)
+                    {
+                        return new OrderItemResponse
+                        {
+                            OrderItemId = item.Id,
+                            ProductId = item.ProductId,
+                            ProductName = name,
+                            ProductImage = image,
+                            Quantity = item.Quantity,
+                            UnitPrice = currentPrice,
+                            TotalPrice = currentPrice * item.Quantity,
+                            IsCustom = true,
+                            ShopId = shopId,
+                            IsAvailable = false,
+                            StatusMessage = "Linh kiện gốc không còn khả dụng.",
+                            OrderItemComponents = componentsDto
+                        };
+                    }
                 }
             }
             else if (!item.IsCustom && item.AssembledProductId.HasValue)
@@ -1986,14 +2023,29 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     currentPrice = assembledProduct.Price;
                     name = assembledProduct.Name;
                     image = assembledProduct.Image1 ?? "";
-
                     shopId = await _unitOfWork.Models.GetShopIdByAssembledProductAsync(item.AssembledProductId.Value);
+
+                    bool isAvailable = true;
+                    string? statusMessage = null;
 
                     if (assembledProduct.ProductAssembledDetails != null && assembledProduct.ProductAssembledDetails.Any())
                     {
                         foreach (var detail in assembledProduct.ProductAssembledDetails)
                         {
+                            var part = detail.BaseKitId != Guid.Empty ? detail.BaseKit : detail.Component;
                             var partId = detail.ComponentId != Guid.Empty ? detail.ComponentId : detail.BaseKitId;
+
+                            if (part == null || part.IsDeleted || !part.IsActive)
+                            {
+                                isAvailable = false;
+                                statusMessage = $"Linh kiện '{part?.Name ?? "N/A"}' không còn khả dụng.";
+                            }
+                            else if (part.StockQuantity < (detail.Quantity > 0 ? detail.Quantity : 1) * item.Quantity)
+                            {
+                                isAvailable = false;
+                                statusMessage = $"Linh kiện '{part.Name}' không đủ tồn kho.";
+                            }
+
                             componentsDto.Add(new OrderItemComponentDto
                             {
                                 PartId = partId,
@@ -2004,6 +2056,35 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             });
                         }
                     }
+
+                    if (assembledProduct.Quantity < item.Quantity)
+                    {
+                        isAvailable = false;
+                        statusMessage = "Sản phẩm lắp ráp đã hết hàng.";
+                    }
+
+                    var resp = new OrderItemResponse
+                    {
+                        OrderItemId = item.Id,
+                        AssembledProductId = item.AssembledProductId,
+                        ProductName = name,
+                        ProductImage = image,
+                        Quantity = item.Quantity,
+                        UnitPrice = currentPrice,
+                        TotalPrice = currentPrice * item.Quantity,
+                        IsCustom = false,
+                        ShopId = shopId,
+                        IsAvailable = isAvailable,
+                        StatusMessage = statusMessage,
+                        OrderItemComponents = componentsDto
+                    };
+
+                    if (shopId != Guid.Empty)
+                    {
+                        var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
+                        resp.ShopName = shop?.ShopName ?? "Shop";
+                    }
+                    return resp;
                 }
             }
             else if (item.IsCustom && !item.ProductId.HasValue && !item.AssembledProductId.HasValue)
@@ -2019,17 +2100,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         if (root.TryGetProperty("Image", out var imgProp)) image = imgProp.GetString() ?? "";
                         if (root.TryGetProperty("ShopId", out var shopIdProp)) shopId = shopIdProp.GetGuid();
                     }
-                    catch { /* Bỏ qua lỗi Parse */ }
+                    catch { }
                 }
             }
+
             if (shopId != Guid.Empty)
             {
                 var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
                 shopName = shop?.ShopName ?? "Shop";
-            }
-            else
-            {
-                shopName = "Shop";
             }
 
             return new OrderItemResponse
@@ -2045,6 +2123,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 IsCustom = item.IsCustom,
                 ShopId = shopId,
                 ShopName = shopName,
+                IsAvailable = true,
                 OrderItemComponents = componentsDto
             };
         }
@@ -2117,9 +2196,31 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             else if (!item.IsCustom && item.AssembledProductId.HasValue)
             {
                 var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(item.AssembledProductId.Value);
-                int currentStock = assembledProduct?.Quantity ?? 0;
+                if (assembledProduct == null || assembledProduct.IsDeleted || !assembledProduct.IsActive)
+                    throw new InvalidOperationException("Sản phẩm lắp ráp hiện không khả dụng.");
+
+                // Check components stock and status
+                if (assembledProduct.ProductAssembledDetails != null)
+                {
+                    foreach (var detail in assembledProduct.ProductAssembledDetails)
+                    {
+                        var component = detail.BaseKitId != Guid.Empty ? detail.BaseKit : detail.Component;
+                        if (component == null || component.IsDeleted || !component.IsActive)
+                        {
+                            throw new InvalidOperationException($"Linh kiện '{component?.Name ?? "N/A"}' của sản phẩm này không còn khả dụng.");
+                        }
+
+                        int requiredPartQty = (detail.Quantity > 0 ? detail.Quantity : 1) * newQuantity;
+                        if (component.StockQuantity < requiredPartQty)
+                        {
+                            throw new InvalidOperationException($"Linh kiện '{component.Name}' không đủ tồn kho (Cần {requiredPartQty}, hiện có {component.StockQuantity}).");
+                        }
+                    }
+                }
+
+                int currentStock = assembledProduct.Quantity ?? 0;
                 if (currentStock < newQuantity)
-                    throw new InvalidOperationException("Insufficient stock.");
+                    throw new InvalidOperationException("Sản phẩm lắp ráp không đủ số lượng sẵn có.");
             }
         }
 

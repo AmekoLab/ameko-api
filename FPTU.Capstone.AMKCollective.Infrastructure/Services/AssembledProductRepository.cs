@@ -29,7 +29,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Include(ap => ap.ProductAssembledDetails)
                     .ThenInclude(pad => pad.Component)
                         .ThenInclude(m => m.Shop)
-                .Where(ap => !ap.IsDeleted);
+                .Where(ap => !ap.IsDeleted && ap.IsActive && 
+                             ap.ProductAssembledDetails.All(pad => 
+                                (pad.BaseKitId == Guid.Empty || (pad.BaseKit != null && !pad.BaseKit.IsDeleted && pad.BaseKit.IsActive && pad.BaseKit.StockQuantity >= pad.Quantity)) &&
+                                (pad.ComponentId == Guid.Empty || (pad.Component != null && !pad.Component.IsDeleted && pad.Component.IsActive && pad.Component.StockQuantity >= pad.Quantity))
+                             ));
 
             var totalCount = await query.CountAsync();
             var items = await query
@@ -54,7 +58,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Include(ap => ap.ProductAssembledDetails)
                     .ThenInclude(pad => pad.Component)
                         .ThenInclude(m => m.Shop)
-                .Where(ap => !ap.IsDeleted && ap.CreatedBy == userId)
+                .Where(ap => !ap.IsDeleted && ap.CreatedBy == userId &&
+                             ap.ProductAssembledDetails.All(pad => 
+                                (pad.BaseKitId == Guid.Empty || (pad.BaseKit != null && !pad.BaseKit.IsDeleted && pad.BaseKit.IsActive && pad.BaseKit.StockQuantity >= pad.Quantity)) &&
+                                (pad.ComponentId == Guid.Empty || (pad.Component != null && !pad.Component.IsDeleted && pad.Component.IsActive && pad.Component.StockQuantity >= pad.Quantity))
+                             ))
                 .OrderByDescending(ap => ap.CreatedAt)
                 .ToListAsync();
         }

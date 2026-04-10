@@ -368,7 +368,7 @@ namespace FPTU.Capstone.AMKCollective.Tests
 
             _unitOfWork.Setup(x => x.Shops.GetShopsAsync(It.IsAny<string?>(), It.IsAny<ShopStatus?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync((new List<ShopProfile> { shop }, 1));
             _unitOfWork.Setup(x => x.AssembledProducts.GetAllPagedAsync(It.IsAny<int>(), It.IsAny<int>())).ReturnsAsync((new List<AssembledProduct> { build }, 1));
-            _unitOfWork.Setup(x => x.Models.GetPagedAsync(It.IsAny<GetPartsFilterRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync((new List<Model> { part }, 1));
+            _unitOfWork.Setup(x => x.Models.GetPagedAsync(It.IsAny<GetPartsFilterRequest>(), It.IsAny<bool>(), It.IsAny<CancellationToken>())).ReturnsAsync((new List<Model> { part }, 1));
             _embeddingService.Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>())).ReturnsAsync(new float[] { 0.1f });
             _unitOfWork.Setup(x => x.Shops.UpdateAsync(It.IsAny<ShopProfile>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             _unitOfWork.Setup(x => x.AssembledProducts.UpdateAsync(It.IsAny<AssembledProduct>())).Returns(Task.CompletedTask);

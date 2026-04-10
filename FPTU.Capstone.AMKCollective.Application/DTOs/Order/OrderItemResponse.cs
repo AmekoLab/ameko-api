@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -21,6 +21,8 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
         public bool IsCustom { get; set; }
         public string? Note { get; set; }
         public List<Guid>? CustomComponentIds { get; set; }
+        public bool IsAvailable { get; set; } = true;
+        public string? StatusMessage { get; set; }
         public List<OrderItemComponentDto> OrderItemComponents { get; set; } = new();
     }
 }
