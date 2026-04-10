@@ -44,6 +44,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var items = await _unitOfWork.AssembledProducts.GetByShopIdAsync(shopId);
             return _mapper.Map<IEnumerable<AssembledProductResponse>>(items);
         }
+        
+        public async Task<IEnumerable<AssembledProductResponse>> GetMyAssembledProductsAsync(Guid userId)
+        {
+            var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+            if (shop == null) return new List<AssembledProductResponse>();
+            
+            return await GetByShopIdAsync(shop.Id);
+        }
 
         public async Task<AssembledProductDetailResponse?> GetByIdAsync(Guid id)
         {

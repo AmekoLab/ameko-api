@@ -11,6 +11,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
     {
         Task<PaginatedResult<AssembledProductResponse>> GetAllAsync(int pageNumber, int pageSize);
         Task<IEnumerable<AssembledProductResponse>> GetByShopIdAsync(Guid shopId);
+        Task<IEnumerable<AssembledProductResponse>> GetMyAssembledProductsAsync(Guid userId);
         Task<AssembledProductDetailResponse?> GetByIdAsync(Guid id);
         Task<(Guid Id, string? ErrorMessage)> CreateAsync(Guid userId, CreateAssembledProductRequest request);
         Task<(bool Success, AssembledProductDetailResponse? Data, string? ErrorMessage)> UpdateAsync(Guid id, Guid userId, UpdateAssembledProductRequest request);
