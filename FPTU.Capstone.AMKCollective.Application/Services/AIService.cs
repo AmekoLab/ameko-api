@@ -251,13 +251,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             };
             await _qdrantService.UpsertPointAsync("builds", build.Id, vector, payload);
 
-            build.Embedding = JsonSerializer.Serialize(vector);
-            
-            // Note: Detach navigation properties to avoid EF Core tracking conflicts
-            build.ProductAssembledDetails = null!;
-            
-            await _unitOfWork.AssembledProducts.UpdateAsync(build);
-            await _unitOfWork.CommitAsync();
+            // Fix: Use scalar ExecuteUpdateAsync to update ONLY the Embedding column.
+            // Previously this method set ProductAssembledDetails = null! on the tracked entity,
+            // then called CommitAsync() — causing EF Core to cascade-delete all child detail rows.
+            var serializedEmbedding = JsonSerializer.Serialize(vector);
+            await _unitOfWork.AssembledProducts.UpdateEmbeddingAsync(build.Id, serializedEmbedding);
         }
 
         public async Task SyncPartAsync(Model part)
