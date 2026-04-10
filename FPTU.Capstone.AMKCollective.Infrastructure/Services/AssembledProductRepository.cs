@@ -61,6 +61,24 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         public async Task<AssembledProduct?> GetByIdWithDetailsAsync(Guid id)
         {
+            // Note: Do NOT use AsNoTracking here.
+            // This method is called by UpdateAsync and DeleteAsync which need EF change tracking.
+            // Without tracking, modifications to the entity (Clear/Add details, property changes) 
+            // are invisible to EF and CommitAsync saves nothing.
+            return await _context.AssembledProducts
+                .IgnoreQueryFilters()
+                .Include(ap => ap.ProductAssembledDetails)
+                    .ThenInclude(pad => pad.BaseKit)
+                        .ThenInclude(bk => bk.Shop)
+                .Include(ap => ap.ProductAssembledDetails)
+                    .ThenInclude(pad => pad.Component)
+                        .ThenInclude(m => m.Shop)
+                .FirstOrDefaultAsync(ap => ap.Id == id);
+        }
+
+        public async Task<AssembledProduct?> GetByIdReadOnlyAsync(Guid id)
+        {
+            // Read-only version for GET endpoints (faster, no tracking overhead)
             return await _context.AssembledProducts
                 .IgnoreQueryFilters()
                 .AsNoTracking()
@@ -107,6 +125,16 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 _context.AssembledProducts.Update(assembledProduct);
             }
             await Task.CompletedTask;
+        }
+
+        public async Task UpdateEmbeddingAsync(Guid id, string? embedding, CancellationToken ct = default)
+        {
+            // Scalar update — only writes the Embedding column, does NOT touch ProductAssembledDetails.
+            await _context.AssembledProducts
+                .Where(ap => ap.Id == id)
+                .ExecuteUpdateAsync(
+                    s => s.SetProperty(ap => ap.Embedding, embedding),
+                    ct);
         }
     }
 }

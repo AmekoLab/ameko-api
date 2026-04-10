@@ -68,7 +68,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<AssembledProductDetailResponse?> GetByIdAsync(Guid id)
         {
-            var item = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(id);
+            var item = await _unitOfWork.AssembledProducts.GetByIdReadOnlyAsync(id);
             var dto = _mapper.Map<AssembledProductDetailResponse>(item);
             if (dto != null)
             {
@@ -123,7 +123,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             var assembledProduct = _mapper.Map<AssembledProduct>(request);
             assembledProduct.CreatedBy = userId; // Tuan Note: Track who created this product
-            
+
+            // Fix: AutoMapper does not set AssembledProductId on children (it's not in the DTO).
+            // EF Core may not override an already-set Guid.Empty FK value, so we assign it explicitly.
+            foreach (var detail in assembledProduct.ProductAssembledDetails)
+            {
+                detail.AssembledProductId = assembledProduct.Id;
+            }
+
             await _unitOfWork.AssembledProducts.AddAsync(assembledProduct);
             await _unitOfWork.CommitAsync();
 
@@ -182,13 +189,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     }
                 }
 
-                //Tuan Note: Clear existing details and add new ones. Because updating details is complex (add, update, delete), for simplicity we clear and re-add.
+                // Clear existing details and re-add. This is simpler than tracking individual add/update/delete operations.
                 assembledProduct.ProductAssembledDetails.Clear();
                 foreach (var detailReq in request.Details)
                 {
                     var detail = _mapper.Map<ProductAssembledDetail>(detailReq);
-                    //Tuan Note: Ensure new detail is added instead of updating existing one, Remove existing Id and set to empty. Because AutoMapper will map the Id from detailReq (which is default Guid.Empty) to detail.Id, causing EF to think it's an existing entity.
-                    detail.Id = Guid.Empty; 
+                    // Fix: BaseEntity constructor already generates a new Guid for Id.
+                    // Do NOT override with Guid.Empty — that causes EF Core to fail on PK/FK constraint.
+                    // Explicitly assign AssembledProductId so the FK is always correct.
+                    detail.AssembledProductId = assembledProduct.Id;
                     detail.SoundUrl = detailReq.SoundUrl;
                     assembledProduct.ProductAssembledDetails.Add(detail);
                 }
