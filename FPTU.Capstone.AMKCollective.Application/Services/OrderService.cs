@@ -1809,8 +1809,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     var detail = assembledProduct?.ProductAssembledDetails?.FirstOrDefault();
                     if (detail != null)
                     {
-                        var baseKit = await _unitOfWork.Models.GetByIdAsync(detail.BaseKitId);
-                        return baseKit?.ShopId ?? Guid.Empty;
+                        var modelId = detail.BaseKitId != Guid.Empty ? detail.BaseKitId : detail.ComponentId;
+                        var relatedModel = await _unitOfWork.Models.GetByIdAsync(modelId);
+                        return relatedModel?.ShopId ?? Guid.Empty;
                     }
                 }
             }
@@ -1905,8 +1906,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (assembledProduct == null) throw new KeyNotFoundException("Product not found.");
 
             var firstDetail = assembledProduct.ProductAssembledDetails?.FirstOrDefault();
-            var targetModelId = firstDetail?.BaseKitId ?? firstDetail?.ComponentId;
-            if (targetModelId.HasValue)
+            var targetModelId = (firstDetail?.BaseKitId != null && firstDetail.BaseKitId != Guid.Empty)
+                ? (Guid?)firstDetail.BaseKitId
+                : firstDetail?.ComponentId; if (targetModelId.HasValue)
             {
                 var relatedModel = await _unitOfWork.Models.GetByIdAsync(targetModelId.Value);
                 if (relatedModel?.ShopId != Guid.Empty)
@@ -1974,20 +1976,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     name = assembledProduct.Name;
                     image = assembledProduct.Image1 ?? "";
 
-                    // Workaround lặp qua chi tiết để lấy ShopId như đã bàn
-                    var firstDetail = assembledProduct.ProductAssembledDetails?.FirstOrDefault();
-                    var targetModelId = firstDetail?.BaseKitId ?? firstDetail?.ComponentId;
-                    if (targetModelId.HasValue)
-                    {
-                        var relatedModel = await _unitOfWork.Models.GetByIdAsync(targetModelId.Value);
-                        shopId = relatedModel?.ShopId ?? Guid.Empty;
-                    }
+                    shopId = await _unitOfWork.Models.GetShopIdByAssembledProductAsync(item.AssembledProductId.Value);
+
                     if (assembledProduct.ProductAssembledDetails != null && assembledProduct.ProductAssembledDetails.Any())
                     {
                         foreach (var detail in assembledProduct.ProductAssembledDetails)
                         {
                             var partId = detail.ComponentId != Guid.Empty ? detail.ComponentId : detail.BaseKitId;
-
                             componentsDto.Add(new OrderItemComponentDto
                             {
                                 PartId = partId,
@@ -2618,14 +2613,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(itemResponse.AssembledProductId.Value);
                     if (assembledProduct != null)
                     {
-                        var firstDetail = assembledProduct.ProductAssembledDetails?.FirstOrDefault();
-                        var targetModelId = firstDetail?.BaseKitId ?? firstDetail?.ComponentId;
-                        if (targetModelId.HasValue)
-                        {
-                            var relatedModel = await _unitOfWork.Models.GetByIdAsync(targetModelId.Value);
-                            if (relatedModel != null && itemResponse.ShopId == Guid.Empty)
-                                itemResponse.ShopId = relatedModel.ShopId;
-                        }
+                        if (itemResponse.ShopId == Guid.Empty)
+                            itemResponse.ShopId = await _unitOfWork.Models
+                                .GetShopIdByAssembledProductAsync(itemResponse.AssembledProductId.Value);
 
                         if (assembledProduct.ProductAssembledDetails != null)
                         {

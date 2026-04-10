@@ -168,6 +168,32 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
             return rowsAffected > 0;
         }
+
+        public async Task<Guid> GetShopIdByAssembledProductAsync(Guid assembledProductId, CancellationToken token = default)
+        {
+            // Lấy detail đầu tiên để xác định modelId cần dùng
+            // (EF Core không thể dịch correlated subquery trong ternary Select sang SQL)
+            var detail = await _context.Set<ProductAssembledDetail>()
+                .AsNoTracking()
+                .Where(pad => pad.AssembledProductId == assembledProductId)
+                .Select(pad => new { pad.BaseKitId, pad.ComponentId })
+                .FirstOrDefaultAsync(token);
+
+            if (detail == null) return Guid.Empty;
+
+            // Ưu tiên BaseKitId, fallback sang ComponentId
+            var modelId = detail.BaseKitId != Guid.Empty ? detail.BaseKitId : detail.ComponentId;
+            if (modelId == Guid.Empty) return Guid.Empty;
+
+            // Query ShopId trực tiếp từ Models — EF dịch được hoàn toàn
+            var shopId = await _context.Models
+                .AsNoTracking()
+                .Where(m => m.Id == modelId)
+                .Select(m => m.ShopId)
+                .FirstOrDefaultAsync(token);
+
+            return shopId;
+        }
     }
 }
   
