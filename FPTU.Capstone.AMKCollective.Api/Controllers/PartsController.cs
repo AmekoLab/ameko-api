@@ -34,7 +34,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var result = await _service.GetListAsync(query);
+                var userId = TryGetCurrentUserId();
+                var result = await _service.GetListAsync(query, userId);
                 return SuccessResponse(new { data = result.Items, total = result.TotalCount });
             }
             catch (Exception ex)

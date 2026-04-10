@@ -29,9 +29,28 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _aiService = aiService;
         }
 
-        public async Task<(IEnumerable<PartResponse> Items, int TotalCount)> GetListAsync(GetPartsFilterRequest query)
+        public async Task<(IEnumerable<PartResponse> Items, int TotalCount)> GetListAsync(GetPartsFilterRequest query, Guid? userId = null)
         {
-            var (entities, total) = await _unitOfWork.Models.GetPagedAsync(query);
+            bool includeDeleted = false;
+            if (userId.HasValue)
+            {
+                var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId.Value);
+                if (shop != null)
+                {
+                    if (!query.ShopId.HasValue || query.ShopId.Value == shop.Id)
+                    {
+                        query.ShopId = shop.Id;
+                        includeDeleted = true;
+                    }
+                }
+            }
+
+            if (!includeDeleted)
+            {
+                query.IsActive = true;
+            }
+
+            var (entities, total) = await _unitOfWork.Models.GetPagedAsync(query, includeDeleted);
             var dtos = _mapper.Map<IEnumerable<PartResponse>>(entities);
             return (dtos, total);
         }

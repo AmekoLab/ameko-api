@@ -22,9 +22,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         }
         public async Task<(IEnumerable<Model> Items, int TotalCount)> GetPagedAsync(
             GetPartsFilterRequest queryParams,
+            bool includeDeleted = false,
             CancellationToken cancellationToken = default)
         {
-            var query = _context.Models.AsNoTracking().Where(x => !x.IsDeleted);
+            var query = _context.Models.AsNoTracking();
+            if (!includeDeleted)
+            {
+                query = query.Where(x => !x.IsDeleted);
+            }
 
             // Filter logic
             if (queryParams.ShopId.HasValue)
@@ -181,29 +186,49 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         public async Task<Guid> GetShopIdByAssembledProductAsync(Guid assembledProductId, CancellationToken token = default)
         {
-            // Lấy detail đầu tiên để xác định modelId cần dùng
-            // (EF Core không thể dịch correlated subquery trong ternary Select sang SQL)
+            // [STRATEGY] Mirror logic của MappingProfile: ưu tiên CreatedBy (UserId) → ShopProfile.Id
+            // Assembled product API dùng CreatedBy làm nguồn ShopId khi không có ProductAssembledDetails
+
+            // Bước 1: Lấy CreatedBy của AssembledProduct
+            var createdBy = await _context.AssembledProducts
+                .AsNoTracking()
+                .IgnoreQueryFilters()
+                .Where(ap => ap.Id == assembledProductId)
+                .Select(ap => ap.CreatedBy)
+                .FirstOrDefaultAsync(token);
+
+            // Bước 2: Nếu có CreatedBy → tìm ShopProfile.Id (UserId = CreatedBy)
+            if (createdBy.HasValue && createdBy.Value != Guid.Empty)
+            {
+                var shopId = await _context.ShopProfiles
+                    .AsNoTracking()
+                    .Where(sp => sp.UserId == createdBy.Value)
+                    .Select(sp => sp.Id)
+                    .FirstOrDefaultAsync(token);
+
+                if (shopId != Guid.Empty)
+                    return shopId;
+            }
+
+            // Bước 3: Fallback — lấy qua ProductAssembledDetails nếu CreatedBy không có
             var detail = await _context.Set<ProductAssembledDetail>()
                 .AsNoTracking()
+                .IgnoreQueryFilters()
                 .Where(pad => pad.AssembledProductId == assembledProductId)
                 .Select(pad => new { pad.BaseKitId, pad.ComponentId })
                 .FirstOrDefaultAsync(token);
 
             if (detail == null) return Guid.Empty;
 
-            // Ưu tiên BaseKitId, fallback sang ComponentId
             var modelId = detail.BaseKitId != Guid.Empty ? detail.BaseKitId : detail.ComponentId;
             if (modelId == Guid.Empty) return Guid.Empty;
 
-            // Query ShopId trực tiếp từ Models — EF dịch được hoàn toàn
-            var shopId = await _context.Models
+            return await _context.Models
                 .AsNoTracking()
+                .IgnoreQueryFilters()
                 .Where(m => m.Id == modelId)
                 .Select(m => m.ShopId)
                 .FirstOrDefaultAsync(token);
-
-            return shopId;
         }
     }
 }
-  
