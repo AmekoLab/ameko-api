@@ -10,7 +10,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 {
     public interface IProductService
     {
-        Task<(IEnumerable<PartResponse> Items, int TotalCount)> GetListAsync(GetPartsFilterRequest query);
+        Task<(IEnumerable<PartResponse> Items, int TotalCount)> GetListAsync(GetPartsFilterRequest query, Guid? userId = null);
         Task<PartResponse> GetBySlugAsync(string slug);
         Task<PartResponse> CreateAsync(Guid userId, CreateUpdatePartRequest request);
         Task UpdateAsync(Guid userId, Guid id, CreateUpdatePartRequest request);

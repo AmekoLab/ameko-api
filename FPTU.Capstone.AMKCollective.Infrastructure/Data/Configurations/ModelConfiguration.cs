@@ -19,8 +19,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(x => x.IsDeleted)
                 .HasDefaultValue(false);
 
-            builder.HasQueryFilter(x => !x.IsDeleted);
-
             // Core fields
             builder.Property(x => x.Name)
                 .IsRequired()

@@ -10,7 +10,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
 {
     public interface IModelRepository
     {
-        Task<(IEnumerable<Model> Items, int TotalCount)> GetPagedAsync(GetPartsFilterRequest queryParams, CancellationToken token = default);
+        Task<(IEnumerable<Model> Items, int TotalCount)> GetPagedAsync(GetPartsFilterRequest queryParams, bool includeDeleted = false, CancellationToken token = default);
         Task<Model?> GetByIdAsync(Guid? id, CancellationToken token = default);
         Task<Model?> GetBySlugAsync(string slug, CancellationToken token = default);
 
@@ -25,8 +25,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task UpdateEmbeddingAsync(Guid partId, string? embedding, CancellationToken token = default);
         Task DeleteAsync(Guid id, CancellationToken token = default);
         Task<bool> ExistsAsync(Guid id, CancellationToken token = default);
-        /// <summary>[Fix #3] Kiem tra part co dang duoc tham chieu trong order chua hoan thanh khong.</summary>
         Task<bool> IsPartInActiveOrderAsync(Guid partId, CancellationToken token = default);
+        Task<Guid> GetShopIdByAssembledProductAsync(Guid assembledProductId, CancellationToken token = default);
     }
 }
 
