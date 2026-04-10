@@ -690,14 +690,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     {
                         currentPrice = assembledProduct.Price;
 
-                        // Đi đường vòng để lấy ShopId
-                        var firstDetail = assembledProduct.ProductAssembledDetails?.FirstOrDefault();
-                        var targetModelId = firstDetail?.BaseKitId ?? firstDetail?.ComponentId;
-                        if (targetModelId.HasValue)
-                        {
-                            var relatedModel = await _unitOfWork.Models.GetByIdAsync(targetModelId.Value);
-                            shopId = relatedModel?.ShopId ?? Guid.Empty;
-                        }
+                        shopId = await _unitOfWork.Models.GetShopIdByAssembledProductAsync(assembledProduct.Id);
                     }
                 }
                 // C. Hàng Commission (Giữ nguyên luồng fallback cũ của dự án)
