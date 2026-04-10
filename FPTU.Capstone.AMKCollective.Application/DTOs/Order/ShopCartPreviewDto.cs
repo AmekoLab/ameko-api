@@ -1,8 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Voucher;
 
 namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
 {
@@ -17,6 +18,11 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
         public decimal TotalAmount { get; set; }           // = (SubTotal + Ship) - ShopDiscount
 
         public List<Guid> IncludedOrderItemIds { get; set; } = new List<Guid>();
+
+        /// <summary>
+        /// Chi tiết giảm giá từng voucher shop: mã nào giảm bao nhiêu.
+        /// </summary>
+        public List<VoucherDiscountBreakdown> AppliedVoucherBreakdowns { get; set; } = new List<VoucherDiscountBreakdown>();
 
         public string? ShopVoucherError { get; set; }
     }

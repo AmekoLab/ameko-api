@@ -190,6 +190,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 decimal shopShippingFee = _orderSettings.DefaultShippingFee;
                 decimal shopDiscount = 0;
                 string? shopVoucherError = null;
+                var voucherBreakdowns = new List<FPTU.Capstone.AMKCollective.Application.DTOs.Voucher.VoucherDiscountBreakdown>();
 
                 if (shopVoucherGroups.TryGetValue(shopId, out var shopVoucherCodes) && shopVoucherCodes.Count > 0)
                 {
@@ -250,6 +251,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             if (stepDiscount > remaining) stepDiscount = remaining;
                             shopDiscount += stepDiscount;
                             remaining -= stepDiscount;
+
+                            voucherBreakdowns.Add(new FPTU.Capstone.AMKCollective.Application.DTOs.Voucher.VoucherDiscountBreakdown
+                            {
+                                VoucherCode = sv.Code,
+                                DiscountType = sv.DiscountType.ToString(),
+                                DiscountAmount = stepDiscount
+                            });
                         }
                     }
                 }
@@ -263,6 +271,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     ShopDiscountAmount = shopDiscount,
                     TotalAmount = Math.Max(0, shopSubTotal + shopShippingFee - shopDiscount),
                     IncludedOrderItemIds = items.Select(x => x.OrderItemId).ToList(),
+                    AppliedVoucherBreakdowns = voucherBreakdowns,
                     ShopVoucherError = shopVoucherError
                 });
 
