@@ -87,7 +87,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (preferAssembledRecommendation)
             {
                 var buildIds = await _qdrantService.SearchAsync("builds", promptVector, limit: 5, shopId: targetShopId);
-                assembledCandidates = (await _unitOfWork.AssembledProducts.GetByIdsAsync(buildIds)).ToList();
+                var rawAssembled = await _unitOfWork.AssembledProducts.GetByIdsAsync(buildIds);
+                
+                // Lọc các bản build hợp lệ (không bị xóa, đang active và đủ linh kiện)
+                assembledCandidates = new List<AssembledProduct>();
+                foreach (var b in rawAssembled)
+                {
+                    if (await IsAssembledProductAvailableAsync(b))
+                    {
+                        assembledCandidates.Add(b);
+                    }
+                }
 
                 contextData = string.Join(
                     "\n",
@@ -423,6 +433,27 @@ Description: {issue.Description}
             }
 
             return items;
+        }
+
+        private async Task<bool> IsAssembledProductAvailableAsync(AssembledProduct p)
+        {
+            if (p == null || p.IsDeleted || !p.IsActive) return false;
+
+            // Load details if not already loaded (GetByIdsAsync usually doesn't include details)
+            var detailed = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(p.Id);
+            if (detailed == null) return false;
+
+            if (detailed.ProductAssembledDetails == null || !detailed.ProductAssembledDetails.Any())
+                return true; // No components? Assume okay if parent is okay.
+
+            foreach (var detail in detailed.ProductAssembledDetails)
+            {
+                var component = detail.BaseKitId != Guid.Empty ? detail.BaseKit : detail.Component;
+                if (component == null || component.IsDeleted || !component.IsActive) return false;
+                if (component.StockQuantity < (detail.Quantity > 0 ? detail.Quantity : 1)) return false;
+            }
+
+            return true;
         }
 
         private static AIRecommendationItemDTO MapPartItem(Model model)
