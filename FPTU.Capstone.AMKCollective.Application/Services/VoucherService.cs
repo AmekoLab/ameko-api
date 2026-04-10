@@ -35,7 +35,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // Validate: Code must be unique
             var existing = await _unitOfWork.Vouchers.GetByCodeAsync(request.Code);
             if (existing != null)
-                throw new Exception($"Voucher code '{request.Code}' already exists.");
+                throw new InvalidOperationException(
+                    $"Voucher code '{request.Code}' already exists. Please choose a different code.");
 
             var voucher = _mapper.Map<Voucher>(request);
             var currentUser = await _unitOfWork.Users.GetByIdAsync(userId);
