@@ -44,6 +44,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             if (queryParams.IsActive.HasValue)
                 query = query.Where(x => x.IsActive == queryParams.IsActive.Value);
 
+            // Filter addon-eligible parts (keycap artisan, special switches, etc.)
+            if (queryParams.IsAddonEligible.HasValue)
+                query = query.Where(x => x.IsAddonEligible == queryParams.IsAddonEligible.Value);
+
             if (!string.IsNullOrEmpty(queryParams.SearchTerm))
             {
                 var term = queryParams.SearchTerm.ToLower();

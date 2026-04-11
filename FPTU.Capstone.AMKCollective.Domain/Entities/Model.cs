@@ -18,6 +18,9 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public int StockQuantity { get; set; }
         public bool IsActive { get; set; } = true;
 
+        /// True = part này có thể dùng để custom per-key trên bàn phím ảo (add-on)
+        public bool IsAddonEligible { get; set; } = false;
+
         /// <summary>
         /// JSON-serialized vector embedding for semantic search.
         /// </summary>

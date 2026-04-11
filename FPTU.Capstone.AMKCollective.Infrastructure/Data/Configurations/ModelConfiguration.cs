@@ -57,6 +57,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(x => x.IsActive)
                 .HasDefaultValue(true);
 
+            builder.Property(x => x.IsAddonEligible)
+                .HasDefaultValue(false);
+
             // Indexes 
 
             builder.HasIndex(x => x.Slug)
@@ -64,6 +67,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
 
             // Builder / Search filter
             builder.HasIndex(x => new { x.PartType, x.IsActive });
+
+            // Addon-options query: shop lọc part nào được phép custom per-key
+            builder.HasIndex(x => new { x.ShopId, x.IsAddonEligible, x.IsActive });
 
             builder.HasIndex(x => x.ShopId);
 
