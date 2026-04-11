@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Builder;
 using System;
 using System.Collections.Generic;
@@ -34,5 +34,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<Guid> CreateSessionFromOrderAsync(Guid orderItemId, Guid userId);
         Task<BuilderStepResponse> AddExtraPartToSessionAsync(BuilderAddonRequest request);
         Task<BuilderStepResponse> RemoveExtraPartFromSessionAsync(Guid sessionId, string addonKey);
+
+        /// Lấy danh sách linh kiện có thể add-on tại vị trí trên bàn phím ảo.
+        Task<AddonOptionsResponse> GetAddonOptionsAsync(Guid sessionId, string addonType, string? searchTerm = null, int page = 1, int pageSize = 20);
     }
 }

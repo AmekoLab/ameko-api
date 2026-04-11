@@ -596,5 +596,60 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return ServerErrorResponse<string>("An error occurred while removing the extra part.");
             }
         }
+        /// <summary>
+        /// [USER] Lấy danh sách linh kiện có thể add-on khi click vào phím trên bàn phím ảo.
+        /// </summary>
+        /// <remarks>
+        /// Tất cả addon-eligible parts đều được query từ một nguồn duy nhất: <c>Model</c> với <c>IsAddonEligible = true</c>.
+        /// Shop tự đánh dấu khi tạo sản phẩm (artisan keycap, switch đặc biệt, v.v.).
+        /// <br/>
+        /// <b>addonType</b> là optional PartType filter — không phải routing.
+        /// Không truyền → trả toàn bộ addon-eligible parts của shop.
+        /// "switch" → chỉ lấy IsAddonEligible parts có PartType = "switch".
+        /// "keycap" → chỉ lấy IsAddonEligible parts có PartType = "keycap".
+        /// </remarks>
+        /// <param name="sessionId">ID của builder session hiện tại</param>
+        /// <param name="addonType">Optional PartType filter: "switch", "keycap", "all" hoặc để trống</param>
+        /// <param name="searchTerm">Tìm kiếm theo tên (optional)</param>
+        /// <param name="page">Trang (default = 1)</param>
+        /// <param name="pageSize">Số item mỗi trang (default = 20)</param>
+        [HttpGet("session/{sessionId}/addon-options")]
+        [Authorize]
+        [SwaggerOperation(
+            Summary = "Get Addon Options",
+            Description = "Returns all parts marked IsAddonEligible=true from the session's shop. " +
+                          "addonType is an optional PartType filter (switch/keycap/all), not a routing mechanism. " +
+                          "All results come from the same Model table — no KitDesignOption routing needed.")]
+        [SwaggerResponse(200, "Options retrieved", typeof(ApiResponse<AddonOptionsResponse>))]
+        [SwaggerResponse(404, "Session not found")]
+        public async Task<IActionResult> GetAddonOptions(
+            Guid sessionId,
+            [FromQuery] string addonType = "all",
+            [FromQuery] string? searchTerm = null,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(addonType))
+                    return ErrorResponse<string>("addonType is required. Supported values: 'switch', 'keycap'.");
+
+                var result = await _service.GetAddonOptionsAsync(sessionId, addonType, searchTerm, page, pageSize);
+                return SuccessResponse(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<string>(ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting addon options for Session {SessionId}, Type {AddonType}", sessionId, addonType);
+                return ServerErrorResponse<string>("An error occurred while retrieving addon options.");
+            }
+        }
     }
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -12,6 +12,8 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Part
         public Guid CategoryId { get; set; }
         public string? PartType { get; set; }
         public bool? IsActive { get; set; }
+        /// <summary>Nếu true, chỉ lấy parts được đánh dấu IsAddonEligible. Dùng bởi addon-options query.</summary>
+        public bool? IsAddonEligible { get; set; }
         public string? SearchTerm { get; set; }
         public int PageNumber { get; set; } = 1;
         public int PageSize { get; set; } = 20;

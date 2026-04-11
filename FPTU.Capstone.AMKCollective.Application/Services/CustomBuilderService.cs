@@ -1,5 +1,7 @@
 using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Builder;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Part;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
@@ -675,6 +677,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 if (extraPart == null)
                     throw new KeyNotFoundException($"Add-on component with ID {item.ComponentId} not found.");
 
+                // Stock check — không cho add addon khi hết hàng
+                if (extraPart.StockQuantity < item.Quantity)
+                    throw new InvalidOperationException(
+                        $"Add-on '{extraPart.Name}' does not have enough stock (Available: {extraPart.StockQuantity}, Required: {item.Quantity}). Please choose another quantity or component.");
+
                 // Lấy category slug để phân biệt switch vs keycap tại cùng vị trí.
                 // Dùng PartType của component; fallback về "part" nếu null.
                 string categorySlug = extraPart.PartType?.ToLower().Trim().Replace(" ", "_") ?? "part";
@@ -796,6 +803,57 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // Trả về Session mới nhất để FE cập nhật lại giao diện
             return await GetExistingSessionAsync(session.Id, session.CurrentStep);
+        }
+
+        // ========================= ADDON OPTIONS ======================================
+
+        /// <summary>
+        /// Lấy danh sách linh kiện có thể add-on khi click vào phím trên bàn phím ảo.
+        /// addonType (optional): chỉ còn là PartType filter phụ.
+        ///   Không truyền / "all" → trả toàn bộ addon-eligible parts của shop.
+        /// </summary>
+        public async Task<AddonOptionsResponse> GetAddonOptionsAsync(
+            Guid sessionId, string addonType, string? searchTerm = null, int page = 1, int pageSize = 20)
+        {
+            var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(sessionId);
+            if (session == null)
+                throw new KeyNotFoundException($"Builder session {sessionId} not found.");
+
+            var shopId = session.BaseKit?.ShopId;
+            if (shopId == null || shopId == Guid.Empty)
+                throw new InvalidOperationException("Cannot determine shop from session's base kit.");
+
+            // addonType chỉ còn là PartType filter tuỳ chọn — không route sang datasource khác nữa
+            string? partTypeFilter = string.IsNullOrWhiteSpace(addonType) || addonType.Equals("all", StringComparison.OrdinalIgnoreCase)
+                ? null
+                : addonType.Trim();
+
+            var (parts, total) = await _unitOfWork.Models.GetPagedAsync(new GetPartsFilterRequest
+            {
+                ShopId = shopId,
+                IsAddonEligible = true,    // Nguồn sự thật duy nhất — shop đã tick flag khi tạo sản phẩm
+                IsActive = true,
+                PartType = partTypeFilter,
+                SearchTerm = searchTerm,
+                PageNumber = page,
+                PageSize = pageSize
+            });
+
+            return new AddonOptionsResponse
+            {
+                AddonType = partTypeFilter ?? "all",
+                TotalCount = total,
+                Items = parts.Select(p => new AddonOptionItem
+                {
+                    PartId = p.Id,
+                    Name = p.Name,
+                    Price = p.Price,
+                    ThumbnailUrl = p.ThumbnailURL,
+                    PartType = p.PartType,    // FE dùng để nhóm/hiển thị switch/keycap
+                    StockQuantity = p.StockQuantity,
+                    KitDesignOptionId = null  // không route qua KitDesignOption nữa
+                }).ToList()
+            };
         }
 
         // --- HELPER FUNCTIONS ---

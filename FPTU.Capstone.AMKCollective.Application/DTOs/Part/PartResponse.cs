@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Domain.Enums;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,5 +25,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Part
         public Guid ShopId { get; set; }
         public string ShopName { get; set; } = string.Empty;
         public string CategoryName { get; set; } = string.Empty;
+        public bool IsAddonEligible { get; set; }
     }
 }
