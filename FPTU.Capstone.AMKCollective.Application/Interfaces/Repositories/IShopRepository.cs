@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
 using System.Collections.Generic;
@@ -11,6 +11,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
     public interface IShopRepository
     {
         Task<ShopProfile?> GetByIdAsync(Guid id, CancellationToken token = default);
+        Task<IEnumerable<ShopProfile>> GetByIdsAsync(IEnumerable<Guid> ids, CancellationToken token = default);
 
         Task<ShopProfile?> GetByUserIdAsync(Guid userId, CancellationToken token = default);
 
@@ -40,6 +41,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
 
         Task UpdateAsync(ShopProfile shop, CancellationToken token = default);
         Task UpdateShopMetricsAsync(Guid shopId, int quantitySold, decimal revenueAmount, bool includeDeleted = false, CancellationToken token = default);
+        Task UpdateEmbeddingAsync(Guid id, string? embedding, CancellationToken token = default);
 
         // --- TRANSACTION ---
         Task<int> SaveChangesAsync(CancellationToken token = default);
