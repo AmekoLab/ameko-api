@@ -124,17 +124,24 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     : CommissionStatus.OpenPool;
             }
 
-            var shopResponseHours = requestDto.ShopResponseWindowHours ?? _commissionSettings.DefaultShopResponseHours;
-            if (shopResponseHours <= 24)
+            if (requestDto.ShopResponseWindowHours.HasValue)
             {
-                shopResponseHours = _commissionSettings.DefaultShopResponseHours;
+                if (requestDto.ShopResponseWindowHours < 24 || requestDto.ShopResponseWindowHours > CommissionSettings.MaxShopResponseHours)
+                {
+                    return (false, null, $"Shop response time must be between 24 and {CommissionSettings.MaxShopResponseHours} hours.");
+                }
             }
 
-            var customerResponseHours = requestDto.CustomerResponseWindowHours ?? _commissionSettings.DefaultCustomerResponseHours;
-            if (customerResponseHours <= 1)
+            if (requestDto.CustomerResponseWindowHours.HasValue)
             {
-                customerResponseHours = _commissionSettings.DefaultCustomerResponseHours;
+                if (requestDto.CustomerResponseWindowHours < 1 || requestDto.CustomerResponseWindowHours > CommissionSettings.MaxCustomerResponseHours)
+                {
+                    return (false, null, $"Customer response time must be between 1 and {CommissionSettings.MaxCustomerResponseHours} hours.");
+                }
             }
+
+            var shopResponseHours = requestDto.ShopResponseWindowHours ?? _commissionSettings.DefaultShopResponseHours;
+            var customerResponseHours = requestDto.CustomerResponseWindowHours ?? _commissionSettings.DefaultCustomerResponseHours;
 
             request.ShopResponseWindowHours = shopResponseHours;
             request.CustomerResponseWindowHours = customerResponseHours;
@@ -192,11 +199,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (requestDto.ShopResponseWindowHours.HasValue)
             {
+                if (requestDto.ShopResponseWindowHours < 24 || requestDto.ShopResponseWindowHours > CommissionSettings.MaxShopResponseHours)
+                {
+                    return (false, $"Shop response time must be between 24 and {CommissionSettings.MaxShopResponseHours} hours.");
+                }
                 request.ShopResponseWindowHours = requestDto.ShopResponseWindowHours.Value;
             }
 
             if (requestDto.CustomerResponseWindowHours.HasValue)
             {
+                if (requestDto.CustomerResponseWindowHours < 1 || requestDto.CustomerResponseWindowHours > CommissionSettings.MaxCustomerResponseHours)
+                {
+                    return (false, $"Customer response time must be between 1 and {CommissionSettings.MaxCustomerResponseHours} hours.");
+                }
                 request.CustomerResponseWindowHours = requestDto.CustomerResponseWindowHours.Value;
             }
 

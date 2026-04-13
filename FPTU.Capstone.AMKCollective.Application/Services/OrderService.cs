@@ -602,6 +602,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 order.ExpectedDeliveryDate = request.ExpectedDeliveryDate;
             }
 
+            if (request.Status == OrderStatus.Completed)
+            {
+                var tz = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+                order.ExpectedDeliveryDate = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
+            }
+
             order.OrderStatus = request.Status;
             await _unitOfWork.Orders.UpdateOrderAsync(order);
             await _unitOfWork.CommitAsync();
