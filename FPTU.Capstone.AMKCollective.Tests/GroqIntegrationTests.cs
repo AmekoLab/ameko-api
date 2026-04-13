@@ -15,6 +15,7 @@ using Moq;
 using Xunit;
 using Xunit.Abstractions;
 using System.Collections.Generic;
+using AutoMapper;
 
 namespace FPTU.Capstone.AMKCollective.Tests
 {
@@ -96,7 +97,8 @@ namespace FPTU.Capstone.AMKCollective.Tests
                 new Mock<IQdrantService>().Object,
                 httpClient,
                 Options.Create(settings),
-                new Mock<ILogger<AIService>>().Object);
+                new Mock<ILogger<AIService>>().Object,
+                new Mock<IMapper>().Object);
 
             var order = new Order
             {
@@ -167,7 +169,8 @@ namespace FPTU.Capstone.AMKCollective.Tests
                 new Mock<IQdrantService>().Object,
                 httpClient,
                 Options.Create(settings),
-                new Mock<ILogger<AIService>>().Object);
+                new Mock<ILogger<AIService>>().Object,
+                new Mock<IMapper>().Object);
 
             var order = new Order
             {

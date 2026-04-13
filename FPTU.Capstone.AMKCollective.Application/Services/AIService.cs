@@ -38,6 +38,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly HttpClient _httpClient;
         private readonly ILogger<AIService> _logger;
         private readonly AISettings _settings;
+        private readonly AutoMapper.IMapper _mapper;
 
         public AIService(
             IUnitOfWork unitOfWork,
@@ -45,7 +46,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             IQdrantService qdrantService,
             HttpClient httpClient,
             IOptions<AISettings> aiOptions,
-            ILogger<AIService> logger)
+            ILogger<AIService> logger,
+            AutoMapper.IMapper mapper)
         {
             _unitOfWork = unitOfWork;
             _embeddingService = embeddingService;
@@ -53,6 +55,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _httpClient = httpClient;
             _logger = logger;
             _settings = aiOptions.Value;
+            _mapper = mapper;
         }
 
         public async Task<AIRecommendationResponseDTO> GetRecommendationAsync(AIRecommendationRequestDTO request)
@@ -172,16 +175,22 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
         }
 
-        public async Task<IEnumerable<Guid>> SearchShopsAsync(string query, int limit = 10)
+        public async Task<IEnumerable<FPTU.Capstone.AMKCollective.Application.DTOs.Shop.ShopResponse>> SearchShopsAsync(string query, int limit = 10)
         {
             var vector = await _embeddingService.GenerateEmbeddingAsync(query);
-            return await _qdrantService.SearchAsync("shops", vector, limit);
+            var ids = await _qdrantService.SearchAsync("shops", vector, limit);
+            if (!ids.Any()) return Enumerable.Empty<FPTU.Capstone.AMKCollective.Application.DTOs.Shop.ShopResponse>();
+            var shops = await _unitOfWork.Shops.GetByIdsAsync(ids);
+            return _mapper.Map<IEnumerable<FPTU.Capstone.AMKCollective.Application.DTOs.Shop.ShopResponse>>(shops);
         }
 
-        public async Task<IEnumerable<Guid>> SearchBuildsAsync(string query, int limit = 10)
+        public async Task<IEnumerable<FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct.AssembledProductResponse>> SearchBuildsAsync(string query, int limit = 10)
         {
             var vector = await _embeddingService.GenerateEmbeddingAsync(query);
-            return await _qdrantService.SearchAsync("builds", vector, limit);
+            var ids = await _qdrantService.SearchAsync("builds", vector, limit);
+            if (!ids.Any()) return Enumerable.Empty<FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct.AssembledProductResponse>();
+            var builds = await _unitOfWork.AssembledProducts.GetByIdsAsync(ids);
+            return _mapper.Map<IEnumerable<FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct.AssembledProductResponse>>(builds);
         }
 
         public async Task SyncAllEntitiesToQdrantAsync()
@@ -234,9 +243,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             };
             await _qdrantService.UpsertPointAsync("shops", shop.Id, vector, payload);
             
-            shop.Embedding = JsonSerializer.Serialize(vector);
-            await _unitOfWork.Shops.UpdateAsync(shop);
-            await _unitOfWork.CommitAsync();
+            var serializedEmbedding = JsonSerializer.Serialize(vector);
+            shop.Embedding = serializedEmbedding;
+            
+            // Fix: Use scalar ExecuteUpdateAsync to update ONLY the Embedding column
+            // avoiding navigation property duplicate tracking issues.
+            await _unitOfWork.Shops.UpdateEmbeddingAsync(shop.Id, serializedEmbedding);
         }
 
         public async Task SyncBuildAsync(AssembledProduct build)
@@ -255,6 +267,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // Previously this method set ProductAssembledDetails = null! on the tracked entity,
             // then called CommitAsync() — causing EF Core to cascade-delete all child detail rows.
             var serializedEmbedding = JsonSerializer.Serialize(vector);
+            build.Embedding = serializedEmbedding;
             await _unitOfWork.AssembledProducts.UpdateEmbeddingAsync(build.Id, serializedEmbedding);
         }
 
@@ -293,6 +306,10 @@ Description: {issue.Description}
 ";
 
             var systemPrompt = _settings.OrderIssuePrompt;
+            if (!systemPrompt.Contains("json", StringComparison.OrdinalIgnoreCase))
+            {
+                systemPrompt += " IMPORTANT OUTPUT RULES: Return ONLY valid JSON.";
+            }
 
             return await CallLLMAsync(systemPrompt, $"Identify if this request is valid:\n{context}");
         }

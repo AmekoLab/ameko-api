@@ -16,12 +16,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.AI
         /// <summary>
         /// Performs a semantic search for shops.
         /// </summary>
-        Task<IEnumerable<Guid>> SearchShopsAsync(string query, int limit = 10);
+        Task<IEnumerable<FPTU.Capstone.AMKCollective.Application.DTOs.Shop.ShopResponse>> SearchShopsAsync(string query, int limit = 10);
 
         /// <summary>
         /// Performs a semantic search for assembled products (builds).
         /// </summary>
-        Task<IEnumerable<Guid>> SearchBuildsAsync(string query, int limit = 10);
+        Task<IEnumerable<FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct.AssembledProductResponse>> SearchBuildsAsync(string query, int limit = 10);
 
         /// <summary>
         /// Synchronizes all eligible entities to Qdrant (Admin tool).

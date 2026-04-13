@@ -1,3 +1,4 @@
+using AutoMapper;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -142,6 +143,7 @@ namespace FPTU.Capstone.AMKCollective.Tests
         private readonly Mock<IEmbeddingService> _embeddingService = new();
         private readonly Mock<IQdrantService> _qdrantService = new();
         private readonly Mock<ILogger<AIService>> _logger = new();
+        private readonly Mock<IMapper> _mapper = new();
         private readonly AISettings _settings = new()
         {
             GroqApiKey = "test-groq-key",
@@ -158,7 +160,8 @@ namespace FPTU.Capstone.AMKCollective.Tests
                 _qdrantService.Object,
                 httpClient,
                 Options.Create(_settings),
-                _logger.Object);
+                _logger.Object,
+                _mapper.Object);
         }
 
         // Helper to build a fake successful LLM response
@@ -182,8 +185,7 @@ namespace FPTU.Capstone.AMKCollective.Tests
 
             _embeddingService.Setup(x => x.GenerateEmbeddingAsync("AMK Store Custom keyboards"))
                 .ReturnsAsync(expectedVector);
-            _unitOfWork.Setup(x => x.Shops.UpdateAsync(shop, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-            _unitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
+            _unitOfWork.Setup(x => x.Shops.UpdateEmbeddingAsync(shopId, It.IsAny<string?>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
             var service = CreateService();
             await service.SyncShopAsync(shop);
@@ -201,8 +203,7 @@ namespace FPTU.Capstone.AMKCollective.Tests
                 )), Times.Once);
 
             Assert.Equal(JsonSerializer.Serialize(expectedVector), shop.Embedding);
-            _unitOfWork.Verify(x => x.Shops.UpdateAsync(shop, It.IsAny<CancellationToken>()), Times.Once);
-            _unitOfWork.Verify(x => x.CommitAsync(), Times.Once);
+            _unitOfWork.Verify(x => x.Shops.UpdateEmbeddingAsync(shopId, It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Fact]
@@ -225,8 +226,7 @@ namespace FPTU.Capstone.AMKCollective.Tests
             var expectedText = "AMK68 Pro Wireless keyboard 65% Gasket Hot-swap BT 5.0 4000mAh";
 
             _embeddingService.Setup(x => x.GenerateEmbeddingAsync(expectedText)).ReturnsAsync(expectedVector);
-            _unitOfWork.Setup(x => x.AssembledProducts.UpdateAsync(It.IsAny<AssembledProduct>())).Returns(Task.CompletedTask);
-            _unitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
+            _unitOfWork.Setup(x => x.AssembledProducts.UpdateEmbeddingAsync(buildId, It.IsAny<string?>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
             var service = CreateService();
             await service.SyncBuildAsync(build);
@@ -321,11 +321,13 @@ namespace FPTU.Capstone.AMKCollective.Tests
 
             _embeddingService.Setup(x => x.GenerateEmbeddingAsync(query)).ReturnsAsync(vector);
             _qdrantService.Setup(x => x.SearchAsync("shops", vector, It.IsAny<int>(), It.IsAny<Guid?>())).ReturnsAsync(expectedIds);
+            _unitOfWork.Setup(x => x.Shops.GetByIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>())).ReturnsAsync(new List<ShopProfile>());
 
             var service = CreateService();
             var result = await service.SearchShopsAsync(query);
-
-            Assert.Equal(expectedIds, result);
+            
+            _unitOfWork.Verify(x => x.Shops.GetByIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
+            Assert.NotNull(result);
         }
 
         [Fact]
@@ -337,11 +339,13 @@ namespace FPTU.Capstone.AMKCollective.Tests
 
             _embeddingService.Setup(x => x.GenerateEmbeddingAsync(query)).ReturnsAsync(vector);
             _qdrantService.Setup(x => x.SearchAsync("builds", vector, It.IsAny<int>(), It.IsAny<Guid?>())).ReturnsAsync(expectedIds);
+            _unitOfWork.Setup(x => x.AssembledProducts.GetByIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>())).ReturnsAsync(new List<AssembledProduct>());
 
             var service = CreateService();
             var result = await service.SearchBuildsAsync(query, 5);
-
-            Assert.Single(result);
+            
+            _unitOfWork.Verify(x => x.AssembledProducts.GetByIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
+            Assert.NotNull(result);
         }
 
         [Fact]
@@ -368,10 +372,10 @@ namespace FPTU.Capstone.AMKCollective.Tests
 
             _unitOfWork.Setup(x => x.Shops.GetShopsAsync(It.IsAny<string?>(), It.IsAny<ShopStatus?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync((new List<ShopProfile> { shop }, 1));
             _unitOfWork.Setup(x => x.AssembledProducts.GetAllPagedAsync(It.IsAny<int>(), It.IsAny<int>())).ReturnsAsync((new List<AssembledProduct> { build }, 1));
-            _unitOfWork.Setup(x => x.Models.GetPagedAsync(It.IsAny<GetPartsFilterRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync((new List<Model> { part }, 1));
+            _unitOfWork.Setup(x => x.Models.GetPagedAsync(It.IsAny<GetPartsFilterRequest>(), It.IsAny<bool>(), It.IsAny<CancellationToken>())).ReturnsAsync((new List<Model> { part }, 1));
             _embeddingService.Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>())).ReturnsAsync(new float[] { 0.1f });
-            _unitOfWork.Setup(x => x.Shops.UpdateAsync(It.IsAny<ShopProfile>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-            _unitOfWork.Setup(x => x.AssembledProducts.UpdateAsync(It.IsAny<AssembledProduct>())).Returns(Task.CompletedTask);
+            _unitOfWork.Setup(x => x.Shops.UpdateEmbeddingAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            _unitOfWork.Setup(x => x.AssembledProducts.UpdateEmbeddingAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             _unitOfWork.Setup(x => x.Models.UpdateEmbeddingAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             _unitOfWork.Setup(x => x.CommitAsync()).Returns(Task.CompletedTask);
 
@@ -433,7 +437,7 @@ namespace FPTU.Capstone.AMKCollective.Tests
             var emptySettings = new AISettings { GroqApiKey = "", OpenAiApiKey = "" };
             var service = new AIService(
                 _unitOfWork.Object, _embeddingService.Object, _qdrantService.Object,
-                new HttpClient(), Options.Create(emptySettings), _logger.Object);
+                new HttpClient(), Options.Create(emptySettings), _logger.Object, _mapper.Object);
 
             var order = new Order
             {
@@ -564,7 +568,7 @@ namespace FPTU.Capstone.AMKCollective.Tests
             var emptySettings = new AISettings();
             var service = new AIService(
                 _unitOfWork.Object, _embeddingService.Object, _qdrantService.Object,
-                new HttpClient(), Options.Create(emptySettings), _logger.Object);
+                new HttpClient(), Options.Create(emptySettings), _logger.Object, _mapper.Object);
 
             await Assert.ThrowsAsync<Exception>(() =>
                 service.GetRecommendationAsync(new AIRecommendationRequestDTO { UserPrompt = "test" }));
@@ -925,7 +929,8 @@ namespace FPTU.Capstone.AMKCollective.Tests
                         }))
                     })),
                 Options.Create(settings),
-                new Mock<ILogger<AIService>>().Object);
+                new Mock<ILogger<AIService>>().Object,
+                new Mock<IMapper>().Object);
         }
 
         [Fact]

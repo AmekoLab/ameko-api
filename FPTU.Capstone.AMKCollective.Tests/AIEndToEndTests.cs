@@ -1,3 +1,4 @@
+using AutoMapper;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -80,7 +81,8 @@ namespace FPTU.Capstone.AMKCollective.Tests
                 _qdrantService,
                 httpClient,
                 options,
-                logger);
+                logger,
+                new Mock<IMapper>().Object);
         }
 
         [Fact]

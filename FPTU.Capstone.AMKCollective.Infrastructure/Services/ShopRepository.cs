@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
@@ -24,6 +24,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return await _context.ShopProfiles
                 .Include(s => s.User)
                 .FirstOrDefaultAsync(s => s.Id == id && !s.IsDeleted, token);
+        }
+
+        public async Task<IEnumerable<ShopProfile>> GetByIdsAsync(IEnumerable<Guid> ids, CancellationToken token = default)
+        {
+            return await _context.ShopProfiles
+                .Include(s => s.User)
+                .Where(s => ids.Contains(s.Id) && !s.IsDeleted)
+                .ToListAsync(token);
         }
 
         public async Task<ShopProfile?> GetByUserIdAsync(Guid userId, CancellationToken token = default)
@@ -181,6 +189,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .ToListAsync();
 
             return (items, totalCount);
+        }
+
+        public async Task UpdateEmbeddingAsync(Guid id, string? embedding, CancellationToken token = default)
+        {
+            await _context.ShopProfiles
+                .Where(s => s.Id == id)
+                .ExecuteUpdateAsync(s => s.SetProperty(p => p.Embedding, embedding), token);
         }
     }
 }
