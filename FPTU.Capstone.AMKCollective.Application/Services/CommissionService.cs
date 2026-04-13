@@ -125,13 +125,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             var shopResponseHours = requestDto.ShopResponseWindowHours ?? _commissionSettings.DefaultShopResponseHours;
-            if (shopResponseHours <= 0)
+            if (shopResponseHours <= 24)
             {
                 shopResponseHours = _commissionSettings.DefaultShopResponseHours;
             }
 
             var customerResponseHours = requestDto.CustomerResponseWindowHours ?? _commissionSettings.DefaultCustomerResponseHours;
-            if (customerResponseHours <= 0)
+            if (customerResponseHours <= 1)
             {
                 customerResponseHours = _commissionSettings.DefaultCustomerResponseHours;
             }
@@ -615,7 +615,24 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 {
                     request.Status = CommissionStatus.RejectedByShop;
                     await _unitOfWork.CommissionRequests.UpdateAsync(request);
-
+                      // Phạt Shop vì không phản hồi request độc quyền
+                      if (request.TargetedShop != null)
+                      {
+                          await _reputationService.AdjustReputationAsync(
+                              ReputationTargetType.Shop,
+                              request.TargetedShop.Id,
+                              -_reputationSettings.PointsDeductIgnoredRequest,
+                              $"Auto-rejected ignored commission request #{request.Id}");
+                              
+                          await _notificationService.SendNotificationAsync(
+                              request.TargetedShop.UserId,
+                              "Commission request expired and penalized",
+                              $"Your shop failed to respond to the request \"{request.Title}\". Your reputation score has been reduced.",
+                              "System",
+                              referenceId: request.Id.ToString(),
+                              referenceType: "CommissionRequest",
+                              redirectUrl: $"/shop/commission/requests/{request.Id}");
+                      }
                     await _notificationService.SendNotificationAsync(
                         request.UserId,
                         "Commission request timed out",

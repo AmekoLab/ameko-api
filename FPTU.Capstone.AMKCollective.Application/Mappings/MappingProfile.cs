@@ -242,11 +242,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                .ForMember(dest => dest.ProductId, opt => opt.MapFrom(src => src.ProductId))
                .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.Name : src.ProductName))
                .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => src.Product != null ? src.Product.ThumbnailURL : src.ProductImage))
-               .ForMember(dest => dest.ShopId, opt => opt.MapFrom(src =>
-                    src.Product != null ? src.Product.ShopId : GetShopIdFromConfig(src.DesignConfig)))
-
-            .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src =>
-                src.Product != null && src.Product.Shop != null ? src.Product.Shop.ShopName : GetShopNameFromConfig(src.DesignConfig)))
+               .ForMember(dest => dest.ShopId, opt => opt.MapFrom(src => src.Order != null && src.Order.ShopId.HasValue ? src.Order.ShopId.Value : Guid.Empty))
+               .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Order != null && src.Order.Shop != null ? src.Order.Shop.ShopName : "N/A"))
                .ForMember(dest => dest.UnitPrice, opt => opt.MapFrom(src => src.UnitPrice))
                .ForMember(dest => dest.TotalPrice, opt => opt.MapFrom(src => src.TotalPrice))
                .ForMember(dest => dest.Quantity, opt => opt.MapFrom(src => src.Quantity))
