@@ -94,7 +94,7 @@ namespace FPTU.Capstone.AMKCollective.API.Workers
 
                         await unitOfWork.QualityScoreSnapshots.AddAsync(snapshot);
 
-                        shop.CurrentQualityScore = result.TotalScore;
+                          // shop.CurrentQualityScore = result.TotalScore; // Comment lại để không đè Điểm Uy Tín của shop
                         shop.Badge = result.Badge;
 
                         await unitOfWork.Shops.UpdateAsync(shop);

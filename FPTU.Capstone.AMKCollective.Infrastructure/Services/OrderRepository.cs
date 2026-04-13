@@ -222,8 +222,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             var query = _context.Orders
                 .Include(o => o.OrderIssues)
-                .Include(o => o.OrderItems) 
-                .AsNoTracking() 
+                .Include(o => o.OrderItems)
+                .Include(o => o.Shop)
+                .AsNoTracking()
                 .Where(o => o.ShopId == shopId);
             if (status.HasValue)
             {

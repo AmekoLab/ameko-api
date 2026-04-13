@@ -10,7 +10,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Wallet
     public class WithdrawRequest
     {
         [Required]
-        [Range(10000, double.MaxValue, ErrorMessage = "The minimum withdrawal amount is 10,000 VND")]
+        [Range(100000, double.MaxValue, ErrorMessage = "The minimum withdrawal amount is 100,000 VND")]
         public decimal Amount { get; set; }
 
         [Required(ErrorMessage = "Please enter your PIN for verification.")]

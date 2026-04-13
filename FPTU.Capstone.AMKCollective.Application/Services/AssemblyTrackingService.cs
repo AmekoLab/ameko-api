@@ -46,7 +46,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<AssemblyStepTemplateResponse> UpdateTemplateAsync(Guid templateId, Guid shopId, SaveAssemblyStepTemplateRequest request)
         {
             var template = await _unitOfWork.AssemblyStepTemplates.GetByIdAsync(templateId)
-                ?? throw new KeyNotFoundException("Không tìm thấy mẫu quy trình này.");
+                ?? throw new KeyNotFoundException("This workflow template could not be found.");
 
             if (template.ShopId != shopId)
                 throw new UnauthorizedAccessException("You do not have permission to modify this template.");
@@ -62,7 +62,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task DeleteTemplateAsync(Guid templateId, Guid shopId)
         {
             var template = await _unitOfWork.AssemblyStepTemplates.GetByIdAsync(templateId)
-                ?? throw new KeyNotFoundException("Không tìm thấy mẫu quy trình này.");
+                ?? throw new KeyNotFoundException("This workflow template could not be found.");
 
             if (template.ShopId != shopId)
                 throw new UnauthorizedAccessException("You do not have permission to delete this template.");
@@ -167,8 +167,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     // 3. Nếu tất cả các bàn phím trong đơn hàng đều đã ráp xong -> Update Order
                     if (isEntireOrderAssembled)
                     {
-                        // Thay OrderStatus.Assembled bằng Enum thực tế của bạn
-                         order.OrderStatus = OrderStatus.Completed; 
+                        // order.OrderStatus = OrderStatus.Completed; 
                         // _unitOfWork.Orders.Update(order);
                     }
                 }

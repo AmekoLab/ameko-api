@@ -771,7 +771,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         }
                     }
 
-                    // --- 3.2 XỬ LÝ VOUCHER & TẠO VOUCHER REFUND (BAO GỒM PHẠT SHOP) ---
+                    // --- 3.2 XỬ LÝ VOUCHER & TẠO VOUCHER REFUND (BAO GỒM PHẠT SHOP / KHÁCH) ---
                     // Chắc chắn đơn đã Paid nên không cần check if (PaymentStatus == Paid) nữa, 
                     // nhưng muốn an toàn thì vẫn giữ.
                     if (isOrderPaid)
@@ -783,21 +783,51 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             _orderSettings.SystemVoucherShopShareRate,
                             _orderSettings.SystemVoucherShopShareCap);
 
-                        // BƯỚC 3.2.1: Hoàn 100% tiền thật vào Ví Khách Hàng
+                        // [LOGIC MỚI] 1. Tính toán Phạt Khách Hàng (%)
+                        decimal refundToCustomer = cashPaidAmount;
+                        decimal customerPenaltyAmount = 0m;
+
+                        // Chỉ phạt khách nếu đây KHÔNG PHẢI lỗi do Shop lơ đơn (Quá 24h Auto-cancel)
+                        // Tức là Shop chủ động duyệt (Accept) yêu cầu hủy của khách
+                        if (!isShopFault) 
+                        {
+                            decimal customerPenaltyRate = _orderSettings.CustomerCancellationPenaltyRate; 
+                            customerPenaltyAmount = cashPaidAmount * customerPenaltyRate;
+                            refundToCustomer = cashPaidAmount - customerPenaltyAmount;
+                        }
+
+                        // BƯỚC 3.2.1: Hoàn tiền vào Ví Khách Hàng (Tùy thuộc có bị phạt không)
+                        string refundPhrase = customerPenaltyAmount > 0 
+                            ? $"Refund for cancelled order #{order.Id} (minus {_orderSettings.CustomerCancellationPenaltyRate * 100}% penalty fee)" 
+                            : $"Refund for cancelled order #{order.Id}";
+
                         await _walletService.RefundToWalletAsync(
                             issue.UserId,
-                            cashPaidAmount,
-                            $"Refund for cancelled order #{order.Id}"
+                            refundToCustomer,
+                            refundPhrase
                         );
 
-                        // BƯỚC 3.2.2: Trừ tiền hàng khỏi Ví (HeldBalance) của Shop
-                        // Vì Shop không giao hàng nên phải rút lại tiền doanh thu đang tạm giữ
+                        // BƯỚC 3.2.2: Trừ doanh thu tạm tính đang bị treo trong HeldBalance của Shop (Bắt buộc do đơn đã hủy)
                         await _walletService.DeductFundsForRefundAsync(
                             realActionUserId,
                             order.Id,
                             shopReceivedAmount,
                             isCompleted
                         );
+
+                        // [LOGIC MỚI] 2. Nạp trực tiếp tiền phạt vào Số Dư (Balance) của Shop để đền bù
+                        if (customerPenaltyAmount > 0)
+                        {
+                            await _walletService.AdjustBalanceAsync(
+                                realActionUserId,
+                                new AdjustBalanceRequest
+                                {
+                                    UserId = realActionUserId,
+                                    Amount = customerPenaltyAmount,
+                                    Reason = $"Compensation fee from user cancelled order #{order.Id}"
+                                }
+                            );
+                        }
 
                         // BƯỚC 3.2.3: Phân định lỗi & Xử phạt
                         if (isShopFault)
