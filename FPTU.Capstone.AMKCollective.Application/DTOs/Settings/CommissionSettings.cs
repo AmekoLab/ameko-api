@@ -8,6 +8,10 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Settings
 {
     public class CommissionSettings
     {
+        // --- Limits (Hardcoded limits to avoid appsettings bloat) ---
+        public const int MaxShopResponseHours = 72;
+        public const int MaxCustomerResponseHours = 72;
+
         public int QuoteValidityDays { get; set; } = 7;
         public int DefaultShopResponseHours { get; set; } = 24;
         public int DefaultCustomerResponseHours { get; set; } = 24;

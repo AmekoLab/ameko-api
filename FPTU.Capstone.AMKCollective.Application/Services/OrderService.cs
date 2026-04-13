@@ -602,6 +602,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 order.ExpectedDeliveryDate = request.ExpectedDeliveryDate;
             }
 
+            if (request.Status == OrderStatus.Completed)
+            {
+                order.ExpectedDeliveryDate = DateTime.UtcNow;
+            }
+
             order.OrderStatus = request.Status;
             await _unitOfWork.Orders.UpdateOrderAsync(order);
             await _unitOfWork.CommitAsync();
