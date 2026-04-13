@@ -3,6 +3,7 @@ using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.AI;
 using Microsoft.Extensions.Configuration;
 
 namespace FPTU.Capstone.AMKCollective.Application.Services
@@ -14,19 +15,22 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IConfiguration _configuration;
         private readonly IWalletService _walletService;
         private readonly INotificationService _notificationService;
+        private readonly IAIService _aiService;
 
         public WarrantyService(
             IUnitOfWork unitOfWork, 
             IPaymentService paymentService, 
             IConfiguration configuration,
             IWalletService walletService,
-            INotificationService notificationService)
+            INotificationService notificationService,
+            IAIService aiService)
         {
             _unitOfWork = unitOfWork;
             _paymentService = paymentService;
             _configuration = configuration;
             _walletService = walletService;
             _notificationService = notificationService;
+            _aiService = aiService;
         }
 
         // =================================================================
@@ -156,6 +160,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 };
 
                 await _unitOfWork.OrderIssues.AddAsync(issueToCreate);
+
+                // AI Design Support: Add AI analysis to the warranty issue
+                try
+                {
+                    issueToCreate.AIAnalysisResult = await _aiService.AnalyzeOrderIssueAsync(issueToCreate, order);
+                }
+                catch
+                {
+                    issueToCreate.AIAnalysisResult = "AI processing failed.";
+                }
+
                 await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
                 {
                     OrderIssueId = issueToCreate.Id,
@@ -916,6 +931,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 AdminNote = issue.AdminNote,
                 CreatedAt = issue.CreatedAt,
                 UpdatedAt = issue.UpdatedAt,
+                AIAnalysisResult = issue.AIAnalysisResult,
                 OrderItemIds = itemIdsInResponse
             };
         }
