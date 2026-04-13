@@ -267,6 +267,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // Previously this method set ProductAssembledDetails = null! on the tracked entity,
             // then called CommitAsync() — causing EF Core to cascade-delete all child detail rows.
             var serializedEmbedding = JsonSerializer.Serialize(vector);
+            build.Embedding = serializedEmbedding;
             await _unitOfWork.AssembledProducts.UpdateEmbeddingAsync(build.Id, serializedEmbedding);
         }
 

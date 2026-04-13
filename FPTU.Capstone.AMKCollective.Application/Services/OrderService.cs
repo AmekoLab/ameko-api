@@ -2126,9 +2126,24 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             else if (!item.IsCustom && item.AssembledProductId.HasValue)
             {
                 var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(item.AssembledProductId.Value);
-                int currentStock = assembledProduct?.Quantity ?? 0;
-                if (currentStock < newQuantity)
-                    throw new InvalidOperationException("Insufficient stock.");
+                if (assembledProduct == null)
+                    throw new InvalidOperationException("Assembled product no longer exists.");
+
+                if (assembledProduct.Quantity < newQuantity)
+                    throw new InvalidOperationException("Insufficient stock for assembled product.");
+
+                // Check if any constituent components are deleted
+                if (assembledProduct.ProductAssembledDetails != null)
+                {
+                    foreach (var detail in assembledProduct.ProductAssembledDetails)
+                    {
+                        if ((detail.Component != null && detail.Component.IsDeleted) ||
+                            (detail.BaseKit != null && detail.BaseKit.IsDeleted))
+                        {
+                            throw new InvalidOperationException($"The component '{detail.Component?.Name ?? detail.BaseKit?.Name}' in '{assembledProduct.Name}' is no longer available.");
+                        }
+                    }
+                }
             }
         }
 

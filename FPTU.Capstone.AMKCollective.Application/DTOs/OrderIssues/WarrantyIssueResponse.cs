@@ -25,5 +25,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues
         public string? AdminNote { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
+        public string? AIAnalysisResult { get; set; }
     }
 }
