@@ -604,7 +604,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (request.Status == OrderStatus.Completed)
             {
-                order.ExpectedDeliveryDate = DateTime.UtcNow;
+                var tz = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+                order.ExpectedDeliveryDate = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
             }
 
             order.OrderStatus = request.Status;
