@@ -472,34 +472,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     redirectUrl: $"/warranty-requests/{issue.Id}",
                     actorId: adminId);
 
-                // ── Record Transaction for Warranty Reference ──
-                var customerWallet = await _unitOfWork.Wallets.GetByUserIdAsync(order.CustomerId);
-                var shopWallet = await _unitOfWork.Wallets.GetByUserIdAsync(order.ShopId!.Value);
-
-                if (customerWallet != null)
-                {
-                    await _unitOfWork.Transactions.AddAsync(new Transaction
-                    {
-                        WalletId = customerWallet.Id,
-                        RelatedOrderId = issue.Id, // Map OrderIssueId to RelatedOrderId as requested
-                        Amount = refundAmount,
-                        Type = TransactionType.OrderRefund,
-                        Description = $"[Warranty Refund] Refund for Issue #{issue.Id}",
-                        CreatedAt = DateTime.UtcNow
-                    });
-                }
-                if (shopWallet != null)
-                {
-                    await _unitOfWork.Transactions.AddAsync(new Transaction
-                    {
-                        WalletId = shopWallet.Id,
-                        RelatedOrderId = issue.Id, // Map OrderIssueId to RelatedOrderId as requested
-                        Amount = refundAmount,
-                        Type = TransactionType.ManualAdjustment,
-                        Description = $"[Warranty Deduction] Deduction for Issue #{issue.Id}",
-                        CreatedAt = DateTime.UtcNow
-                    });
-                }
+                // ── Stock Reintegration (No Return Case) ──
                 await ReintegrateStockForIssueAsync(issue);
 
                 issue.Status = OrderIssueStatus.Completed;
@@ -628,36 +601,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 referenceId: issue.Id.ToString(),
                 referenceType: "OrderIssue",
                 redirectUrl: $"/warranty-requests/{issue.Id}",
-                    actorId: shopOwnerId);
+                actorId: shopOwnerId);
 
-            // ── Record Transaction for Warranty Reference ──
-            var customerWalletSub = await _unitOfWork.Wallets.GetByUserIdAsync(issue.UserId);
-            var shopWalletSub = await _unitOfWork.Wallets.GetByUserIdAsync(order.ShopId!.Value);
-
-            if (customerWalletSub != null)
-            {
-                await _unitOfWork.Transactions.AddAsync(new Transaction
-                {
-                    WalletId = customerWalletSub.Id,
-                    RelatedOrderId = issue.Id, // Map OrderIssueId to RelatedOrderId as requested
-                    Amount = refundAmount,
-                    Type = TransactionType.OrderRefund,
-                    Description = $"[Warranty Refund] Refund for Issue #{issue.Id} (After Return)",
-                    CreatedAt = DateTime.UtcNow
-                });
-            }
-            if (shopWalletSub != null)
-            {
-                await _unitOfWork.Transactions.AddAsync(new Transaction
-                {
-                    WalletId = shopWalletSub.Id,
-                    RelatedOrderId = issue.Id, // Map OrderIssueId to RelatedOrderId as requested
-                    Amount = refundAmount,
-                    Type = TransactionType.ManualAdjustment,
-                    Description = $"[Warranty Deduction] Deduction for Issue #{issue.Id} (After Return)",
-                    CreatedAt = DateTime.UtcNow
-                });
-            }
             await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
             {
                 OrderIssueId = issue.Id,
