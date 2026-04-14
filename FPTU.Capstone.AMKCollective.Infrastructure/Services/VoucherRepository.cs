@@ -44,7 +44,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         public async Task<IEnumerable<Voucher>> GetValidVouchersForUserAsync(Guid userId)
         {
-            var now = DateTime.Now;
+            var now = DateTime.UtcNow;
 
             // Logic: Lấy voucher chưa xóa, Active, Trong thời hạn
             // VÀ (Là voucher public HOẶC Là voucher riêng của user này)

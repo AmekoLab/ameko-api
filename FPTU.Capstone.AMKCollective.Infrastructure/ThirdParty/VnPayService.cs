@@ -42,7 +42,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
             // VNPay yêu cầu vnp_TxnRef phải là duy nhất cho mỗi lần bấm thanh toán.
             // Nếu dùng OrderGroupId thì khi thanh toán hỏng, user bấm lại sẽ bị lỗi "Mã giao dịch trùng lặp".
             // => Giải pháp: Nối OrderGroupId với số Tick thời gian (VD: "58ac33..._638123456789")
-            var tick = DateTime.Now.Ticks.ToString();
+            var tick = DateTimeHelper.GetVietnamTimeNow().Ticks.ToString();
             var txnRef = $"{orderGroup.Id}_{tick}";
 
             var pay = new VnPayLibrary();
@@ -50,7 +50,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
             pay.AddRequestData("vnp_Command", _vnpaySettings.Command);
             pay.AddRequestData("vnp_TmnCode", _vnpaySettings.TmnCode);
             pay.AddRequestData("vnp_Amount", ((long)(orderGroup.TotalGroupAmount * 100)).ToString());
-            pay.AddRequestData("vnp_CreateDate", DateTime.Now.ToString("yyyyMMddHHmmss"));
+            pay.AddRequestData("vnp_CreateDate", DateTimeHelper.GetVietnamTimeNow().ToString("yyyyMMddHHmmss"));
             pay.AddRequestData("vnp_CurrCode", _vnpaySettings.CurrCode);
             pay.AddRequestData("vnp_IpAddr", pay.GetIpAddress(context));
             pay.AddRequestData("vnp_Locale", _vnpaySettings.Locale);
