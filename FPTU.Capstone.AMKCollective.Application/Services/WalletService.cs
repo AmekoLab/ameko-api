@@ -1,6 +1,7 @@
 using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Wallet;
+using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
@@ -53,7 +54,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
             if (wallet == null) return new List<WalletTransactionResponse>();
             var transactions = await _unitOfWork.Transactions.GetByWalletIdAsync(wallet.Id);
-            return _mapper.Map<List<WalletTransactionResponse>>(transactions);
+            return _mapper.Map<List<WalletTransactionResponse>>(transactions).ConvertDatesToLocal();
         }
 
         public async Task CreateWalletAsync(Guid userId)
@@ -293,7 +294,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<PaginatedResult<WalletTransactionResponse>> GetTransactionsByFilterAsync(PaymentFilterRequest filter)
         {
             var (items, totalCount) = await _unitOfWork.Transactions.GetTransactionsByFilterAsync(filter);
-            var mappedItems = _mapper.Map<List<WalletTransactionResponse>>(items);
+            var mappedItems = _mapper.Map<List<WalletTransactionResponse>>(items).ConvertDatesToLocal();
 
             for (int i = 0; i < items.Count; i++)
             {
@@ -685,7 +686,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // Lọc ra các giao dịch đang treo (SalesPending)
             var heldTransactions = transactions.Where(t => t.Type == TransactionType.SalesPending).ToList();
 
-            return _mapper.Map<List<HeldTransactionResponse>>(heldTransactions);
+            return _mapper.Map<List<HeldTransactionResponse>>(heldTransactions).ConvertDatesToLocal();
         }
         public async Task PayOrderGroupWithWalletAsync(Guid userId, Guid orderGroupId, decimal amount)
         {
@@ -804,8 +805,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 EvidenceUrl = w.EvidenceUrl,
                 ShopName = w.User?.ShopProfile?.ShopName,
                 UserId = w.UserId,
-                RequestedAt = w.RequestedAt,
-                ProcessedAt = w.ProcessedAt
+                RequestedAt = w.RequestedAt.ConvertToLocalTime(),
+                ProcessedAt = w.ProcessedAt?.ConvertToLocalTime()
             };
         }
     }

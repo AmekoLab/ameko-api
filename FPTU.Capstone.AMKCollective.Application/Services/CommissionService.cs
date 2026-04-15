@@ -2,6 +2,7 @@ using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Commission;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Reputation;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
+using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
@@ -41,7 +42,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<IEnumerable<CommissionRequestResponse>> GetUserRequestsAsync(Guid userId)
         {
             var requests = await _unitOfWork.CommissionRequests.GetByUserIdAsync(userId);
-            return _mapper.Map<IEnumerable<CommissionRequestResponse>>(requests);
+            return _mapper.Map<IEnumerable<CommissionRequestResponse>>(requests).ConvertDatesToLocal();
         }
         public async Task<CommissionRequestResponse?> GetRequestDetailAsync(Guid requestId, Guid currentUserId)
         {
@@ -69,19 +70,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
             }
 
-            return response;
+            return response.ConvertDatesToLocal();
         }
 
         public async Task<CommissionRequestResponse?> GetRequestDetailAsync(Guid requestId)
         {
             var request = await _unitOfWork.CommissionRequests.GetByIdAsync(requestId);
-            return _mapper.Map<CommissionRequestResponse>(request);
+            return _mapper.Map<CommissionRequestResponse>(request).ConvertDatesToLocal();
         }
 
         public async Task<IEnumerable<CommissionRequestResponse>> GetOpenPoolRequestsAsync()
         {
             var requests = await _unitOfWork.CommissionRequests.GetOpenPoolRequestsAsync();
-            return _mapper.Map<IEnumerable<CommissionRequestResponse>>(requests);
+            return _mapper.Map<IEnumerable<CommissionRequestResponse>>(requests).ConvertDatesToLocal();
         }
 
         public async Task<(bool Success, Guid? RequestId, string ErrorMessage)> CreateRequestAsync(Guid userId, CreateCommissionRequest requestDto)
@@ -574,7 +575,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (shop == null) return new List<CommissionRequestResponse>();
 
             var requests = await _unitOfWork.CommissionRequests.GetTargetedRequestsForShopAsync(shop.Id);
-            return _mapper.Map<IEnumerable<CommissionRequestResponse>>(requests);
+            return _mapper.Map<IEnumerable<CommissionRequestResponse>>(requests).ConvertDatesToLocal();
         }
 
         public async Task<IEnumerable<CommissionQuoteResponse>> GetShopQuotesAsync(Guid shopUserId)
@@ -583,7 +584,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (shop == null) return new List<CommissionQuoteResponse>();
 
             var quotes = await _unitOfWork.CommissionQuotes.GetQuotesByShopIdAsync(shop.Id);
-            return _mapper.Map<IEnumerable<CommissionQuoteResponse>>(quotes);
+            return _mapper.Map<IEnumerable<CommissionQuoteResponse>>(quotes).ConvertDatesToLocal();
         }
 
         public async Task ProcessCommissionRemindersAsync(CancellationToken cancellationToken = default)
