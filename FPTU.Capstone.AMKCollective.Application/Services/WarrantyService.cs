@@ -5,6 +5,7 @@ using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.AI;
 using Microsoft.Extensions.Configuration;
+using FPTU.Capstone.AMKCollective.Application.Helpers;
 
 namespace FPTU.Capstone.AMKCollective.Application.Services
 {
@@ -754,7 +755,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 ActionType = l.Action,
                 ActionName = l.Action.ToString(),
                 Comment = l.Comment ?? string.Empty,
-                CreatedAt = l.CreatedAt
+                CreatedAt = l.CreatedAt.ConvertToLocalTime()
             }).OrderByDescending(l => l.CreatedAt);
         }
 
@@ -929,8 +930,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 IsSystemValid = issue.IsSystemValid,
                 ShopResponse = issue.ShopResponse,
                 AdminNote = issue.AdminNote,
-                CreatedAt = issue.CreatedAt,
-                UpdatedAt = issue.UpdatedAt,
+                CreatedAt = issue.CreatedAt.ConvertToLocalTime(),
+                UpdatedAt = issue.UpdatedAt?.ConvertToLocalTime(),
                 AIAnalysisResult = issue.AIAnalysisResult,
                 OrderItemIds = itemIdsInResponse
             };

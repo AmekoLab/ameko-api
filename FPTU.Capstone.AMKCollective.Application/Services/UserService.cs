@@ -1,4 +1,5 @@
-﻿using AutoMapper;
+using AutoMapper;
+using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.User;
@@ -38,7 +39,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<PaginatedResult<UserResponse>> GetAllAsync(int pageNumber, int pageSize)
         {
             var (users, totalCount) = await _unitOfWork.Users.GetPagedAsync(pageNumber, pageSize);
-            var userDtos = _mapper.Map<IEnumerable<UserResponse>>(users);
+            var userDtos = _mapper.Map<IEnumerable<UserResponse>>(users).ConvertDatesToLocal();
             
             return new PaginatedResult<UserResponse>
             {
@@ -52,7 +53,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<PaginatedResult<UserResponse>> SearchByNameAsync(string name, int pageNumber, int pageSize, CancellationToken ct = default)
         {
             var (users, totalCount) = await _unitOfWork.Users.SearchByNamePagedAsync(name, pageNumber, pageSize, ct);
-            var userDtos = _mapper.Map<IEnumerable<UserResponse>>(users);
+            var userDtos = _mapper.Map<IEnumerable<UserResponse>>(users).ConvertDatesToLocal();
 
             return new PaginatedResult<UserResponse>
             {

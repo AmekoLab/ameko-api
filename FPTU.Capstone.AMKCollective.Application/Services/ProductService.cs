@@ -1,4 +1,5 @@
 using AutoMapper;
+using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Part;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.AI;

@@ -488,3 +488,4 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
     }
     
 }
+

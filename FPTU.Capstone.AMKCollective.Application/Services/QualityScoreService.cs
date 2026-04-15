@@ -1,4 +1,5 @@
-﻿using AutoMapper;
+using AutoMapper;
+using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
@@ -104,7 +105,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var snapshot = await _unitOfWork.QualityScoreSnapshots.GetLatestSnapshotAsync(shopId);
             if (snapshot == null) return null;
 
-            return _mapper.Map<QualityScoreSnapshotDto>(snapshot);
+            return _mapper.Map<QualityScoreSnapshotDto>(snapshot).ConvertDatesToLocal();
         }
 
         public async Task<IEnumerable<ReputationTrendDto>> GetReputationTrendAsync(Guid shopId)

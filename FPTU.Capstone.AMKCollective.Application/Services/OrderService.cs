@@ -119,7 +119,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 PaymentStatus = PaymentStatus.Pending.ToString(),
                 SubTotal = subTotal,
                 TotalAmount = subTotal,
-                CreatedAt = cart.CreatedAt,
+                CreatedAt = cart.CreatedAt.ConvertToLocalTime(),
                 OrderItems = orderItemsResponse
             };
         }
@@ -393,21 +393,21 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var orders = await _unitOfWork.Orders.GetOrdersByUserIdAsync(userId, false, token);
             var historyOrders = orders.Where(o => o.OrderStatus != OrderStatus.InCart).ToList();
             // Map sang OrderDto (Lúc này danh sách sẽ phẳng, dễ hiển thị)
-            return _mapper.Map<List<OrderResponse>>(historyOrders);
+            return _mapper.Map<List<OrderResponse>>(historyOrders).ConvertDatesToLocal();
         }
 
         public async Task<List<OrderGroupResponse>> GetMyOrderGroupsAsync(Guid userId, CancellationToken token = default)
         {
             // Logic cũ giữ nguyên
             var groups = await _unitOfWork.OrderGroups.GetByUserIdAsync(userId);
-            return _mapper.Map<List<OrderGroupResponse>>(groups);
+            return _mapper.Map<List<OrderGroupResponse>>(groups).ConvertDatesToLocal();
         }
 
         public async Task<OrderGroupResponse> GetOrderGroupDetailAsync(Guid orderGroupId, CancellationToken token = default)
         {
             var group = await _unitOfWork.OrderGroups.GetByIdAsync(orderGroupId);
             if (group == null) throw new KeyNotFoundException("Order group not found.");
-            return _mapper.Map<OrderGroupResponse>(group);
+            return _mapper.Map<OrderGroupResponse>(group).ConvertDatesToLocal();
         }
         [Obsolete("This API is deprecated and disabled.")]
         public async Task CancelOrderAsync(Guid userId, Guid orderId, string reason, CancellationToken token = default)
@@ -448,7 +448,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<List<OrderResponse>> GetShopOrdersAsync(Guid shopId, OrderStatus? status, int page, int size, CancellationToken token = default)
         {
             var orders = await _unitOfWork.Orders.GetShopOrdersAsync(shopId, status, page, size);
-            return _mapper.Map<List<OrderResponse>>(orders);
+            return _mapper.Map<List<OrderResponse>>(orders).ConvertDatesToLocal();
         }
 
         public async Task<OrderResponse> GetOrderDetailAsync(Guid userId, Guid orderId)
@@ -457,7 +457,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (order == null) throw new KeyNotFoundException("Order not found.");
             if (order.CustomerId != userId) throw new UnauthorizedAccessException("You are not authorized to view this order.");
 
-            var response = _mapper.Map<OrderResponse>(order);
+            var response = _mapper.Map<OrderResponse>(order).ConvertDatesToLocal();
             await EnrichOrderItemsAsync(response, order); // Gọi hàm Helper
             return response;
         }
@@ -494,7 +494,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (order == null) throw new KeyNotFoundException("Order not found");
             if (order.ShopId != shopId) throw new UnauthorizedAccessException("This order does not belong to your shop.");
 
-            var response = _mapper.Map<OrderResponse>(order);
+            var response = _mapper.Map<OrderResponse>(order).ConvertDatesToLocal();
             await EnrichOrderItemsAsync(response, order); // DÙNG CHUNG HÀM HELPER ĐỂ ĐỒNG BỘ DATA CHO SHOP
             return response;
         }
@@ -599,13 +599,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     throw new InvalidOperationException("Expected delivery date is required when marking an order as shipped.");
                 }
 
-                order.ExpectedDeliveryDate = request.ExpectedDeliveryDate;
+                var dt = request.ExpectedDeliveryDate.Value;
+                if (dt.Kind == DateTimeKind.Utc)
+                    order.ExpectedDeliveryDate = dt;
+                else
+                    order.ExpectedDeliveryDate = FPTU.Capstone.AMKCollective.Application.Helpers.DateTimeHelper.ConvertToUtcTime(dt);
             }
 
             if (request.Status == OrderStatus.Completed)
             {
-                var tz = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
-                order.ExpectedDeliveryDate = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
+                order.ExpectedDeliveryDate = DateTime.UtcNow;
             }
 
             order.OrderStatus = request.Status;
@@ -698,7 +701,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // TODO: notify shop
 
-            return _mapper.Map<OrderIssueResponse>(issue);
+            return _mapper.Map<OrderIssueResponse>(issue).ConvertDatesToLocal();
         }
 
         public async Task ProcessCancelRequestAsync(Guid actorId, ProcessIssueRequest request, CancellationToken token = default)

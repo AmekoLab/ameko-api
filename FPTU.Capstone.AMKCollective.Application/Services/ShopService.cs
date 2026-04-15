@@ -1,4 +1,5 @@
 using AutoMapper;
+using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Shop;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.AI;
@@ -59,7 +60,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 throw new KeyNotFoundException("Shop not found.");
             }
 
-            var response = _mapper.Map<ShopResponse>(shop);
+            var response = _mapper.Map<ShopResponse>(shop).ConvertDatesToLocal();
             response.FollowersCount = await _unitOfWork.Follows.GetFollowersCountAsync(shop.UserId);
             response.FollowingCount = await _unitOfWork.Follows.GetFollowingCountAsync(shop.UserId);
             return response;
@@ -68,7 +69,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetMarketplaceShopAsync(string? searchTerm, int page, int size)
         {
             var (items, total) = await _unitOfWork.Shops.GetActiveShopsForUserAsync(searchTerm, page, size);
-            return (_mapper.Map<IEnumerable<ShopResponse>>(items), total);
+            return (_mapper.Map<IEnumerable<ShopResponse>>(items).ConvertDatesToLocal(), total);
         }
 
         public async Task<ShopDetailResponse> GetMyShopAsync(Guid userId)
@@ -78,7 +79,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 throw new KeyNotFoundException("You do not have a shop yet.");
             }
-            return _mapper.Map<ShopDetailResponse>(shop);
+            return _mapper.Map<ShopDetailResponse>(shop).ConvertDatesToLocal();
         }
 
         public async Task<ShopResponse> RegisterShopAsync(Guid userId, CreateShopRequest request)
@@ -144,7 +145,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             try { await _aiService.SyncShopAsync(shop); } catch { /* Ignore */ }
 
-            return _mapper.Map<ShopResponse>(shop);
+            return _mapper.Map<ShopResponse>(shop).ConvertDatesToLocal();
         }
 
         public async Task PatchMyShopAsync(Guid userId, PatchShopRequest request)
@@ -281,7 +282,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<(IEnumerable<ShopDetailResponse> Items, int TotalCount)> GetShopForAdminAsync(string? searchTerm, ShopStatus? status, int page, int size)
         {
             var (items, total) = await _unitOfWork.Shops.GetShopsAsync(searchTerm, status, page, size);
-            return (_mapper.Map<IEnumerable<ShopDetailResponse>>(items), total);
+            return (_mapper.Map<IEnumerable<ShopDetailResponse>>(items).ConvertDatesToLocal(), total);
         }
 
         public async Task ApproveShopAsync(Guid shopId, ApproveShopRequest request)
@@ -384,7 +385,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetAllPendingApprovalShopAsync(int page, int size)
         {
             var (shops, total) = await _unitOfWork.Shops.GetAllPendingApprovalShopAsync(page, size);
-            return (_mapper.Map<IEnumerable<ShopResponse>>(shops), total);
+            return (_mapper.Map<IEnumerable<ShopResponse>>(shops).ConvertDatesToLocal(), total);
         }
 
         public async Task BannedShopAsync(Guid shopId)

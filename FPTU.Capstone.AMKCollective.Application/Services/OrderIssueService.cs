@@ -1,4 +1,5 @@
-﻿using AutoMapper;
+using AutoMapper;
+using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
@@ -42,7 +43,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
             }
 
-            return _mapper.Map<OrderIssueResponse>(issue);
+            return _mapper.Map<OrderIssueResponse>(issue).ConvertDatesToLocal();
         }
 
         // 2. Khách hàng lấy danh sách khiếu nại của mình
