@@ -3,7 +3,6 @@ using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct;
 using FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProductFeedback;
 using FPTU.Capstone.AMKCollective.Application.DTOs.AssemblyTracking;
-using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Auth;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Chat;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Commission;
@@ -24,13 +23,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
     /// </summary>
     public class MappingProfile : Profile
     {
-        
         public MappingProfile()
         {
-            // Convert to Vietnam Time only for Responses
-            ValueTransformers.Add<DateTime>(val => val.ConvertToVietnamTime());
-            ValueTransformers.Add<DateTime?>(val => val.HasValue ? val.Value.ConvertToVietnamTime() : null);
-
             // User mappings
             CreateMap<User, UserProfileResponse>();
             CreateMap<User, UserResponse>()
@@ -38,7 +32,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             CreateMap<User, LoginResponse>()
                 .ForMember(dest => dest.Role, opt => opt.MapFrom(src => src.Role.Name.ToString()));
             
+            CreateMap<RegisterRequest, User>()
+                .ForMember(dest => dest.HashedPassword, opt => opt.Ignore())
+                .ForMember(dest => dest.Role, opt => opt.Ignore());
 
+            CreateMap<CreateUserRequest, User>()
+                .ForMember(dest => dest.HashedPassword, opt => opt.Ignore())
+                .ForMember(dest => dest.Role, opt => opt.Ignore());
+
+            CreateMap<UpdateUserAdminRequest, User>()
+                .ForMember(dest => dest.Role, opt => opt.Ignore());
+
+            CreateMap<UpdateProfileRequest, User>();
 
             //==================CHAT=======================//
             CreateMap<Message, ChatMessageResponse>()
@@ -47,7 +52,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             //==================CHAT=======================//
 
             //==================FOLLOW=======================//
-
+            CreateMap<FollowRequest, Follow>();
             CreateMap<Follow, FollowResponse>();
             CreateMap<Follow, FollowedUserResponse>()
                 .ForMember(dest => dest.UserId, opt => opt.MapFrom(src => src.Followed.Id))
@@ -112,7 +117,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src =>
                     src.StockQuantity > 0 ? StockStatus.InStock : StockStatus.OutOfStock));
 
-
+            CreateMap<CreateUpdatePartRequest, Model>()
+                .ForMember(dest => dest.ThumbnailURL, opt => opt.Ignore())
+                .ForMember(dest => dest.DefaultLayerImageUrl, opt => opt.Ignore())
+                .ForMember(dest => dest.Slug, opt => opt.Ignore())
+                // [FIX] Explicitly map Specifications
+                .ForMember(dest => dest.Specifications, opt => opt.MapFrom(src => src.Specifications));
 
             //==================MODEL=======================//
 
@@ -134,6 +144,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src =>
                     src.Component != null && src.Component.StockQuantity > 0 ? StockStatus.InStock : StockStatus.OutOfStock));
 
+            CreateMap<CreateKitOptionRequest, KitDesignOption>()
+                .ForMember(dest => dest.LayerImageUrl, opt => opt.Ignore()); // Handled in service
             // Tags và NextStepFilterRule được AutoMapper map tự động (trùng tên)
             //==================KITDESIGN=======================//
 
@@ -145,7 +157,29 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.RemainingResubmits, opt => opt.MapFrom(src =>
                     CalculateRemainingResubmits(src.ResubmitCount, src.LastResubmitTime)));
 
-
+            CreateMap<CreateShopRequest, ShopProfile>()
+                .ForMember(dest => dest.Id, opt => opt.Ignore())       
+                .ForMember(dest => dest.CreatedAt, opt => opt.Ignore()) 
+                .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
+                .ForMember(dest => dest.UserId, opt => opt.Ignore())    
+                .ForMember(dest => dest.Status, opt => opt.Ignore())    
+                .ForMember(dest => dest.IsActive, opt => opt.Ignore())  
+                                                                        
+                .ForMember(dest => dest.LogoUrl, opt => opt.Ignore())
+                .ForMember(dest => dest.BannerUrl, opt => opt.Ignore());
+            CreateMap<UpdateShopRequest, ShopProfile>()
+                .ForMember(dest => dest.LogoUrl, opt => opt.Ignore())
+                .ForMember(dest => dest.BannerUrl, opt => opt.Ignore())
+                .ForMember(dest => dest.Status, opt => opt.Ignore())        // Status chỉ admin thay đổi
+                .ForMember(dest => dest.IsActive, opt => opt.Ignore())      // IsActive qua endpoint riêng
+                .ForMember(dest => dest.ResubmitCount, opt => opt.Ignore()) // System managed
+                .ForMember(dest => dest.LastResubmitTime, opt => opt.Ignore())
+                .ForMember(dest => dest.Rating, opt => opt.Ignore())
+                .ForMember(dest => dest.TotalSales, opt => opt.Ignore())
+                .ForMember(dest => dest.TotalRevenue, opt => opt.Ignore())
+                .ForMember(dest => dest.AdminNote, opt => opt.Ignore())
+                .ForMember(dest => dest.CitizenId, opt => opt.Ignore())     // Không đổi sau khi đăng ký
+                .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
             CreateMap<ShopProfile, CurrentReputationDto>()
                 .ForMember(dest => dest.ShopId, opt => opt.MapFrom(src => src.Id))
@@ -251,7 +285,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
 
             // Map từ WithdrawRequest DTO -> Payment Entity (Dùng khi tạo lệnh rút tiền)
             // Lưu ý: Các field như FeeAmount, Status... sẽ được xử lý trong logic Service nên Ignore hoặc tự gán sau
-
+            CreateMap<WithdrawRequest, Payment>()
+                .ForMember(dest => dest.Amount, opt => opt.MapFrom(src => src.Amount));
 
             // =========================================================
             // VOUCHER (VOUCHER -> DTO)
@@ -273,7 +308,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.VoucherCode, opt => opt.MapFrom(src => src.Code)) 
                 .ForMember(dest => dest.VoucherType, opt => opt.MapFrom(src => src.VoucherType.ToString()));
 
+            // Map CreateRequest -> Entity
+            CreateMap<CreateVoucherRequest, Voucher>()
+                .ForMember(dest => dest.Status, opt => opt.MapFrom(src => VoucherStatus.Active))
+                .ForMember(dest => dest.UsedCount, opt => opt.Ignore())
+                .ForMember(dest => dest.CreatorId, opt => opt.Ignore());
 
+            // Map UpdateRequest -> Entity
+            CreateMap<UpdateVoucherRequest, Voucher>()
+                .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
 
 
             CreateMap<VoucherUsageLog, VoucherUsageResponse>()
@@ -299,12 +342,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                     src.User != null && src.User.ShopProfile != null ? src.User.ShopProfile.ShopName : null));
 
 
-         
+            CreateMap<AdjustBalanceRequest, Payment>()
+                .ForMember(dest => dest.Amount, opt => opt.MapFrom(src => src.Amount))
+                .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.Reason))
+                    // Các field khác như Type, Status sẽ gán trong Service
+                .ForMember(dest => dest.UserId, opt => opt.Ignore());         
 
             // =========================================================
             // Commission (Commission -> DTO)
             // =========================================================
-
+            CreateMap<CreateCommissionRequest, CommissionRequest>();
+            CreateMap<SubmitQuoteRequest, CommissionQuote>();
 
             CreateMap<CommissionQuote, CommissionQuoteResponse>()
                 .ForMember(dest => dest.CommissionQuoteId, opt => opt.MapFrom(src => src.Id))
@@ -325,7 +373,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             CreateMap<AssemblyStepTemplate, AssemblyStepTemplateResponse>()
                 .ForMember(dest => dest.TemplateId, opt => opt.MapFrom(src => src.Id));
 
-
+            CreateMap<SaveAssemblyStepTemplateRequest, AssemblyStepTemplate>();
 
             // 2. Progress Log Mapping
             CreateMap<AssemblyProgressLog, AssemblyProgressLogResponse>()
@@ -440,4 +488,3 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
     }
     
 }
-
