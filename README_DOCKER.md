@@ -49,6 +49,12 @@ docker-helper.bat start
 ```
 
 ✅ **API running at http://localhost:8080**
+✅ **Nginx Proxy Manager admin at http://localhost:81**
+
+Mặc định NPM login lần đầu:
+
+- Email: `admin@example.com`
+- Password: `changeme`
 
 Xem chi tiết: [QUICKSTART.md](QUICKSTART.md)
 
@@ -124,6 +130,32 @@ chmod +x docker-helper.sh
 ./docker-helper.sh logs
 ./docker-helper.sh update
 ```
+
+---
+
+## 🔒 SSL với Nginx Proxy Manager
+
+1. Trỏ domain/subdomain về server đang chạy Docker (A record).
+2. Mở NPM Admin: `http://localhost:81`.
+3. Vào **Proxy Hosts** → **Add Proxy Host**:
+   - Domain Names: domain của bạn
+   - Forward Hostname / IP: `api`
+   - Forward Port: `80`
+   - Bật `Websockets Support` (nếu dùng SignalR realtime)
+4. Tab **SSL**:
+   - Chọn **Request a new SSL Certificate**
+   - Bật `Force SSL`
+   - Bật `HTTP/2 Support`
+   - Điền email và đồng ý Let's Encrypt Terms
+5. Save, sau đó test HTTPS domain.
+
+Port mặc định:
+
+- `80` HTTP (public)
+- `443` HTTPS (public)
+- `81` NPM admin
+
+Bạn có thể đổi qua `.env`: `NPM_HTTP_PORT`, `NPM_HTTPS_PORT`, `NPM_ADMIN_PORT`.
 
 ---
 
