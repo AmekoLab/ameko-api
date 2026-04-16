@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   api:
     # Pull from Docker Hub (default) or build locally by uncommenting 'build' section
@@ -7,12 +5,16 @@ services:
     container_name: amkcollective-api
     restart: unless-stopped
     ports:
+      # Keep API exposed for local debug; production traffic should go through NPM on 80/443.
       - "${API_PORT:-8080}:80"
     env_file:
+      # Source of truth for real values/secrets.
       - .env
     environment:
+      # Explicit mapping below makes runtime config discoverable for new team members.
+      # .env still provides values, while defaults here document expected behavior.
       # Database Configuration
-      ConnectionStrings__DefaultConnection: "Server=${DB_HOST};Port=${DB_PORT};Database=${DB_NAME};User=${DB_USER};Password=${DB_PASSWORD};"
+      ConnectionStrings__DefaultConnection: "Server=${DB_HOST};Port=${DB_PORT};Database=${DB_NAME};User=${DB_USER};Password=${DB_PASSWORD};SslMode=${DB_SSL_MODE:-Required};TreatTinyAsBoolean=${DB_TREAT_TINY_AS_BOOLEAN:-true};"
 
       # JWT Settings
       JwtSettings__SecretKey: "${JWT_SECRET_KEY}"
@@ -37,13 +39,159 @@ services:
       EmailSettings__Password: "${EMAIL_PASSWORD}"
 
       # CORS Settings
-      Cors__AllowedOrigins__0: "${CORS_ALLOWED_ORIGINS}"
+      Cors__AllowedOrigins__0: "${CORS_ALLOWED_ORIGIN_0:-http://localhost:3000}"
+      Cors__AllowedOrigins__1: "${CORS_ALLOWED_ORIGIN_1:-https://your-frontend-domain.com}"
 
       # ASP.NET Core Settings
       ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Production}"
       ASPNETCORE_URLS: "http://+:80"
 
+      # Stripe Settings
+      StripeSettings__PublishableKey: "${StripeSettings__PublishableKey:-}"
+      StripeSettings__SecretKey: "${StripeSettings__SecretKey:-}"
+      StripeSettings__WebhookSecret: "${StripeSettings__WebhookSecret:-}"
+
+      # Security Settings
+      SecuritySettings__RefreshTokenLimit: "${SecuritySettings__RefreshTokenLimit:-5}"
+      SecuritySettings__VerificationCodeExpiryMinutes: "${SecuritySettings__VerificationCodeExpiryMinutes:-15}"
+      SecuritySettings__UnverifiedAccountDeletionHours: "${SecuritySettings__UnverifiedAccountDeletionHours:-24}"
+      SecuritySettings__MaxCommentsPerMinute: "${SecuritySettings__MaxCommentsPerMinute:-60}"
+      SecuritySettings__MaxCommentEditsPerDay: "${SecuritySettings__MaxCommentEditsPerDay:-10}"
+
+      # Order Settings
+      OrderSettings__DefaultShippingFee: "${OrderSettings__DefaultShippingFee:-0}"
+      OrderSettings__AbandonedOrderTimeoutHours: "${OrderSettings__AbandonedOrderTimeoutHours:-24}"
+      OrderSettings__WarrantyPeriodDays: "${OrderSettings__WarrantyPeriodDays:-30}"
+      OrderSettings__CancellationSpamCheckDays: "${OrderSettings__CancellationSpamCheckDays:-7}"
+      OrderSettings__MaxCancellationsPerPeriod: "${OrderSettings__MaxCancellationsPerPeriod:-4}"
+      OrderSettings__ShopCancellationPenaltyRate: "${OrderSettings__ShopCancellationPenaltyRate:-0.1}"
+      OrderSettings__CustomerCancellationPenaltyRate: "${OrderSettings__CustomerCancellationPenaltyRate:-0.1}"
+      OrderSettings__ShopResponseTimeoutHours: "${OrderSettings__ShopResponseTimeoutHours:-24}"
+      OrderSettings__MaxInProgressOrdersPerShopCustomer: "${OrderSettings__MaxInProgressOrdersPerShopCustomer:-5}"
+      OrderSettings__ShopPayoutRate: "${OrderSettings__ShopPayoutRate:-0.8}"
+      OrderSettings__SystemVoucherPlatformShareRate: "${OrderSettings__SystemVoucherPlatformShareRate:-0.7}"
+      OrderSettings__SystemVoucherShopShareRate: "${OrderSettings__SystemVoucherShopShareRate:-0.3}"
+      OrderSettings__SystemVoucherShopShareCap: "${OrderSettings__SystemVoucherShopShareCap:-50000}"
+      OrderSettings__ShopAssemblyInitTimeoutHours: "${OrderSettings__ShopAssemblyInitTimeoutHours:-48}"
+      OrderSettings__CustomerResponseSlaHours: "${OrderSettings__CustomerResponseSlaHours:-24}"
+      OrderSettings__CustomerResponseReminderMaxCount: "${OrderSettings__CustomerResponseReminderMaxCount:-3}"
+
+      # Frontend URL Settings
+      FrontendUrls__PaymentSuccessPath: "${FrontendUrls__PaymentSuccessPath:-http://localhost:3000/payment-success}"
+      FrontendUrls__PaymentCancelPath: "${FrontendUrls__PaymentCancelPath:-http://localhost:3000/payment/cancel}"
+      FrontendUrls__OrderPendingPath: "${FrontendUrls__OrderPendingPath:-http://localhost:3000/orders?status=pending}"
+      FrontendUrls__DepositSuccessPath: "${FrontendUrls__DepositSuccessPath:-http://localhost:3000/payment-success}"
+      FrontendUrls__DepositCancelPath: "${FrontendUrls__DepositCancelPath:-http://localhost:3000/wallet/deposit-cancel}"
+
+      # Builder/Voucher/Wallet Settings
+      BuilderSettings__SessionExpirationHours: "${BuilderSettings__SessionExpirationHours:-48}"
+      VoucherSettings__NegotiationValidityDays: "${VoucherSettings__NegotiationValidityDays:-7}"
+      VoucherSettings__CompensationValidityMonths: "${VoucherSettings__CompensationValidityMonths:-1}"
+      WalletSettings__WithdrawalFeePercent: "${WalletSettings__WithdrawalFeePercent:-0.002}"
+      WalletSettings__MinimumBalanceAfterWithdrawal: "${WalletSettings__MinimumBalanceAfterWithdrawal:-1000000}"
+      WalletSettings__MinimumWithdrawalAmount: "${WalletSettings__MinimumWithdrawalAmount:-100000}"
+      WalletSettings__PinResetOtpExpiryMinutes: "${WalletSettings__PinResetOtpExpiryMinutes:-5}"
+      WalletSettings__DaysBetweenRequests: "${WalletSettings__DaysBetweenRequests:-15}"
+
+      # Commission/Worker/System/Warranty Settings
+      CommissionSettings__QuoteValidityDays: "${CommissionSettings__QuoteValidityDays:-7}"
+      CommissionSettings__DefaultShopResponseHours: "${CommissionSettings__DefaultShopResponseHours:-24}"
+      CommissionSettings__DefaultCustomerResponseHours: "${CommissionSettings__DefaultCustomerResponseHours:-24}"
+      CommissionSettings__ReminderIntervalHours: "${CommissionSettings__ReminderIntervalHours:-24}"
+      CommissionSettings__MaxReminderCount: "${CommissionSettings__MaxReminderCount:-3}"
+      CommissionSettings__MaxActiveRequests: "${CommissionSettings__MaxActiveRequests:-50}"
+      CommissionSettings__PaymentWindowHours: "${CommissionSettings__PaymentWindowHours:-48}"
+      WorkerIntervals__AbandonedOrderCleanupMinutes: "${WorkerIntervals__AbandonedOrderCleanupMinutes:-30}"
+      WorkerIntervals__FundsReleaseHours: "${WorkerIntervals__FundsReleaseHours:-1}"
+      WorkerIntervals__OrderCancellationTimeoutMinutes: "${WorkerIntervals__OrderCancellationTimeoutMinutes:-30}"
+      WorkerIntervals__CommissionReminderMinutes: "${WorkerIntervals__CommissionReminderMinutes:-30}"
+      WorkerIntervals__AssemblyTrackingTimeoutMinutes: "${WorkerIntervals__AssemblyTrackingTimeoutMinutes:-30}"
+      WorkerIntervals__UnverifiedAccountCleanupMinutes: "${WorkerIntervals__UnverifiedAccountCleanupMinutes:-60}"
+      SystemSettings__SystemBotId: "${SystemSettings__SystemBotId:-00000000-0000-0000-0000-000000000001}"
+      WarrantySettings__MaxWithdrawCount: "${WarrantySettings__MaxWithdrawCount:-3}"
+      WarrantySettings__WarrantyRequestWindowDays: "${WarrantySettings__WarrantyRequestWindowDays:-7}"
+      WarrantySettings__ReturnShippingTimeoutDays: "${WarrantySettings__ReturnShippingTimeoutDays:-7}"
+
+      # VNPay Settings
+      Vnpay__TmnCode: "${Vnpay__TmnCode:-}"
+      Vnpay__HashSecret: "${Vnpay__HashSecret:-}"
+      Vnpay__BaseUrl: "${Vnpay__BaseUrl:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}"
+      Vnpay__ReturnUrl: "${Vnpay__ReturnUrl:-https://ameko-web.vercel.app/payment/vnpay-return}"
+      Vnpay__IpnUrl: "${Vnpay__IpnUrl:-https://your-api-domain.com/api/v1/payment/vnpay-ipn}"
+      Vnpay__Command: "${Vnpay__Command:-pay}"
+      Vnpay__CurrCode: "${Vnpay__CurrCode:-VND}"
+      Vnpay__Version: "${Vnpay__Version:-2.1.0}"
+      Vnpay__Locale: "${Vnpay__Locale:-vn}"
+
+      # Quality Score Settings
+      QualityScoreSettings__TimeWindowDays: "${QualityScoreSettings__TimeWindowDays:-30}"
+      QualityScoreSettings__BatchSize: "${QualityScoreSettings__BatchSize:-50}"
+      QualityScoreSettings__MinimumOrdersRequired: "${QualityScoreSettings__MinimumOrdersRequired:-3}"
+      QualityScoreSettings__DefaultScore: "${QualityScoreSettings__DefaultScore:-100}"
+      QualityScoreSettings__MaxIssueRateThreshold: "${QualityScoreSettings__MaxIssueRateThreshold:-20}"
+      QualityScoreSettings__IdealResponseHours: "${QualityScoreSettings__IdealResponseHours:-1}"
+      QualityScoreSettings__MaxResponseHoursThreshold: "${QualityScoreSettings__MaxResponseHoursThreshold:-24}"
+      QualityScoreSettings__MaxRefundRateThreshold: "${QualityScoreSettings__MaxRefundRateThreshold:-10}"
+      QualityScoreSettings__IdealRepurchaseRateThreshold: "${QualityScoreSettings__IdealRepurchaseRateThreshold:-30}"
+      QualityScoreSettings__Weights__Issue: "${QualityScoreSettings__Weights__Issue:-0.3}"
+      QualityScoreSettings__Weights__Response: "${QualityScoreSettings__Weights__Response:-0.25}"
+      QualityScoreSettings__Weights__Refund: "${QualityScoreSettings__Weights__Refund:-0.15}"
+      QualityScoreSettings__Weights__Repurchase: "${QualityScoreSettings__Weights__Repurchase:-0.15}"
+      QualityScoreSettings__Weights__Feedback: "${QualityScoreSettings__Weights__Feedback:-0.15}"
+      QualityScoreSettings__BadgeThresholds__Premium: "${QualityScoreSettings__BadgeThresholds__Premium:-85}"
+      QualityScoreSettings__BadgeThresholds__Verified: "${QualityScoreSettings__BadgeThresholds__Verified:-70}"
+
+      # Reputation Settings
+      ReputationSettings__MinScore: "${ReputationSettings__MinScore:-0}"
+      ReputationSettings__MaxScore: "${ReputationSettings__MaxScore:-100}"
+      ReputationSettings__DefaultCustomerScore: "${ReputationSettings__DefaultCustomerScore:-100}"
+      ReputationSettings__DefaultShopScore: "${ReputationSettings__DefaultShopScore:-100}"
+      ReputationSettings__CustomerHighMinScore: "${ReputationSettings__CustomerHighMinScore:-90}"
+      ReputationSettings__CustomerMidMinScore: "${ReputationSettings__CustomerMidMinScore:-80}"
+      ReputationSettings__CustomerLowMinScore: "${ReputationSettings__CustomerLowMinScore:-50}"
+      ReputationSettings__CustomerHighMonthlyOrderLimit: "${ReputationSettings__CustomerHighMonthlyOrderLimit:-0}"
+      ReputationSettings__CustomerMidMonthlyOrderLimit: "${ReputationSettings__CustomerMidMonthlyOrderLimit:-10}"
+      ReputationSettings__CustomerLowMonthlyOrderLimit: "${ReputationSettings__CustomerLowMonthlyOrderLimit:-3}"
+      ReputationSettings__CustomerHighCanUseAdminVoucher: "${ReputationSettings__CustomerHighCanUseAdminVoucher:-true}"
+      ReputationSettings__CustomerMidCanUseAdminVoucher: "${ReputationSettings__CustomerMidCanUseAdminVoucher:-false}"
+      ReputationSettings__CustomerLowCanUseAdminVoucher: "${ReputationSettings__CustomerLowCanUseAdminVoucher:-false}"
+      ReputationSettings__ShopHighMinScore: "${ReputationSettings__ShopHighMinScore:-90}"
+      ReputationSettings__ShopMidMinScore: "${ReputationSettings__ShopMidMinScore:-80}"
+      ReputationSettings__ShopLowMinScore: "${ReputationSettings__ShopLowMinScore:-60}"
+      ReputationSettings__ShopHighMonthlyOrderLimit: "${ReputationSettings__ShopHighMonthlyOrderLimit:-0}"
+      ReputationSettings__ShopMidMonthlyOrderLimit: "${ReputationSettings__ShopMidMonthlyOrderLimit:-20}"
+      ReputationSettings__ShopLowMonthlyOrderLimit: "${ReputationSettings__ShopLowMonthlyOrderLimit:-10}"
+      ReputationSettings__ShopHighCanCreateVoucher: "${ReputationSettings__ShopHighCanCreateVoucher:-true}"
+      ReputationSettings__ShopMidCanCreateVoucher: "${ReputationSettings__ShopMidCanCreateVoucher:-true}"
+      ReputationSettings__ShopLowCanCreateVoucher: "${ReputationSettings__ShopLowCanCreateVoucher:-false}"
+      ReputationSettings__MaxMonthlyAutoCancels: "${ReputationSettings__MaxMonthlyAutoCancels:-10}"
+      ReputationSettings__SlowResponseResetSuccessCount: "${ReputationSettings__SlowResponseResetSuccessCount:-3}"
+      ReputationSettings__PointsPerSuccessfulOrder: "${ReputationSettings__PointsPerSuccessfulOrder:-5}"
+      ReputationSettings__PointsDeductArtisanFault: "${ReputationSettings__PointsDeductArtisanFault:-5}"
+      ReputationSettings__PointsDeductNoResponseAfterAccept: "${ReputationSettings__PointsDeductNoResponseAfterAccept:-5}"
+      ReputationSettings__PointsDeductValidComplaint: "${ReputationSettings__PointsDeductValidComplaint:-5}"
+      ReputationSettings__PointsDeductIgnoredRequest: "${ReputationSettings__PointsDeductIgnoredRequest:-2}"
+
+      # AI/TimeZone Settings
+      AISettings__GoogleApiKey: "${AISettings__GoogleApiKey:-}"
+      AISettings__GoogleModelName: "${AISettings__GoogleModelName:-models/gemini-embedding-001}"
+      AISettings__GroqApiKey: "${AISettings__GroqApiKey:-}"
+      AISettings__GroqModelName: "${AISettings__GroqModelName:-llama-3.3-70b-versatile}"
+      AISettings__OpenAiApiKey: "${AISettings__OpenAiApiKey:-}"
+      AISettings__OpenAiModelName: "${AISettings__OpenAiModelName:-gpt-4o-mini}"
+      AISettings__GroqUrl: "${AISettings__GroqUrl:-https://api.groq.com/openai/v1/chat/completions}"
+      AISettings__OpenAiUrl: "${AISettings__OpenAiUrl:-https://api.openai.com/v1/chat/completions}"
+      AISettings__RecommendationPrompt: "${AISettings__RecommendationPrompt:-You are a custom keyboard expert. Return JSON only.}"
+      AISettings__OrderIssuePrompt: "${AISettings__OrderIssuePrompt:-You are a marketplace support assistant. Return JSON only.}"
+      AISettings__Qdrant__Url: "${AISettings__Qdrant__Url:-}"
+      AISettings__Qdrant__ApiKey: "${AISettings__Qdrant__ApiKey:-}"
+      AISettings__Qdrant__Port: "${AISettings__Qdrant__Port:-6334}"
+      TimeZoneSettings__Windows: "${TimeZoneSettings__Windows:-SE Asia Standard Time}"
+      TimeZoneSettings__Iana: "${TimeZoneSettings__Iana:-Asia/Ho_Chi_Minh}"
+      TimeZoneSettings__FallbackOffsetHours: "${TimeZoneSettings__FallbackOffsetHours:-7}"
+
     healthcheck:
+      # Uses curl installed in API Dockerfile runtime stage.
       test: ["CMD", "curl", "-f", "http://localhost:80/health"]
       interval: 30s
       timeout: 10s
@@ -57,6 +205,22 @@ services:
     #   args:
     #     CONFIGURATION: Release
 
+    networks:
+      - amkcollective-network
+
+  npm:
+    # Nginx Proxy Manager provides reverse proxy + Let's Encrypt SSL certificates.
+    image: jc21/nginx-proxy-manager:latest
+    container_name: amkcollective-npm
+    restart: unless-stopped
+    ports:
+      # Public entry points and admin UI (change in .env if these ports are occupied).
+      - "${NPM_HTTP_PORT:-80}:80"
+      - "${NPM_HTTPS_PORT:-443}:443"
+      - "${NPM_ADMIN_PORT:-81}:81"
+    volumes:
+      - npm-data:/data
+      - npm-letsencrypt:/etc/letsencrypt
     networks:
       - amkcollective-network
 
@@ -81,5 +245,6 @@ networks:
   amkcollective-network:
     driver: bridge
 
-# volumes:
-#   mysql-data:
+volumes:
+  npm-data:
+  npm-letsencrypt:
