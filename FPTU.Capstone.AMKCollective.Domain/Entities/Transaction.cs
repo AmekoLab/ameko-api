@@ -22,6 +22,11 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         [Column(TypeName = "decimal(18,2)")]
         public decimal Amount { get; set; } // Số tiền giao dịch
 
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal BalanceAfterTransaction { get; set; } // Số dư ví sau khi giao dịch thành công
+
+        public TransactionDirection Direction { get; set; } // Hướng dòng tiền (In, Out, Held)
+
         public string Currency { get; set; } = "VND";
 
         public TransactionType Type { get; set; }

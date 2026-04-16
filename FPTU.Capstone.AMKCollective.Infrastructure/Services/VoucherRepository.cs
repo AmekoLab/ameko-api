@@ -34,6 +34,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .FirstOrDefaultAsync(v => v.Code == code && !v.IsDeleted);
         }
 
+        public async Task<bool> CodeExistsAsync(string code)
+        {
+            return await _context.Vouchers.IgnoreQueryFilters().AnyAsync(v => v.Code == code);
+        }
+
         public async Task<IEnumerable<Voucher>> GetByCreatorIdAsync(Guid creatorId)
         {
             return await _context.Vouchers

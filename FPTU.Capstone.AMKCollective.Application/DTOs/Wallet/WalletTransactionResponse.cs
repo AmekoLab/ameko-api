@@ -9,7 +9,17 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Wallet
     public class WalletTransactionResponse
     {
         public Guid Id { get; set; }
-        public decimal Amount { get; set; }
+        
+        // Gửi nguyên si lượng tiền tuyệt đối để UI tự format
+        public decimal Amount { get; set; } 
+        
+        // Trả về luồng giao dịch: "In" (+), "Out" (-), "Held" (Đang giữ)
+        public string FlowDirection { get; set; } 
+        
+        public decimal BalanceAfterTransaction { get; set; } // để minh bạch
+        
+        public string FormattedAmount => $"{(FlowDirection == "In" ? "+" : (FlowDirection == "Out" ? "-" : ""))}{(FlowDirection == "In" || FlowDirection == "Out" ? " " : "")}{Math.Abs(Amount):N0}";
+
         public decimal FeeAmount { get; set; }
         public string Currency { get; set; }
         public string Type { get; set; }   // Enum converted to string
@@ -19,6 +29,10 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Wallet
         public string? BankName { get; set; }
         public string? BankAccountNumber { get; set; }
         public string? BankAccountName { get; set; }
+
+        public Guid? RelatedOrderId { get; set; }
+        public Guid? OrderGroupId { get; set; }
+
         public DateTime CreatedAt { get; set; }
     }
 }

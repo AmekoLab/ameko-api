@@ -384,7 +384,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.Type, opt => opt.MapFrom(src => src.Type.ToString()))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src =>
                     src.Type == TransactionType.SalesPending ? "Pending" : "Completed"))
-                .ForMember(dest => dest.FeeAmount, opt => opt.MapFrom(src => 0m));
+                .ForMember(dest => dest.FeeAmount, opt => opt.MapFrom(src => 0m))
+                .ForMember(dest => dest.Amount, opt => opt.MapFrom(src => Math.Abs(src.Amount)))
+                .ForMember(dest => dest.FlowDirection, opt => opt.MapFrom(src => src.Direction.ToString()));
 
             CreateMap<Transaction, HeldTransactionResponse>()
                 .ForMember(dest => dest.TransactionId, opt => opt.MapFrom(src => src.Id))
@@ -484,8 +486,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             catch {  }
             return "N/A";
         }
-
     }
-    
 }
 

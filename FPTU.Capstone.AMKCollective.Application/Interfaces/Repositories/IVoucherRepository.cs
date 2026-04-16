@@ -12,6 +12,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
     {
         Task<Voucher?> GetByIdAsync(Guid id);
         Task<Voucher?> GetByCodeAsync(string code);
+        Task<bool> CodeExistsAsync(string code);
         Task<IEnumerable<Voucher>> GetByCreatorIdAsync(Guid creatorId);
         Task<IEnumerable<Voucher>> GetValidVouchersForUserAsync(Guid userId);
 

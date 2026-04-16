@@ -143,6 +143,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 WalletId = wallet.Id,
                 Amount = totalDeduct,
+                BalanceAfterTransaction = wallet.Balance - totalDeduct,
+                Direction = TransactionDirection.Out,
                 Type = TransactionType.Withdrawal,
                 Description = $"Withdrawal request to {shop.BankName} - {shop.BankAccountNumber} - {shop.BankAccountName} (Amount: {request.Amount:N0}, Fee: {feeAmount:N0})",
                 Currency = "VND",
@@ -170,6 +172,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 WalletId = wallet.Id,
                 RelatedOrderId = orderId,
                 Amount = amount,
+                BalanceAfterTransaction = wallet.Balance - amount,
+                Direction = TransactionDirection.Out,
                 Type = TransactionType.OrderPayment,
                 Description = $"Payment for order #{orderId}",
                 Currency = "VND",
@@ -197,6 +201,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 WalletId = wallet.Id,
                 RelatedOrderId = orderId,
                 Amount = amount,
+                BalanceAfterTransaction = wallet.Balance, // Held balance doesn't affect available
+                Direction = TransactionDirection.Held,
                 Type = TransactionType.SalesPending,
                 Description = $"Pending sales revenue from order #{orderId}",
                 Currency = "VND",
@@ -218,15 +224,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 if (!success) return;
 
                 var transaction = new Transaction
-                {
-                    WalletId = wallet.Id,
-                    RelatedOrderId = orderId,
-                    Amount = amount,
-                    Type = TransactionType.SalesRevenue,
+            {
+                WalletId = wallet.Id,
+                RelatedOrderId = orderId,
+                Amount = amount,
+                BalanceAfterTransaction = wallet.Balance + amount,
+                Direction = TransactionDirection.In,
+                Type = TransactionType.SalesRevenue,
                     Description = $"Released revenue for order #{orderId}",
                     Currency = "VND",
                     CreatedAt = DateTime.UtcNow
-                };
+            };
 
                 await _unitOfWork.Transactions.AddAsync(transaction);
                 await _unitOfWork.CommitAsync();
@@ -249,6 +257,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 WalletId = wallet.Id,
                 Amount = amount,
+                BalanceAfterTransaction = wallet.Balance + amount,
+                Direction = TransactionDirection.In,
                 Type = TransactionType.OrderRefund,
                 Description = reason,
                 Currency = "VND",
@@ -279,6 +289,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 WalletId = wallet.Id,
                 RelatedOrderId = orderId,
                 Amount = amount,
+                BalanceAfterTransaction = wallet.Balance - amount,
+                Direction = TransactionDirection.Out,
                 Type = TransactionType.ManualAdjustment,
                 Description = $"[REFUND DEDUCTION] Funds deducted from shop for order #{orderId} refund",
                 Currency = "VND",
@@ -413,14 +425,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                 // Ghi log Transaction hoàn tiền vào sổ cái ví
                 var transaction = new Transaction
-                {
-                    WalletId = wallet.Id,
-                    Amount = refundAmount,
-                    Type = TransactionType.ManualAdjustment,
+            {
+                WalletId = wallet.Id,
+                Amount = refundAmount,
+                BalanceAfterTransaction = wallet.Balance + refundAmount,
+                Direction = TransactionDirection.In,
+                Type = TransactionType.ManualAdjustment,
                     Description = $"[REJECTED] Withdrawal refunded. Reason: {request.Reason}",
                     Currency = "VND",
                     CreatedAt = DateTime.UtcNow
-                };
+            };
                 await _unitOfWork.Transactions.AddAsync(transaction);
             }
             else
@@ -455,10 +469,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, request.Amount, 0, true);
 
+            var direction = request.Amount > 0 ? TransactionDirection.In : TransactionDirection.Out;
+
             var transaction = new Transaction
             {
                 WalletId = wallet.Id,
-                Amount = request.Amount,
+                Amount = Math.Abs(request.Amount),
+                BalanceAfterTransaction = wallet.Balance + request.Amount, // Balance đã được update bên DB, nhưng đây là record trước update của ta cần reflect chính xác
+                Direction = direction,
                 Type = TransactionType.ManualAdjustment,
                 Description = $"{request.Reason} (Adjusted by Admin {adminId})",
                 Currency = "VND",
@@ -706,6 +724,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 WalletId = wallet.Id,
                 OrderGroupId = orderGroupId,
                 Amount = amount,
+                BalanceAfterTransaction = wallet.Balance - amount,
+                Direction = TransactionDirection.Out,
                 Type = TransactionType.OrderPayment,
                 Description = $"Payment for Order Group #{orderGroupId}",
                 Currency = "VND",
