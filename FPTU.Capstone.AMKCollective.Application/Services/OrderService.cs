@@ -326,6 +326,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<CheckoutResponse> CheckoutAsync(Guid userId, CheckoutRequest request, CancellationToken token = default)
         {
+            if (request.PaymentMethod == PaymentMethod.Wallet)
+            {
+                var hasPin = await _walletService.IsPinCreatedAsync(userId);
+                if (!hasPin) throw new InvalidOperationException("You must set up a Wallet PIN before making payments using Wallet.");
+
+                if (string.IsNullOrEmpty(request.WalletPin)) throw new ArgumentException("Wallet PIN is required to complete this checkout.");
+
+                var isPinValid = await _walletService.VerifyPinAsync(userId, request.WalletPin);
+                if (!isPinValid) throw new UnauthorizedAccessException("Incorrect Wallet PIN. Checkout failed.");
+            }
+
             var cart = await _unitOfWork.Carts.GetCartByUserIdAsync(userId);
             if (cart == null || !cart.CartItems.Any()) throw new InvalidOperationException("Your cart is empty.");
 

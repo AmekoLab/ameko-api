@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -19,10 +19,8 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Wallet
         public decimal BalanceAfterTransaction { get; set; } // để minh bạch
         public decimal HeldBalanceAfterTransaction { get; set; } // để minh bạch cho shop
         
-        // Tự động tính toán số dư trước giao dịch
-        public decimal BalanceBeforeTransaction => FlowDirection == "In" ? BalanceAfterTransaction - Math.Abs(Amount) : 
-                                                   FlowDirection == "Out" ? BalanceAfterTransaction + Math.Abs(Amount) : 
-                                                   BalanceAfterTransaction;
+        public decimal BalanceBeforeTransaction { get; set; }
+        public decimal HeldBalanceBeforeTransaction { get; set; }
         public decimal FeeAmount { get; set; }
         public string Currency { get; set; }
         public string Type { get; set; }   // Enum converted to string

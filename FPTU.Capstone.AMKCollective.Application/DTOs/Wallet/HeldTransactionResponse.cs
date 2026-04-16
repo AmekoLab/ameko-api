@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,6 +11,9 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Wallet
         public Guid TransactionId { get; set; }
         public decimal Amount { get; set; }
         public DateTime Date { get; set; }
+        public decimal HeldBalanceBeforeTransaction { get; set; }
+        public decimal HeldBalanceAfterTransaction { get; set; }
+
 
         // Thông tin đơn hàng liên quan để Shop biết tại sao bị giữ
         public Guid? OrderId { get; set; }

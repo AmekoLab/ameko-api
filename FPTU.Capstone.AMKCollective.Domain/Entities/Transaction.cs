@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Domain.Enums;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -23,7 +23,13 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public decimal Amount { get; set; } // Số tiền giao dịch
 
         [Column(TypeName = "decimal(18,2)")]
+        public decimal BalanceBeforeTransaction { get; set; } // Số dư ví trước khi giao dịch
+
+        [Column(TypeName = "decimal(18,2)")]
         public decimal BalanceAfterTransaction { get; set; } // Số dư ví sau khi giao dịch thành công
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal HeldBalanceBeforeTransaction { get; set; } // Số dư chờ (Hold) trước khi giao dịch
 
         [Column(TypeName = "decimal(18,2)")]
         public decimal HeldBalanceAfterTransaction { get; set; } // Số dư chờ (Hold) sau khi giao dịch thành công
