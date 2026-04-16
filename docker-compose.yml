@@ -233,7 +233,8 @@ services:
       # Keep runtime metadata private for self-hosted deployments.
       DOZZLE_NO_ANALYTICS: "true"
       # Optional: set DOZZLE_AUTH_PROVIDER=simple in .env to enable Dozzle internal login.
-      DOZZLE_AUTH_PROVIDER: "${DOZZLE_AUTH_PROVIDER:-}"
+      # Default to 'none' so Dozzle starts even when .env has no Dozzle settings.
+      DOZZLE_AUTH_PROVIDER: "${DOZZLE_AUTH_PROVIDER:-none}"
     volumes:
       # Read-only socket is enough for log viewing.
       - /var/run/docker.sock:/var/run/docker.sock:ro
