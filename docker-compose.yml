@@ -224,6 +224,27 @@ services:
     networks:
       - amkcollective-network
 
+  dozzle:
+    # Dozzle provides a lightweight UI for live container logs.
+    image: amir20/dozzle:latest
+    container_name: amkcollective-dozzle
+    restart: unless-stopped
+    environment:
+      # Keep runtime metadata private for self-hosted deployments.
+      DOZZLE_NO_ANALYTICS: "true"
+      # Optional: set DOZZLE_AUTH_PROVIDER=simple in .env to enable Dozzle internal login.
+      DOZZLE_AUTH_PROVIDER: "${DOZZLE_AUTH_PROVIDER:-}"
+    volumes:
+      # Read-only socket is enough for log viewing.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Persist Dozzle settings and optional users.yml.
+      - ./dozzle-data:/data
+    expose:
+      # Keep Dozzle private; publish through NPM only.
+      - "8080"
+    networks:
+      - amkcollective-network
+
   # Optional: Add a database service if needed
   # db:
   #   image: mysql:8.0

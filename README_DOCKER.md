@@ -159,6 +159,59 @@ Bạn có thể đổi qua `.env`: `NPM_HTTP_PORT`, `NPM_HTTPS_PORT`, `NPM_ADMIN
 
 ---
 
+## 📜 Team Logs với Dozzle
+
+Dozzle đã được thêm vào `docker-compose.yml` dưới tên service `dozzle`.
+
+### 1) Start Dozzle
+
+```bash
+docker compose --env-file .env up -d dozzle
+docker compose --env-file .env ps
+```
+
+### 2) Public qua NPM (khuyến nghị)
+
+Không expose Dozzle trực tiếp ra Internet. Hãy đi qua NPM:
+
+1. Vào **Proxy Hosts** -> **Add Proxy Host**
+2. Domain: `logs.your-domain.com`
+3. Forward Hostname / IP: `dozzle`
+4. Forward Port: `8080`
+5. SSL tab: Request cert + bật `Force SSL` + `HTTP/2`
+6. Gán **Access List** (Basic Auth) để chặn truy cập trái phép
+
+### 3) (Optional) Bật login nội bộ Dozzle
+
+Nếu muốn thêm lớp bảo mật thứ 2 trong Dozzle:
+
+1. Set trong `.env`:
+
+```bash
+DOZZLE_AUTH_PROVIDER=simple
+```
+
+2. Tạo user file:
+
+```bash
+mkdir -p dozzle-data
+docker run --rm amir20/dozzle:latest generate admin --password "CHANGE_ME_STRONG" --email "devops@example.com" --name "DevOps Admin" > dozzle-data/users.yml
+```
+
+3. Restart Dozzle:
+
+```bash
+docker compose --env-file .env up -d --force-recreate dozzle
+```
+
+### 4) Security checklist
+
+- Không map cổng Dozzle ra host (đã cấu hình private bằng `expose`)
+- Luôn đi qua NPM + Access List
+- Không bật container actions/shell nếu chưa cần
+
+---
+
 ## 📁 Project Structure
 
 ```
