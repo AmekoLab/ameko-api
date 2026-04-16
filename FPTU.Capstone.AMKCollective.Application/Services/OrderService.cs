@@ -706,237 +706,253 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task ProcessCancelRequestAsync(Guid actorId, ProcessIssueRequest request, CancellationToken token = default)
         {
-            // 1. Get Issue & Order
-            var issue = await _unitOfWork.OrderIssues.GetByIdAsync(request.IssueId);
-            if (issue == null) throw new KeyNotFoundException("Order issue not found");
-
-            var order = await _unitOfWork.Orders.GetByIdAsync(issue.OrderId);
-            if (order == null) throw new KeyNotFoundException("Related order not found");
-
-            if (order.Shop == null && order.ShopId.HasValue)
+            await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
-                order.Shop = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
-            }
+                // 1. Get Issue & Order
+                var issue = await _unitOfWork.OrderIssues.GetByIdAsync(request.IssueId);
+                if (issue == null) throw new KeyNotFoundException("Order issue not found");
 
-            // 2. IDENTIFY THE ACTOR (System or Shop Owner)
-            Guid realActionUserId = actorId;
+                var order = await _unitOfWork.Orders.GetByIdAsync(issue.OrderId);
+                if (order == null) throw new KeyNotFoundException("Related order not found");
 
-            // Trường hợp A: Hệ thống Auto-Cancel (truyền Guid.Empty từ Worker sau 24h)
-            if (realActionUserId == Guid.Empty)
-            {
-                if (order.Shop != null)
+                if (order.Shop == null && order.ShopId.HasValue)
                 {
-                    realActionUserId = order.Shop.UserId; // Hệ thống lấy danh nghĩa Shop để chịu phí
+                    order.Shop = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
                 }
+
+                // 2. IDENTIFY THE ACTOR (System or Shop Owner)
+                Guid realActionUserId = actorId;
+
+                // Trường hợp A: Hệ thống Auto-Cancel (truyền Guid.Empty từ Worker sau 24h)
+                if (realActionUserId == Guid.Empty)
+                {
+                    if (order.Shop != null)
+                    {
+                        realActionUserId = order.Shop.UserId; // Hệ thống lấy danh nghĩa Shop để chịu phí
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException("System cannot identify Shop Owner.");
+                    }
+
+                    if (string.IsNullOrEmpty(request.ShopResponse))
+                        request.ShopResponse = "System Auto-Process: Request timeout (24h). Auto accepted.";
+                }
+                // Trường hợp B: Shop xử lý thủ công
                 else
                 {
-                    throw new InvalidOperationException("System cannot identify Shop Owner.");
-                }
-
-                if (string.IsNullOrEmpty(request.ShopResponse))
-                    request.ShopResponse = "System Auto-Process: Request timeout (24h). Auto accepted.";
-            }
-            // Trường hợp B: Shop xử lý thủ công
-            else
-            {
-                if (order.Shop != null && order.Shop.UserId != realActionUserId)
-                {
-                    throw new UnauthorizedAccessException("Access Denied. Only Shop Owner can process this.");
-                }
-            }
-
-            if (issue.Status == request.Decision) return; // Đã xử lý
-
-            if (issue.Status != OrderIssueStatus.InProgress && issue.Status != OrderIssueStatus.Pending)
-                throw new InvalidOperationException($"This request has already been processed (Current Status: {issue.Status}).");
-
-            issue.ShopResponse = request.ShopResponse;
-            issue.UpdatedAt = DateTime.UtcNow;
-
-            // 3. PROCESS DECISION
-            switch (request.Decision)
-            {
-                case OrderIssueStatus.ShopAccepted:
-                case OrderIssueStatus.AutoCancelled:
-
-                    issue.Status = request.Decision;
-
-                    // [Fix #5] Snapshot trạng thái TRƯỚC khi đổi sang Cancelled
-                    bool isCompleted = order.OrderStatus == OrderStatus.Completed;
-                    bool isOrderPaid = order.PaymentStatus == PaymentStatus.Paid;
-
-                    order.OrderStatus = OrderStatus.Cancelled;
-                    order.CancelReason = request.Decision == OrderIssueStatus.AutoCancelled
-                                         ? "Request timeout 24h (Auto-Refund)"
-                                         : $"Shop approved: {issue.Reason}";
-                    bool isShopFault = request.Decision == OrderIssueStatus.AutoCancelled;
-
-                    // --- 3.1 TRẢ HÀNG VỀ KHO ---
-                    if (order.OrderItems != null)
+                    if (order.Shop != null && order.Shop.UserId != realActionUserId)
                     {
-                        foreach (var item in order.OrderItems)
-                        {
-                            await RefundItemStockAsync(item);
-                        }
+                        throw new UnauthorizedAccessException("Access Denied. Only Shop Owner can process this.");
                     }
+                }
 
-                    // --- 3.2 XỬ LÝ VOUCHER & TẠO VOUCHER REFUND (BAO GỒM PHẠT SHOP / KHÁCH) ---
-                    // Chắc chắn đơn đã Paid nên không cần check if (PaymentStatus == Paid) nữa, 
-                    // nhưng muốn an toàn thì vẫn giữ.
-                    if (isOrderPaid)
-                    {
-                        decimal cashPaidAmount = order.TotalAmount;
-                        decimal shopReceivedAmount = ShopRevenueCalculator.CalculateShopRevenue(
-                            order,
-                            _orderSettings.ShopPayoutRate,
-                            _orderSettings.SystemVoucherShopShareRate,
-                            _orderSettings.SystemVoucherShopShareCap);
+                if (issue.Status == request.Decision) return; // Đã xử lý
 
-                        // [LOGIC MỚI] 1. Tính toán Phạt Khách Hàng (%)
-                        decimal refundToCustomer = cashPaidAmount;
-                        decimal customerPenaltyAmount = 0m;
+                if (issue.Status != OrderIssueStatus.InProgress && issue.Status != OrderIssueStatus.Pending)
+                    throw new InvalidOperationException($"This request has already been processed (Current Status: {issue.Status}).");
 
-                        // Chỉ phạt khách nếu đây KHÔNG PHẢI lỗi do Shop lơ đơn (Quá 24h Auto-cancel)
-                        // Tức là Shop chủ động duyệt (Accept) yêu cầu hủy của khách
-                        if (!isShopFault) 
+                issue.ShopResponse = request.ShopResponse;
+                issue.UpdatedAt = DateTime.UtcNow;
+
+                // 3. PROCESS DECISION
+                switch (request.Decision)
+                {
+                    case OrderIssueStatus.ShopAccepted:
+                    case OrderIssueStatus.AutoCancelled:
+
+                        issue.Status = request.Decision;
+
+                        // [Fix #5] Snapshot trạng thái TRƯỚC khi đổi sang Cancelled
+                        bool isCompleted = order.OrderStatus == OrderStatus.Completed;
+                        bool isOrderPaid = order.PaymentStatus == PaymentStatus.Paid;
+
+                        order.OrderStatus = OrderStatus.Cancelled;
+                        order.CancelReason = request.Decision == OrderIssueStatus.AutoCancelled
+                                             ? "Request timeout 24h (Auto-Refund)"
+                                             : $"Shop approved: {issue.Reason}";
+                        bool isShopFault = request.Decision == OrderIssueStatus.AutoCancelled;
+
+                        // --- 3.1 TRẢ HÀNG VỀ KHO ---
+                        if (order.OrderItems != null)
                         {
-                            decimal customerPenaltyRate = _orderSettings.CustomerCancellationPenaltyRate; 
-                            customerPenaltyAmount = cashPaidAmount * customerPenaltyRate;
-                            refundToCustomer = cashPaidAmount - customerPenaltyAmount;
-                        }
-
-                        // BƯỚC 3.2.1: Hoàn tiền vào Ví Khách Hàng (Tùy thuộc có bị phạt không)
-                        string refundPhrase = customerPenaltyAmount > 0 
-                            ? $"Refund for cancelled order #{order.Id} (minus {_orderSettings.CustomerCancellationPenaltyRate * 100}% penalty fee)" 
-                            : $"Refund for cancelled order #{order.Id}";
-
-                        await _walletService.RefundToWalletAsync(
-                            issue.UserId,
-                            refundToCustomer,
-                            refundPhrase
-                        );
-
-                        // BƯỚC 3.2.2: Trừ doanh thu tạm tính đang bị treo trong HeldBalance của Shop (Bắt buộc do đơn đã hủy)
-                        await _walletService.DeductFundsForRefundAsync(
-                            realActionUserId,
-                            order.Id,
-                            shopReceivedAmount,
-                            isCompleted
-                        );
-
-                        // [LOGIC MỚI] 2. Nạp trực tiếp tiền phạt vào Số Dư (Balance) của Shop để đền bù
-                        if (customerPenaltyAmount > 0)
-                        {
-                            await _walletService.AdjustBalanceAsync(
-                                realActionUserId,
-                                new AdjustBalanceRequest
-                                {
-                                    UserId = realActionUserId,
-                                    Amount = customerPenaltyAmount,
-                                    Reason = $"Compensation fee from user cancelled order #{order.Id}"
-                                }
-                            );
-                        }
-
-                        // BƯỚC 3.2.3: Phân định lỗi & Xử phạt
-                        if (isShopFault)
-                        {
-                            // Tính tiền phạt Shop
-                            decimal penaltyRate = _orderSettings.ShopCancellationPenaltyRate;
-                            decimal penaltyAmount = cashPaidAmount * penaltyRate;
-
-                            if (penaltyAmount > 0)
+                            foreach (var item in order.OrderItems)
                             {
-                                // A. Trừ tiền phạt vào Ví của Shop
+                                await RefundItemStockAsync(item);
+                            }
+                        }
+
+                        // --- 3.2 XỬ LÝ VOUCHER & TẠO VOUCHER REFUND (BAO GỒM PHẠT SHOP / KHÁCH) ---
+                        // Chắc chắn đơn đã Paid nên không cần check if (PaymentStatus == Paid) nữa, 
+                        // nhưng muốn an toàn thì vẫn giữ.
+                        if (isOrderPaid)
+                        {
+                            decimal cashPaidAmount = order.TotalAmount;
+                            decimal shopReceivedAmount = ShopRevenueCalculator.CalculateShopRevenue(
+                                order,
+                                _orderSettings.ShopPayoutRate,
+                                _orderSettings.SystemVoucherShopShareRate,
+                                _orderSettings.SystemVoucherShopShareCap);
+
+                            // [LOGIC MỚI] 1. Tính toán Phạt Khách Hàng (%)
+                            decimal refundToCustomer = cashPaidAmount;
+                            decimal customerPenaltyAmount = 0m;
+
+                            // Chỉ phạt khách nếu đây KHÔNG PHẢI lỗi do Shop lơ đơn (Quá 24h Auto-cancel)
+                            // Tức là Shop chủ động duyệt (Accept) yêu cầu hủy của khách
+                            if (!isShopFault) 
+                            {
+                                decimal customerPenaltyRate = _orderSettings.CustomerCancellationPenaltyRate; 
+                                customerPenaltyAmount = cashPaidAmount * customerPenaltyRate;
+                                refundToCustomer = cashPaidAmount - customerPenaltyAmount;
+                            }
+
+                            // BƯỚC 3.2.1: Hoàn tiền vào Ví Khách Hàng (Tùy thuộc có bị phạt không)
+                            string refundPhrase = customerPenaltyAmount > 0 
+                                ? $"Refund for cancelled order #{order.Id} (minus {_orderSettings.CustomerCancellationPenaltyRate * 100}% penalty fee)" 
+                                : $"Refund for cancelled order #{order.Id}";
+
+                            await _walletService.RefundToWalletAsync(
+                                issue.UserId,
+                                refundToCustomer,
+                                refundPhrase
+                            );
+
+                            // BƯỚC 3.2.2: Trừ doanh thu tạm tính đang bị treo trong HeldBalance của Shop (Bắt buộc do đơn đã hủy)
+                            await _walletService.DeductFundsForRefundAsync(
+                                realActionUserId,
+                                order.Id,
+                                shopReceivedAmount,
+                                isCompleted
+                            );
+
+                            // [LOGIC MỚI] 2. Nạp trực tiếp tiền phạt vào Số Dư (Balance) của Shop để đền bù
+                            if (customerPenaltyAmount > 0)
+                            {
+                                decimal shopCompensation = customerPenaltyAmount * _orderSettings.ShopPayoutRate;
                                 await _walletService.AdjustBalanceAsync(
                                     realActionUserId,
-                                     new AdjustBalanceRequest
-                                     {
-                                         UserId = realActionUserId,
-                                         Amount = -penaltyAmount,
-                                         Reason = $"Penalty fee for 24h timeout auto-cancel Order #{order.Id}"
-                                     }
-                                );
-
-                                // B. Tặng Voucher Đền bù cho khách (Do System Bot tạo)
-                                Guid systemBotId = _systemSettings.SystemBotId;
-
-                                await _voucherService.CreateCompensationVoucherAsync(
-                                    systemBotId,
-                                    issue.UserId,
-                                    penaltyAmount // Mệnh giá đúng bằng tiền phạt của Shop
+                                    new AdjustBalanceRequest
+                                    {
+                                        UserId = realActionUserId,
+                                        Amount = shopCompensation,
+                                        Reason = $"Compensation fee from user cancelled order #{order.Id}"
+                                    }
                                 );
                             }
-                        }
 
-                        order.PaymentStatus = PaymentStatus.Refunded;
-                    }
-
-                    if (isShopFault)
-                    {
-                        if (order.ShopId.HasValue)
-                        {
-                            await _reputationService.AdjustReputationAsync(
-                                ReputationTargetType.Shop,
-                                order.ShopId.Value,
-                                -_reputationSettings.PointsDeductArtisanFault,
-                                $"Auto-cancel order #{order.Id}");
-                        }
-
-                        var shopOwner = await _unitOfWork.Users.GetByIdAsync(realActionUserId);
-                        if (shopOwner != null)
-                        {
-                            shopOwner.YMonthlyAutoCancels += 1;
-                            shopOwner.TotalAutoCancels += 1;
-                            await _unitOfWork.Users.UpdateAsync(shopOwner);
-
-                            if (shopOwner.YMonthlyAutoCancels >= _reputationSettings.MaxMonthlyAutoCancels && order.ShopId.HasValue)
+                            // BƯỚC 3.2.3: Phân định lỗi & Xử phạt
+                            if (isShopFault)
                             {
-                                var shop = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
-                                if (shop != null)
+                                // Tính tiền phạt Shop dựa trên giá trị gốc hàng hóa (SubTotal) thay vì tiền mặt khách trả
+                                decimal penaltyRate = _orderSettings.ShopCancellationPenaltyRate;
+                                decimal penaltyAmount = order.SubTotal * penaltyRate;
+
+                                if (penaltyAmount > 0)
                                 {
-                                    shop.Status = ShopStatus.Banned;
-                                    shop.IsActive = false;
-                                    await _unitOfWork.Shops.UpdateAsync(shop);
+                                    // A. Trừ tiền phạt vào Ví của Shop
+                                    await _walletService.AdjustBalanceAsync(
+                                        realActionUserId,
+                                         new AdjustBalanceRequest
+                                         {
+                                             UserId = realActionUserId,
+                                             Amount = -penaltyAmount,
+                                             Reason = $"Penalty fee for 24h timeout auto-cancel Order #{order.Id}"
+                                         }
+                                    );
+
+                                    // B. Tặng Voucher Đền bù cho khách (Do System Bot tạo)
+                                    Guid systemBotId = _systemSettings.SystemBotId;
+
+                                    await _voucherService.CreateCompensationVoucherAsync(
+                                        systemBotId,
+                                        issue.UserId,
+                                        penaltyAmount // Mệnh giá đúng bằng tiền phạt của Shop
+                                    );
+                                }
+
+                                // C. Trả lại lượt sử dụng Voucher cho khách nếu đây là Voucher đang dùng
+                                var usedVouchers = await _unitOfWork.VoucherUsageLogs.GetByOrderIdAsync(order.Id);
+                                foreach (var uv in usedVouchers)
+                                {
+                                    var v = await _unitOfWork.Vouchers.GetByIdAsync(uv.VoucherId);
+                                    if (v != null && v.UsedCount > 0)
+                                    {
+                                        v.UsedCount -= 1;
+                                    }
+                                }
+                                await _unitOfWork.VoucherUsageLogs.DeleteAllByOrderIdAsync(order.Id);
+                            }
+
+                            order.PaymentStatus = PaymentStatus.Refunded;
+                        }
+
+                        if (isShopFault)
+                        {
+                            if (order.ShopId.HasValue)
+                            {
+                                await _reputationService.AdjustReputationAsync(
+                                    ReputationTargetType.Shop,
+                                    order.ShopId.Value,
+                                    -_reputationSettings.PointsDeductArtisanFault,
+                                    $"Auto-cancel order #{order.Id}");
+                            }
+
+                            var shopOwner = await _unitOfWork.Users.GetByIdAsync(realActionUserId);
+                            if (shopOwner != null)
+                            {
+                                shopOwner.YMonthlyAutoCancels += 1;
+                                shopOwner.TotalAutoCancels += 1;
+                                await _unitOfWork.Users.UpdateAsync(shopOwner);
+
+                                if (shopOwner.YMonthlyAutoCancels >= _reputationSettings.MaxMonthlyAutoCancels && order.ShopId.HasValue)
+                                {
+                                    var shop = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+                                    if (shop != null)
+                                    {
+                                        shop.Status = ShopStatus.Banned;
+                                        shop.IsActive = false;
+                                        await _unitOfWork.Shops.UpdateAsync(shop);
+                                    }
                                 }
                             }
                         }
-                    }
-                    break;
+                        break;
 
-                case OrderIssueStatus.Rejected:
-                    issue.Status = OrderIssueStatus.Rejected;
-                    // Shop từ chối hủy -> Đơn hàng vẫn tiếp tục, không hoàn tiền.
-                    break;
+                    case OrderIssueStatus.Rejected:
+                        issue.Status = OrderIssueStatus.Rejected;
+                        // Shop từ chối hủy -> Đơn hàng vẫn tiếp tục, không hoàn tiền.
+                        break;
 
-                default:
-                    throw new ArgumentException("Invalid decision status.");
-            }
+                    default:
+                        throw new ArgumentException("Invalid decision status.");
+                }
 
-            // 4. Save Updates
-            if (order.OrderStatus == OrderStatus.Cancelled)
-            {
-                await _unitOfWork.Orders.UpdateOrderAsync(order);
-            }
+                // 4. Save Updates
+                if (order.OrderStatus == OrderStatus.Cancelled)
+                {
+                    await _unitOfWork.Orders.UpdateOrderAsync(order);
+                }
 
-            // 5. Create Log
-            var log = new OrderIssueLog
-            {
-                Id = Guid.NewGuid(),
-                OrderIssueId = issue.Id,
-                ActionById = realActionUserId,
-                ActionByRole = RoleType.Shop,
-                Action = request.Decision == OrderIssueStatus.Rejected ? OrderIssueAction.ShopReject : OrderIssueAction.ShopApprove,
-                Comment = request.ShopResponse ?? "Processed cancellation request.",
-                CreatedAt = DateTime.UtcNow
-            };
+                // 5. Create Log
+                var log = new OrderIssueLog
+                {
+                    Id = Guid.NewGuid(),
+                    OrderIssueId = issue.Id,
+                    ActionById = realActionUserId,
+                    ActionByRole = RoleType.Shop,
+                    Action = request.Decision == OrderIssueStatus.Rejected ? OrderIssueAction.ShopReject : OrderIssueAction.ShopApprove,
+                    Comment = request.ShopResponse ?? "Processed cancellation request.",
+                    CreatedAt = DateTime.UtcNow
+                };
 
-            await _unitOfWork.OrderIssueLogs.AddAsync(log);
+                await _unitOfWork.OrderIssueLogs.AddAsync(log);
 
-            _unitOfWork.OrderIssues.Update(issue);
-            await _unitOfWork.CommitAsync();
+                _unitOfWork.OrderIssues.Update(issue);
+                await _unitOfWork.CommitAsync();
 
-            // TODO: notify User
+                // TODO: notify User
+            });
         }
 
         public async Task<CheckoutResponse> RepayAsync(Guid userId, RepayRequest request, CancellationToken token = default)
@@ -990,7 +1006,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                                 _orderSettings.ShopPayoutRate,
                                 _orderSettings.SystemVoucherShopShareRate,
                                 _orderSettings.SystemVoucherShopShareCap);
-                            await _walletService.AddPendingSalesToWalletAsync(shopProfile.UserId, order.Id, shopRevenue);
+                            decimal feeAmount = order.TotalAmount - shopRevenue;
+                        await _walletService.AddPendingSalesToWalletAsync(shopProfile.UserId, order.Id, shopRevenue, feeAmount);
                         }
                     }
                 }
@@ -1246,7 +1263,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         _orderSettings.ShopPayoutRate,
                         _orderSettings.SystemVoucherShopShareRate,
                         _orderSettings.SystemVoucherShopShareCap);
-                    await _walletService.ReleaseHeldMoneyAsync(shop.UserId, order.Id, actualShopRevenue);
+                    decimal feeAmount = order.TotalAmount - actualShopRevenue;
+                    await _walletService.ReleaseHeldMoneyAsync(shop.UserId, order.Id, actualShopRevenue, feeAmount);
                     // 5. Đánh dấu đơn đã nhả tiền
                     order.PaymentStatus = PaymentStatus.Released;
                     await _unitOfWork.Orders.UpdateOrderAsync(order, token);
@@ -1311,7 +1329,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             _orderSettings.ShopPayoutRate,
                             _orderSettings.SystemVoucherShopShareRate,
                             _orderSettings.SystemVoucherShopShareCap);
-                        await _walletService.AddPendingSalesToWalletAsync(shopProfile.UserId, order.Id, shopRevenue);
+                        decimal feeAmount = order.TotalAmount - shopRevenue;
+                        await _walletService.AddPendingSalesToWalletAsync(shopProfile.UserId, order.Id, shopRevenue, feeAmount);
                     }
                 }
             }

@@ -17,9 +17,12 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Wallet
         public string FlowDirection { get; set; } 
         
         public decimal BalanceAfterTransaction { get; set; } // để minh bạch
+        public decimal HeldBalanceAfterTransaction { get; set; } // để minh bạch cho shop
         
-        public string FormattedAmount => $"{(FlowDirection == "In" ? "+" : (FlowDirection == "Out" ? "-" : ""))}{(FlowDirection == "In" || FlowDirection == "Out" ? " " : "")}{Math.Abs(Amount):N0}";
-
+        // Tự động tính toán số dư trước giao dịch
+        public decimal BalanceBeforeTransaction => FlowDirection == "In" ? BalanceAfterTransaction - Math.Abs(Amount) : 
+                                                   FlowDirection == "Out" ? BalanceAfterTransaction + Math.Abs(Amount) : 
+                                                   BalanceAfterTransaction;
         public decimal FeeAmount { get; set; }
         public string Currency { get; set; }
         public string Type { get; set; }   // Enum converted to string
