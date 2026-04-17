@@ -1,0 +1,111 @@
+# =============================================================================
+# CI/CD — AMKCollective API (fptu-capstone-amkcollective)
+# =============================================================================
+# Trigger: manual (Actions -> Deploy API To VPS -> Run workflow)
+# Steps:
+#   1) Build Docker image from FPTU.Capstone.AMKCollective.Api/Dockerfile
+#   2) Push image to Docker Hub as :latest and :<git-sha>
+#   3) SSH to VPS -> pull compose repo updates -> set IMAGE in .env -> pull/up api
+#
+# Required GitHub Secrets:
+#   DOCKERHUB_USERNAME
+#   DOCKERHUB_TOKEN
+#   VPS_HOST
+#   VPS_USER
+#   VPS_SSH_KEY
+#
+# VPS one-time setup:
+#   mkdir -p /root/amekolab
+#   git clone <this-repo-url> /root/amekolab/ameko-api
+#   cp /root/amekolab/ameko-api/.env.example /root/amekolab/ameko-api/.env
+#   nano .env
+# =============================================================================
+
+name: Deploy API To VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'true' to confirm production deployment"
+        required: true
+        type: string
+
+env:
+  DOCKER_IMAGE_NAME: fptu-capstone-amkcollective
+  VPS_APP_DIR: /root/amekolab/ameko-api
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    if: ${{ inputs.confirm == 'true' && github.ref_name == 'develop' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./FPTU.Capstone.AMKCollective.Api/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:buildcache,mode=max
+          build-args: |
+            CONFIGURATION=Release
+
+  deploy:
+    name: Deploy to VPS
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: ${{ inputs.confirm == 'true' && github.ref_name == 'develop' }}
+
+    steps:
+      - name: SSH and deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd "${{ env.VPS_APP_DIR }}"
+
+            # Keep compose files aligned with the production branch.
+            git fetch origin "${{ github.ref_name }}"
+            git checkout "${{ github.ref_name }}" || git checkout -b "${{ github.ref_name }}" "origin/${{ github.ref_name }}"
+            git pull --ff-only origin "${{ github.ref_name }}"
+
+            # Pin runtime image to this workflow commit SHA.
+            IMAGE_REF="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
+            if grep -q '^IMAGE=' .env; then
+              sed -i "s|^IMAGE=.*|IMAGE=${IMAGE_REF}|" .env
+            else
+              echo "IMAGE=${IMAGE_REF}" >> .env
+            fi
+
+            docker compose --env-file .env config -q
+            docker compose --env-file .env pull api
+            docker compose --env-file .env up -d --no-build api
+            docker compose --env-file .env ps
+
+            # Clean dangling images to reduce disk pressure.
+            docker image prune -f

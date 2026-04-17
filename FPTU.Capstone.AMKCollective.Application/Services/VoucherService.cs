@@ -1,6 +1,7 @@
 using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Voucher;
+using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
@@ -79,7 +80,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 ?? throw new UnauthorizedAccessException("User not found.");
             voucher.Creator = creator;
 
-            return _mapper.Map<VoucherResponse>(voucher);
+            return _mapper.Map<VoucherResponse>(voucher).ConvertDatesToLocal();
         }
 
         // 2. Create Negotiation Voucher - For shop to finalize deals
@@ -779,14 +780,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             // 5. Map to DTOs
-            response.SystemVouchers = _mapper.Map<List<VoucherResponse>>(systemVouchers);
+            response.SystemVouchers = _mapper.Map<List<VoucherResponse>>(systemVouchers).ConvertDatesToLocal();
 
             foreach (var kvp in shopVouchersDict)
             {
                 response.ShopVoucherGroups.Add(new ShopVoucherGroupResponse
                 {
                     ShopId = kvp.Key,
-                    Vouchers = _mapper.Map<List<VoucherResponse>>(kvp.Value)
+                    Vouchers = _mapper.Map<List<VoucherResponse>>(kvp.Value).ConvertDatesToLocal()
                 });
             }
 
@@ -817,7 +818,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             var (items, totalCount) = await _unitOfWork.VoucherUsageLogs.GetUsageByVoucherIdAsync(voucherId, pageNumber, pageSize);
 
-            var mappedItems = _mapper.Map<List<VoucherUsageResponse>>(items);
+            var mappedItems = _mapper.Map<List<VoucherUsageResponse>>(items).ConvertDatesToLocal();
             return new PaginatedResult<VoucherUsageResponse>(mappedItems, totalCount, pageNumber, pageSize);
         }
         public async Task<PaginatedResult<VoucherUsageResponse>> GetAllVoucherUsagesAsync(Guid userId, int pageNumber, int pageSize)
@@ -830,7 +831,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             var (items, totalCount) = await _unitOfWork.VoucherUsageLogs.GetAllUsagesAsync(filterCreatorId, pageNumber, pageSize);
 
-            var mappedItems = _mapper.Map<List<VoucherUsageResponse>>(items);
+            var mappedItems = _mapper.Map<List<VoucherUsageResponse>>(items).ConvertDatesToLocal();
             return new PaginatedResult<VoucherUsageResponse>(mappedItems, totalCount, pageNumber, pageSize);
         }
 
@@ -936,7 +937,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 vouchers = vouchers.Where(v => v.Scope != VoucherScope.System).ToList();
             }
 
-            return _mapper.Map<List<VoucherResponse>>(vouchers);
+            return _mapper.Map<List<VoucherResponse>>(vouchers).ConvertDatesToLocal();
         }
 
         public async Task<VoucherResponse> GetVoucherByIdAsync(Guid id)
@@ -944,7 +945,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var voucher = await _unitOfWork.Vouchers.GetByIdAsync(id);
             if (voucher == null) throw new KeyNotFoundException("Voucher not found.");
 
-            return _mapper.Map<VoucherResponse>(voucher);
+            return _mapper.Map<VoucherResponse>(voucher).ConvertDatesToLocal();
         }
 
         public async Task<VoucherResponse> UpdateVoucherAsync(Guid userId, Guid voucherId, UpdateVoucherRequest request)
@@ -988,7 +989,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _unitOfWork.Vouchers.Update(voucher);
             await _unitOfWork.CommitAsync();
 
-            return _mapper.Map<VoucherResponse>(voucher);
+            return _mapper.Map<VoucherResponse>(voucher).ConvertDatesToLocal();
         }
 
         public async Task DeleteVoucherAsync(Guid userId, Guid voucherId)
@@ -1040,7 +1041,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // Gọi Repo lấy voucher công khai của shopOwner (shop.UserId)
             var vouchers = await _unitOfWork.Vouchers.GetPublicVouchersByShopAsync(shop.UserId);
-            return _mapper.Map<List<VoucherResponse>>(vouchers);
+            return _mapper.Map<List<VoucherResponse>>(vouchers).ConvertDatesToLocal();
         }
 
         public async Task<PaginatedResult<VoucherResponse>> GetVouchersByShopAsync(Guid userId, VoucherFilterRequest filter)
@@ -1054,7 +1055,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             var (items, totalCount) = await _unitOfWork.Vouchers.GetVouchersByFilterAsync(targetCreatorId, filter);
 
-            var mappedItems = _mapper.Map<List<VoucherResponse>>(items);
+            var mappedItems = _mapper.Map<List<VoucherResponse>>(items).ConvertDatesToLocal();
             return new PaginatedResult<VoucherResponse>(mappedItems, totalCount, filter.PageNumber, filter.PageSize);
         }
 

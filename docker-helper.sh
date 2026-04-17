@@ -57,7 +57,7 @@ cmd_setup() {
         exit 1
     fi
     
-    if ! command -v docker-compose &> /dev/null; then
+    if ! docker compose version &> /dev/null; then
         print_error "Docker Compose is not installed!"
         exit 1
     fi
@@ -68,50 +68,51 @@ cmd_setup() {
 cmd_pull() {
     check_env_file
     print_info "Pulling latest image from Docker Hub..."
-    docker-compose pull
+    docker compose pull
     print_success "Image pulled successfully!"
 }
 
 cmd_start() {
     check_env_file
     print_info "Starting containers..."
-    docker-compose up -d
+    docker compose up -d
     print_success "Containers started!"
     print_info "API running at http://localhost:8080"
+    print_info "Nginx Proxy Manager admin at http://localhost:81"
     print_info "Run './docker-helper.sh logs' to view logs"
 }
 
 cmd_stop() {
     print_info "Stopping containers..."
-    docker-compose down
+    docker compose down
     print_success "Containers stopped!"
 }
 
 cmd_restart() {
     print_info "Restarting containers..."
-    docker-compose restart
+    docker compose restart
     print_success "Containers restarted!"
 }
 
 cmd_logs() {
-    docker-compose logs -f --tail=100 api
+    docker compose logs -f --tail=100 api
 }
 
 cmd_build() {
     print_info "Building Docker image locally..."
-    docker-compose build --no-cache
+    docker compose build --no-cache
     print_success "Build complete!"
 }
 
 cmd_clean() {
     print_info "Cleaning up Docker resources..."
-    docker-compose down -v --rmi local
+    docker compose down -v --rmi local
     print_success "Cleanup complete!"
 }
 
 cmd_status() {
     print_info "Container status:"
-    docker-compose ps
+    docker compose ps
     echo ""
     print_info "Resource usage:"
     docker stats --no-stream
@@ -129,7 +130,7 @@ cmd_health() {
 
 cmd_shell() {
     print_info "Opening shell in API container..."
-    docker-compose exec api /bin/bash
+    docker compose exec api /bin/bash
 }
 
 cmd_update() {

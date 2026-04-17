@@ -28,6 +28,8 @@ node_modules/
 .env
 *.env
 !.env.example
+dozzle-data/*
+!dozzle-data/.gitkeep
 **/appsettings.Development.json
 **/appsettings.Production.json
 **/appsettings.Local.json

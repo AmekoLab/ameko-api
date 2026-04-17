@@ -49,6 +49,12 @@ docker-helper.bat start
 ```
 
 ✅ **API running at http://localhost:8080**
+✅ **Nginx Proxy Manager admin at http://localhost:81**
+
+Mặc định NPM login lần đầu:
+
+- Email: `admin@example.com`
+- Password: `changeme`
 
 Xem chi tiết: [QUICKSTART.md](QUICKSTART.md)
 
@@ -124,6 +130,85 @@ chmod +x docker-helper.sh
 ./docker-helper.sh logs
 ./docker-helper.sh update
 ```
+
+---
+
+## 🔒 SSL với Nginx Proxy Manager
+
+1. Trỏ domain/subdomain về server đang chạy Docker (A record).
+2. Mở NPM Admin: `http://localhost:81`.
+3. Vào **Proxy Hosts** → **Add Proxy Host**:
+   - Domain Names: domain của bạn
+   - Forward Hostname / IP: `api`
+   - Forward Port: `80`
+   - Bật `Websockets Support` (nếu dùng SignalR realtime)
+4. Tab **SSL**:
+   - Chọn **Request a new SSL Certificate**
+   - Bật `Force SSL`
+   - Bật `HTTP/2 Support`
+   - Điền email và đồng ý Let's Encrypt Terms
+5. Save, sau đó test HTTPS domain.
+
+Port mặc định:
+
+- `80` HTTP (public)
+- `443` HTTPS (public)
+- `81` NPM admin
+
+Bạn có thể đổi qua `.env`: `NPM_HTTP_PORT`, `NPM_HTTPS_PORT`, `NPM_ADMIN_PORT`.
+
+---
+
+## 📜 Team Logs với Dozzle
+
+Dozzle đã được thêm vào `docker-compose.yml` dưới tên service `dozzle`.
+
+### 1) Start Dozzle
+
+```bash
+docker compose --env-file .env up -d dozzle
+docker compose --env-file .env ps
+```
+
+### 2) Public qua NPM (khuyến nghị)
+
+Không expose Dozzle trực tiếp ra Internet. Hãy đi qua NPM:
+
+1. Vào **Proxy Hosts** -> **Add Proxy Host**
+2. Domain: `logs.your-domain.com`
+3. Forward Hostname / IP: `dozzle`
+4. Forward Port: `8080`
+5. SSL tab: Request cert + bật `Force SSL` + `HTTP/2`
+6. Gán **Access List** (Basic Auth) để chặn truy cập trái phép
+
+### 3) (Optional) Bật login nội bộ Dozzle
+
+Nếu muốn thêm lớp bảo mật thứ 2 trong Dozzle:
+
+1. Set trong `.env`:
+
+```bash
+DOZZLE_AUTH_PROVIDER=simple
+```
+
+2. Tạo user file:
+
+```bash
+mkdir -p dozzle-data
+docker run --rm amir20/dozzle:latest generate admin --password "CHANGE_ME_STRONG" --email "devops@example.com" --name "DevOps Admin" > dozzle-data/users.yml
+```
+
+3. Restart Dozzle:
+
+```bash
+docker compose --env-file .env up -d --force-recreate dozzle
+```
+
+### 4) Security checklist
+
+- Không map cổng Dozzle ra host (đã cấu hình private bằng `expose`)
+- Luôn đi qua NPM + Access List
+- Không bật container actions/shell nếu chưa cần
 
 ---
 
