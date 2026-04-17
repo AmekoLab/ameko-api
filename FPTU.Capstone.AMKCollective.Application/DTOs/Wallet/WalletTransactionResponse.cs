@@ -9,31 +9,18 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Wallet
     public class WalletTransactionResponse
     {
         public Guid Id { get; set; }
-        
-        // Gửi nguyên si lượng tiền tuyệt đối để UI tự format
-        public decimal Amount { get; set; } 
-        
-        // Trả về luồng giao dịch: "In" (+), "Out" (-), "Held" (Đang giữ)
-        public string FlowDirection { get; set; } 
-        
-        public decimal BalanceAfterTransaction { get; set; } // để minh bạch
-        public decimal HeldBalanceAfterTransaction { get; set; } // để minh bạch cho shop
-        
-        public decimal BalanceBeforeTransaction { get; set; }
-        public decimal HeldBalanceBeforeTransaction { get; set; }
+        public decimal Amount { get; set; }
         public decimal FeeAmount { get; set; }
+        public string FlowDirection { get; set; } = string.Empty;
         public string Currency { get; set; }
         public string Type { get; set; }   // Enum converted to string
         public string Status { get; set; } // Enum converted to string
         public string? Description { get; set; }
+        public decimal BalanceAfterTransaction { get; set; }
         public string? ShopName { get; set; }
         public string? BankName { get; set; }
         public string? BankAccountNumber { get; set; }
         public string? BankAccountName { get; set; }
-
-        public Guid? RelatedOrderId { get; set; }
-        public Guid? OrderGroupId { get; set; }
-
         public DateTime CreatedAt { get; set; }
     }
 }

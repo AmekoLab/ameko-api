@@ -388,6 +388,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.Amount, opt => opt.MapFrom(src => Math.Abs(src.Amount)))
                 .ForMember(dest => dest.FlowDirection, opt => opt.MapFrom(src => src.Direction.ToString()));
 
+            CreateMap<Transaction, WalletTransactionDetailResponse>()
+                .IncludeBase<Transaction, WalletTransactionResponse>();
+                //.ForMember(dest => dest.FlowDirection, opt => opt.MapFrom(src => src.Direction.ToString()));
+
             CreateMap<Transaction, HeldTransactionResponse>()
                 .ForMember(dest => dest.TransactionId, opt => opt.MapFrom(src => src.Id))
                 .ForMember(dest => dest.Date, opt => opt.MapFrom(src => src.CreatedAt))

@@ -57,6 +57,31 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<List<WalletTransactionResponse>>(transactions).ConvertDatesToLocal();
         }
 
+        public async Task<WalletTransactionDetailResponse> GetTransactionDetailAsync(Guid transactionId, Guid userId)
+        {
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+            if (wallet == null)
+                throw new KeyNotFoundException("Wallet not found."); // Ném lỗi 404
+
+            var transaction = await _unitOfWork.Transactions.GetByIdAsync(transactionId);
+            if (transaction == null)
+                throw new KeyNotFoundException("Transaction not found."); // Ném lỗi 404
+
+            // Tách riêng lỗi bảo mật (Cố tình xem giao dịch của người khác) thành 403/401
+            if (transaction.WalletId != wallet.Id)
+                throw new UnauthorizedAccessException("You do not have permission to view this transaction.");
+
+            var dto = _mapper.Map<WalletTransactionDetailResponse>(transaction);
+            dto.ShopName = transaction.Wallet?.User?.ShopProfile?.ShopName;
+
+            if (transaction.Type == TransactionType.Withdrawal)
+            {
+                ApplyWithdrawalDetailsFromDescription(transaction.Description, dto);
+            }
+
+            return dto;
+        }
+
         public async Task CreateWalletAsync(Guid userId)
         {
             var existing = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
@@ -129,6 +154,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Id = Guid.NewGuid(),
                 UserId = userId,
                 Amount = request.Amount,
+               // FeeAmount = feeAmount,
                 BankName = shop.BankName,
                 BankAccountNumber = shop.BankAccountNumber,
                 BankAccountName = shop.BankAccountName,
@@ -442,28 +468,27 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (wallet != null)
             {
-                // Hoàn lại tiền gốc + phí rút (Tính lại phí dựa trên Amount vì bảng WithdrawalRequest không lưu FeeAmount)
                 decimal feePercent = _walletSettings.WithdrawalFeePercent;
                 decimal feeAmount = withdrawalReq.Amount * feePercent;
                 decimal refundAmount = withdrawalReq.Amount + feeAmount;
 
                 await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, refundAmount, 0);
 
-                // Ghi log Transaction hoàn tiền vào sổ cái ví
                 var transaction = new Transaction
-            {
-                WalletId = wallet.Id,
-                Amount = refundAmount,
-                BalanceBeforeTransaction = wallet.Balance,
-                BalanceAfterTransaction = wallet.Balance + refundAmount,
-                Direction = TransactionDirection.In,
-                Type = TransactionType.ManualAdjustment,
-                HeldBalanceBeforeTransaction = wallet.HeldBalance,
-                HeldBalanceAfterTransaction = wallet.HeldBalance,
+                {
+                    WalletId = wallet.Id,
+                    Amount = refundAmount,
+                    BalanceBeforeTransaction = wallet.Balance,
+                    BalanceAfterTransaction = wallet.Balance + refundAmount,
+                    Direction = TransactionDirection.In,
+                    Type = TransactionType.ManualAdjustment,
+                    HeldBalanceBeforeTransaction = wallet.HeldBalance,
+                    HeldBalanceAfterTransaction = wallet.HeldBalance,
+                    //FeeAmount = withdrawalReq.FeeAmount,
                     Description = $"[REJECTED] Withdrawal refunded. Reason: {request.Reason}",
                     Currency = "VND",
                     CreatedAt = DateTime.UtcNow
-            };
+                };
                 await _unitOfWork.Transactions.AddAsync(transaction);
             }
             else
@@ -708,19 +733,23 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
             if (wallet == null) return new WalletStatisticsResponse();
 
-            var transactions = await _unitOfWork.Transactions.GetByWalletIdAsync(wallet.Id);
-            var withdrawals = await _unitOfWork.WithdrawalRequests.GetByUserIdAsync(userId);
             var now = DateTime.UtcNow;
+
+            // Query thẳng DB, không load vào memory
+            var totalRevenue = await _unitOfWork.Transactions
+                .SumAmountByTypeAsync(wallet.Id, TransactionType.SalesRevenue);
+
+            var thisMonthRevenue = await _unitOfWork.Transactions
+                .SumAmountByTypeAsync(wallet.Id, TransactionType.SalesRevenue, now.Month, now.Year);
+
+            var withdrawals = await _unitOfWork.WithdrawalRequests.GetByUserIdAsync(userId);
 
             return new WalletStatisticsResponse
             {
                 AvailableBalance = wallet.Balance,
                 HeldBalance = wallet.HeldBalance,
-                // Doanh thu = Tổng các giao dịch SalesRevenue
-                TotalRevenue = transactions.Where(t => t.Type == TransactionType.SalesRevenue).Sum(t => t.Amount),
-                ThisMonthRevenue = transactions.Where(t => t.Type == TransactionType.SalesRevenue && t.CreatedAt.Month == now.Month && t.CreatedAt.Year == now.Year).Sum(t => t.Amount),
-
-                // Rút tiền lấy từ bảng WithdrawalRequests
+                TotalRevenue = totalRevenue,
+                ThisMonthRevenue = thisMonthRevenue,
                 TotalWithdrawn = withdrawals.Where(w => w.Status == WithdrawalStatus.Completed).Sum(w => w.Amount),
                 PendingWithdrawal = withdrawals.Where(w => w.Status == WithdrawalStatus.Pending).Sum(w => w.Amount)
             };
@@ -731,10 +760,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
             if (wallet == null) return new List<HeldTransactionResponse>();
 
-            var transactions = await _unitOfWork.Transactions.GetByWalletIdAsync(wallet.Id);
-
-            // Lọc ra các giao dịch đang treo (SalesPending)
-            var heldTransactions = transactions.Where(t => t.Type == TransactionType.SalesPending).ToList();
+            // Query thẳng DB chỉ lấy SalesPending
+            var heldTransactions = await _unitOfWork.Transactions
+                .GetByWalletIdAndTypeAsync(wallet.Id, TransactionType.SalesPending);
 
             return _mapper.Map<List<HeldTransactionResponse>>(heldTransactions).ConvertDatesToLocal();
         }
