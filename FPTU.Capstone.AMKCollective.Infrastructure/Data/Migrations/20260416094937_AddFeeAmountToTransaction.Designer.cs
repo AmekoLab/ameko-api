@@ -4,16 +4,19 @@ using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
+namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260416094937_AddFeeAmountToTransaction")]
+    partial class AddFeeAmountToTransaction
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2193,10 +2196,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal>("BalanceAfterTransaction")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("BalanceBeforeTransaction")
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<DateTime>("CreatedAt")
@@ -2220,16 +2219,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.Property<decimal>("FeeAmount")
-                        .ValueGeneratedOnAdd()
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)")
-                        .HasDefaultValue(0m);
-
-                    b.Property<decimal>("HeldBalanceAfterTransaction")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("HeldBalanceBeforeTransaction")
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<bool>("IsDeleted")
@@ -2255,21 +2244,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OrderGroupId")
-                        .HasDatabaseName("IX_Transactions_OrderGroupId");
+                    b.HasIndex("OrderGroupId");
 
-                    b.HasIndex("RelatedOrderId")
-                        .HasDatabaseName("IX_Transactions_RelatedOrderId");
+                    b.HasIndex("RelatedOrderId");
 
-                    b.HasIndex("WalletId")
-                        .HasDatabaseName("IX_Transactions_WalletId");
+                    b.HasIndex("WalletId");
 
-                    b.ToTable("Transactions", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_Transaction_FeeAmount_Positive", "`FeeAmount` >= 0");
-
-                            t.HasCheckConstraint("CK_Transaction_MutualExclusive_OrderRef", "`OrderGroupId` IS NULL OR `RelatedOrderId` IS NULL");
-                        });
+                    b.ToTable("Transactions", (string)null);
                 });
 
             modelBuilder.Entity("FPTU.Capstone.AMKCollective.Domain.Entities.User", b =>
@@ -3341,12 +3322,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                     b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.OrderGroup", "OrderGroup")
                         .WithMany("Transactions")
                         .HasForeignKey("OrderGroupId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.Order", "RelatedOrder")
                         .WithMany("Transactions")
                         .HasForeignKey("RelatedOrderId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("FPTU.Capstone.AMKCollective.Domain.Entities.Wallet", "Wallet")
                         .WithMany("Transactions")

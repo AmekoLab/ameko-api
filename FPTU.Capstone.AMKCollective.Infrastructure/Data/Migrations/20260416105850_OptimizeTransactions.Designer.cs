@@ -4,16 +4,19 @@ using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
+namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260416105850_OptimizeTransactions")]
+    partial class OptimizeTransactions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2196,9 +2199,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<decimal>("BalanceBeforeTransaction")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -2227,9 +2227,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Migrations
 
                     b.Property<decimal>("HeldBalanceAfterTransaction")
                         .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("HeldBalanceBeforeTransaction")
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<bool>("IsDeleted")

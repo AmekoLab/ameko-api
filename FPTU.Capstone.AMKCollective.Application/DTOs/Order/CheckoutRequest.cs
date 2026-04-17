@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Domain.Enums;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -25,5 +25,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
         public Dictionary<Guid, string>? AppliedShopVoucherCodes { get; set; }
         public Dictionary<Guid, List<string>>? AppliedShopVoucherCodeGroups { get; set; }
         public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.CreditCard;
+        public string? WalletPin { get; set; }
     }
 }
