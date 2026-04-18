@@ -37,5 +37,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 
         /// Lấy danh sách linh kiện có thể add-on tại vị trí trên bàn phím ảo.
         Task<AddonOptionsResponse> GetAddonOptionsAsync(Guid sessionId, string addonType, string? searchTerm = null, int page = 1, int pageSize = 20);
+        Task UpdateOptionAsync(Guid id, UpdateKitOptionRequest request);
     }
 }

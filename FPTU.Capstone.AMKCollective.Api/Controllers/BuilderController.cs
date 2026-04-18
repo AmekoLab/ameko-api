@@ -140,7 +140,32 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return ServerErrorResponse<string>("An error occurred while getting builder config.");
             }
         }
-
+        /// <summary>
+        /// Update an existing Option (Update Rule, Tags, or Image).
+        /// </summary>
+        [HttpPut("options/{id}")]
+        [Authorize]
+                    // TODO: [Authorize(Roles = "Admin,Shop")]
+        [SwaggerOperation(Summary = "Update Kit Option", Description = "Updates the filter rules or image of an existing kit option.")]
+        [SwaggerResponse(200, "Option updated successfully")]
+        [SwaggerResponse(404, "Option not found")]
+        public async Task<IActionResult> UpdateOption(Guid id, [FromForm] UpdateKitOptionRequest request)
+        {
+            try
+            {
+                await _service.UpdateOptionAsync(id, request);
+                return SuccessResponse("Update option successful");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<string>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating builder option {Id}", id);
+                return ServerErrorResponse<string>("An error occurred while updating option.");
+            }
+        }
         /// <summary>
         /// [USER] Search for compatible parts within the current session.
         /// </summary>
