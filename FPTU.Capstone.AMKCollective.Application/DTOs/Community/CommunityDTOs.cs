@@ -31,6 +31,7 @@ public class PostFeedResponse
     public string? AvatarUrl { get; set; }
     
     public Guid? ShopId { get; set; }
+    public string? ShopName { get; set; }
     public string Role { get; set; } = string.Empty;
     
     public ProductPreviewDto? Product { get; set; }

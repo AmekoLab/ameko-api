@@ -460,9 +460,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 decimal refundAmount = await CalculateRefundAmountAsync(issue, order);
 
                 // CASE 1: No return — refund immediately to Wallet (internal only)
+                var shop = await _unitOfWork.Shops.GetByIdAsync(order.ShopId!.Value);
+                if (shop == null) throw new KeyNotFoundException("Shop not found.");
+
                 await _walletService.RefundToWalletAsync(order.CustomerId, refundAmount, $"Refund for warranty/return (Order #{order.Id}, Issue #{issue.Id})");
                 bool isReleased = order.PaymentStatus == PaymentStatus.Released;
-                await _walletService.DeductFundsForRefundAsync(order.ShopId!.Value, order.Id, refundAmount, isReleased);
+                await _walletService.DeductFundsForRefundAsync(shop.UserId, order.Id, refundAmount, isReleased);
 
                 await _notificationService.SendNotificationAsync(order.CustomerId, 
                     "Refund Successful", 
@@ -472,6 +475,37 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     referenceType: "OrderIssue",
                     redirectUrl: $"/warranty-requests/{issue.Id}",
                     actorId: adminId);
+
+                // ── [FIX] Record Transaction for Warranty Reference ──
+                // RelatedOrderId must be a valid OrderId due to DB FK constraints.
+                // We store OrderId here and include IssueId in the description.
+                var customerWallet = await _unitOfWork.Wallets.GetByUserIdAsync(order.CustomerId);
+                var shopWallet = await _unitOfWork.Wallets.GetByUserIdAsync(shop.UserId);
+
+                if (customerWallet != null)
+                {
+                    await _unitOfWork.Transactions.AddAsync(new Transaction
+                    {
+                        WalletId = customerWallet.Id,
+                        RelatedOrderId = order.Id, 
+                        Amount = refundAmount,
+                        Type = TransactionType.OrderRefund,
+                        Description = $"[Warranty Refund] Refund for Issue #{issue.Id}",
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+                if (shopWallet != null)
+                {
+                    await _unitOfWork.Transactions.AddAsync(new Transaction
+                    {
+                        WalletId = shopWallet.Id,
+                        RelatedOrderId = order.Id,
+                        Amount = refundAmount,
+                        Type = TransactionType.ManualAdjustment,
+                        Description = $"[Warranty Deduction] Deduction for Issue #{issue.Id}",
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
 
                 // ── Stock Reintegration (No Return Case) ──
                 await ReintegrateStockForIssueAsync(issue);
@@ -590,9 +624,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             decimal refundAmount = await CalculateRefundAmountAsync(issue, order);
 
             // ── Internal Refund to Wallet ──
+            var shopEntity = await _unitOfWork.Shops.GetByIdAsync(order.ShopId!.Value);
+            if (shopEntity == null) throw new KeyNotFoundException("Shop not found.");
+
             await _walletService.RefundToWalletAsync(issue.UserId, refundAmount, $"Refund for warranty/return (Order #{order.Id}, Issue #{issue.Id})");
             bool isReleasedNow = order.PaymentStatus == PaymentStatus.Released;
-            await _walletService.DeductFundsForRefundAsync(order.ShopId!.Value, order.Id, refundAmount, isReleasedNow);
+            await _walletService.DeductFundsForRefundAsync(shopEntity.UserId, order.Id, refundAmount, isReleasedNow);
 
             // ── Notification ──
             await _notificationService.SendNotificationAsync(issue.UserId, 
@@ -603,6 +640,35 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 referenceType: "OrderIssue",
                 redirectUrl: $"/warranty-requests/{issue.Id}",
                 actorId: shopOwnerId);
+
+            // ── [FIX] Record Transaction for Warranty Reference ──
+            var customerWalletSub = await _unitOfWork.Wallets.GetByUserIdAsync(issue.UserId);
+            var shopWalletSub = await _unitOfWork.Wallets.GetByUserIdAsync(shopEntity.UserId);
+
+            if (customerWalletSub != null)
+            {
+                await _unitOfWork.Transactions.AddAsync(new Transaction
+                {
+                    WalletId = customerWalletSub.Id,
+                    RelatedOrderId = order.Id, 
+                    Amount = refundAmount,
+                    Type = TransactionType.OrderRefund,
+                    Description = $"[Warranty Refund] Refund for Issue #{issue.Id} (After Return)",
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+            if (shopWalletSub != null)
+            {
+                await _unitOfWork.Transactions.AddAsync(new Transaction
+                {
+                    WalletId = shopWalletSub.Id,
+                    RelatedOrderId = order.Id,
+                    Amount = refundAmount,
+                    Type = TransactionType.ManualAdjustment,
+                    Description = $"[Warranty Deduction] Deduction for Issue #{issue.Id} (After Return)",
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
 
             await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
             {
