@@ -56,23 +56,16 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         [HttpGet("transactions")]
         public async Task<IActionResult> GetTransactions([FromQuery] PaymentFilterRequest filter)
         {
-            try
-            {
-                var userId = GetCurrentUserId();
+            filter.UserId = GetCurrentUserId();
+            var result = await _walletService.GetTransactionsByFilterAsync(filter);
+            return SuccessResponse(result, "Get transaction history successfully");
+        }
 
-                // Bắt buộc ghi đè UserId trong filter bằng ID của người đang đăng nhập
-                // Để ngăn user A xem trộm giao dịch của user B bằng cách gửi ?userId={id_cua_B}
-                filter.UserId = userId;
-
-                // Gọi hàm Service mới (GetTransactionsByFilterAsync)
-                var result = await _walletService.GetTransactionsByFilterAsync(filter);
-
-                return SuccessResponse(result, "Get transaction history successfully");
-            }
-            catch (Exception ex)
-            {
-                return ServerErrorResponse<object>(ex.Message);
-            }
+        [HttpGet("transactions/{id}")]
+        public async Task<IActionResult> GetTransactionDetail(Guid id)
+        {
+            var result = await _walletService.GetTransactionDetailAsync(id, GetCurrentUserId());
+            return SuccessResponse(result, "Get transaction detail successfully");
         }
 
         /// <summary>

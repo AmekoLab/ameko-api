@@ -104,8 +104,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
 
                     orderGroup.PaymentStatus = PaymentStatus.Paid;
 
-                    var shopPendingSales = new List<(Guid ShopUserId, Guid OrderId, decimal Amount)>();
-
+                    var shopPendingSales = new List<(Guid ShopUserId, Guid OrderId, decimal Amount, decimal FeeAmount)>();
                     if (orderGroup.Orders != null && orderGroup.Orders.Any())
                     {
                         foreach (var order in orderGroup.Orders)
@@ -124,7 +123,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                                         _orderSettings.ShopPayoutRate,
                                         _orderSettings.SystemVoucherShopShareRate,
                                         _orderSettings.SystemVoucherShopShareCap);
-                                    shopPendingSales.Add((shopProfile.UserId, order.Id, shopRevenue));
+                                    decimal feeAmount = order.TotalAmount - shopRevenue;
+                                    shopPendingSales.Add((shopProfile.UserId, order.Id, shopRevenue, feeAmount));
                                 }
                             }
                         }
@@ -153,9 +153,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                     await _unitOfWork.CommitAsync();
 
                     // Update ví Shop
-                    foreach (var (shopUserId, orderId, amt) in shopPendingSales)
+                    foreach (var (shopUserId, orderId, amt, feeAmt) in shopPendingSales)
                     {
-                        await walletService.AddPendingSalesToWalletAsync(shopUserId, orderId, amt);
+                        await walletService.AddPendingSalesToWalletAsync(shopUserId, orderId, amt, feeAmt);
                     }
                 }
             }

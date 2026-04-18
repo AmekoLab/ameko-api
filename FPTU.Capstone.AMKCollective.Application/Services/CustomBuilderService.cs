@@ -857,6 +857,31 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             };
         }
 
+        public async Task UpdateOptionAsync(Guid id, UpdateKitOptionRequest request)
+        {
+            // 1. Tìm Option cũ trong DB
+            var entity = await _unitOfWork.KitDesignOptions.GetByIdAsync(id);
+            if (entity == null) throw new KeyNotFoundException("Kit Design Option not found");
+
+            // 2. Dùng AutoMapper đè dữ liệu mới vào entity cũ (tự động bỏ qua các trường null)
+            _mapper.Map(request, entity);
+
+            // 3. Xử lý riêng cái file ảnh (nếu có upload ảnh mới)
+            if (request.LayerImageFile != null && request.LayerImageFile.Length > 0)
+            {
+                var fileUrl = await _storageService.UploadAsync(
+                    request.LayerImageFile.OpenReadStream(),
+                    request.LayerImageFile.FileName,
+                    "builder-layers"
+                );
+                entity.LayerImageUrl = fileUrl;
+            }
+
+            // 4. Lưu xuống DB
+            await _unitOfWork.KitDesignOptions.UpdateAsync(entity);
+            await _unitOfWork.CommitAsync();
+        }
+
         // --- HELPER FUNCTIONS ---
 
         // 1. Logic thứ tự các bước (Hard-code)

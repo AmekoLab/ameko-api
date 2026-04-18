@@ -39,12 +39,21 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return newScore;
         }
 
-        public Task<int> AdjustReputationAsync(ReputationTargetType targetType, Guid targetId, int delta, string? reason = null, string? referenceType = null, string? referenceId = null)
+        public Task<int> AdjustReputationAsync(
+    ReputationTargetType targetType,
+    Guid targetId,
+    int delta,
+    string? reason = null,
+    string? referenceType = null,
+    string? referenceId = null)
         {
             return targetType switch
             {
                 ReputationTargetType.Shop => AdjustShopScoreAsync(targetId, delta, reason, referenceType, referenceId),
-                _ => AdjustCustomerScoreAsync(targetId, delta, reason, referenceType, referenceId)
+                ReputationTargetType.Customer => AdjustCustomerScoreAsync(targetId, delta, reason, referenceType, referenceId),
+                _ => throw new ArgumentOutOfRangeException(
+                        nameof(targetType),
+                        $"Unsupported ReputationTargetType: {targetType}")
             };
         }
         public async Task<int> AdjustShopScoreAsync(Guid shopId, int delta, string? reason = null, string? referenceType = null, string? referenceId = null)

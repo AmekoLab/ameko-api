@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,10 +11,12 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Wallet
         public Guid Id { get; set; }
         public decimal Amount { get; set; }
         public decimal FeeAmount { get; set; }
+        public string FlowDirection { get; set; } = string.Empty;
         public string Currency { get; set; }
         public string Type { get; set; }   // Enum converted to string
         public string Status { get; set; } // Enum converted to string
         public string? Description { get; set; }
+        public decimal BalanceAfterTransaction { get; set; }
         public string? ShopName { get; set; }
         public string? BankName { get; set; }
         public string? BankAccountNumber { get; set; }

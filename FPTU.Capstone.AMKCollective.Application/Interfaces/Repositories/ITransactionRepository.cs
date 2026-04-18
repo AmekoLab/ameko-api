@@ -10,6 +10,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
 {
     public interface ITransactionRepository
     {
+        Task<Transaction?> GetByIdAsync(Guid id);
         Task AddAsync(Transaction transaction);
         Task<List<Transaction>> GetByWalletIdAsync(Guid walletId);
         Task<(List<Transaction> Items, int TotalCount)> GetTransactionsByFilterAsync(PaymentFilterRequest filter);
@@ -19,5 +20,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         /// Query trực tiếp DB, không load toàn bộ dữ liệu.
         /// </summary>
         Task<bool> ExistsByOrderAndTypeAsync(Guid walletId, Guid orderId, TransactionType type);
+        Task<decimal> SumAmountByTypeAsync(Guid walletId, TransactionType type, int? month = null, int? year = null);
+        Task<List<Transaction>> GetByWalletIdAndTypeAsync(Guid walletId, TransactionType type);
     }
 }

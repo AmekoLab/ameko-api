@@ -1,4 +1,5 @@
 ﻿using FPTU.Capstone.AMKCollective.Api.Controllers;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Reputation;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -168,6 +169,23 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             {
                 return ServerErrorResponse<object>(ex.Message);
             }
+        }
+
+        // ADMIN
+        [HttpPost("adjust")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> AdjustReputationByAdmin([FromBody] AdminAdjustReputationDto request)
+        {
+            var newScore = await _reputationService.AdjustReputationAsync(
+                request.TargetType,
+                request.TargetId,
+                request.Delta,
+                request.Reason,
+                "AdminAdjustment",
+                GetCurrentUserId().ToString()
+                );
+
+            return SuccessResponse(new { NewScore = newScore }, "Reputation adjusted successfully.");
         }
     }
 }

@@ -203,9 +203,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
 
                     orderGroup.PaymentStatus = PaymentStatus.Paid;
 
-                    // [Fix #2] Thu thập thông tin shop TRƯỚC khi commit, để wallet call sau commit
-                    var shopPendingSales = new List<(Guid ShopUserId, Guid OrderId, decimal Amount)>();
-
+                    // Thu thập thông tin shop TRƯỚC khi commit, để wallet call sau commit
+                    var shopPendingSales = new List<(Guid ShopUserId, Guid OrderId, decimal Amount, decimal FeeAmount)>();
                     if (orderGroup.Orders != null && orderGroup.Orders.Any())
                     {
                         foreach (var order in orderGroup.Orders)
@@ -224,7 +223,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                                         _orderSettings.ShopPayoutRate,
                                         _orderSettings.SystemVoucherShopShareRate,
                                         _orderSettings.SystemVoucherShopShareCap);
-                                    shopPendingSales.Add((shopProfile.UserId, order.Id, shopRevenue));
+                                    decimal feeAmount = order.TotalAmount - shopRevenue;
+                                    shopPendingSales.Add((shopProfile.UserId, order.Id, shopRevenue, feeAmount));
                                 }
                             }
                         }
@@ -256,9 +256,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
 
                     // [Fix #2] Sau commit mới cộng tiền vào ví Shop (tránh inconsistency)
                     // Nếu wallet call fail ở đây, order đã paid → có thể reconcile sau
-                    foreach (var (shopUserId, orderId, amount) in shopPendingSales)
+                    foreach (var (shopUserId, orderId, amount, feeAmt) in shopPendingSales)
                     {
-                        await walletService.AddPendingSalesToWalletAsync(shopUserId, orderId, amount);
+                        await walletService.AddPendingSalesToWalletAsync(shopUserId, orderId, amount, feeAmt);
                     }
                 }
             }

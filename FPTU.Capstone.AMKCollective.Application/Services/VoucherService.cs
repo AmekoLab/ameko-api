@@ -34,8 +34,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<VoucherResponse> CreatePromotionalVoucherAsync(Guid userId, CreateVoucherRequest request)
         {
             // Validate: Code must be unique
-            var existing = await _unitOfWork.Vouchers.GetByCodeAsync(request.Code);
-            if (existing != null)
+            var exists = await _unitOfWork.Vouchers.CodeExistsAsync(request.Code);
+            if (exists)
                 throw new InvalidOperationException(
                     $"Voucher code '{request.Code}' already exists. Please choose a different code.");
 

@@ -146,10 +146,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
 
             CreateMap<CreateKitOptionRequest, KitDesignOption>()
                 .ForMember(dest => dest.LayerImageUrl, opt => opt.Ignore()); // Handled in service
-            // Tags và NextStepFilterRule được AutoMapper map tự động (trùng tên)
+                                                                             // Tags và NextStepFilterRule được AutoMapper map tự động (trùng tên)
+
+            CreateMap<UpdateKitOptionRequest, KitDesignOption>()
+                // 1. Bỏ qua ảnh vì ảnh (IFormFile) được xử lý upload riêng ra Cloud/Storage
+                .ForMember(dest => dest.LayerImageUrl, opt => opt.Ignore())
+
+                // 2. Chỉ map những trường mà FE gửi lên (khác null). 
+                // Nếu FE không gửi null, giữ nguyên giá trị cũ trong DB.
+                .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
             //==================KITDESIGN=======================//
 
-           
+
             //==================ShopProfile=====================//
             CreateMap<ShopProfile, ShopResponse>();
 
@@ -384,7 +392,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.Type, opt => opt.MapFrom(src => src.Type.ToString()))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src =>
                     src.Type == TransactionType.SalesPending ? "Pending" : "Completed"))
-                .ForMember(dest => dest.FeeAmount, opt => opt.MapFrom(src => 0m));
+                .ForMember(dest => dest.FeeAmount, opt => opt.MapFrom(src => src.FeeAmount))
+                .ForMember(dest => dest.Amount, opt => opt.MapFrom(src => Math.Abs(src.Amount)))
+                .ForMember(dest => dest.FlowDirection, opt => opt.MapFrom(src => src.Direction.ToString()));
+
+            CreateMap<Transaction, WalletTransactionDetailResponse>()
+                .IncludeBase<Transaction, WalletTransactionResponse>();
+                //.ForMember(dest => dest.FlowDirection, opt => opt.MapFrom(src => src.Direction.ToString()));
 
             CreateMap<Transaction, HeldTransactionResponse>()
                 .ForMember(dest => dest.TransactionId, opt => opt.MapFrom(src => src.Id))
@@ -484,7 +498,5 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             catch {  }
             return "N/A";
         }
-
     }
-    
 }

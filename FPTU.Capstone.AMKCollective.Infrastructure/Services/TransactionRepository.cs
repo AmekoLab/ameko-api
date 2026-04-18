@@ -21,6 +21,15 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             _context = context;
         }
 
+        public async Task<Transaction?> GetByIdAsync(Guid id)
+        {
+            return await _context.Transactions
+                .Include(t => t.Wallet)
+                    .ThenInclude(w => w.User)
+                        .ThenInclude(u => u.ShopProfile)
+                .FirstOrDefaultAsync(t => t.Id == id);
+        }
+
         public async Task AddAsync(Transaction transaction)
         {
             await _context.Transactions.AddAsync(transaction);
@@ -110,6 +119,25 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 t.WalletId == walletId &&
                 t.RelatedOrderId == orderId &&
                 t.Type == type);
+        }
+        public async Task<decimal> SumAmountByTypeAsync(Guid walletId, TransactionType type, int? month = null, int? year = null)
+        {
+            var query = _context.Transactions
+                .Where(t => t.WalletId == walletId && t.Type == type);
+
+            if (month.HasValue && year.HasValue)
+                query = query.Where(t => t.CreatedAt.Month == month.Value && t.CreatedAt.Year == year.Value);
+
+            return await query.SumAsync(t => (decimal?)t.Amount) ?? 0m;
+        }
+
+        public async Task<List<Transaction>> GetByWalletIdAndTypeAsync(Guid walletId, TransactionType type)
+        {
+            return await _context.Transactions
+                .Include(t => t.RelatedOrder)
+                .Where(t => t.WalletId == walletId && t.Type == type)
+                .OrderByDescending(t => t.CreatedAt)
+                .ToListAsync();
         }
     }
 }

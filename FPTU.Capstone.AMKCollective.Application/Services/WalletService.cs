@@ -57,6 +57,31 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<List<WalletTransactionResponse>>(transactions).ConvertDatesToLocal();
         }
 
+        public async Task<WalletTransactionDetailResponse> GetTransactionDetailAsync(Guid transactionId, Guid userId)
+        {
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+            if (wallet == null)
+                throw new KeyNotFoundException("Wallet not found."); // Ném lỗi 404
+
+            var transaction = await _unitOfWork.Transactions.GetByIdAsync(transactionId);
+            if (transaction == null)
+                throw new KeyNotFoundException("Transaction not found."); // Ném lỗi 404
+
+            // Tách riêng lỗi bảo mật (Cố tình xem giao dịch của người khác) thành 403/401
+            if (transaction.WalletId != wallet.Id)
+                throw new UnauthorizedAccessException("You do not have permission to view this transaction.");
+
+            var dto = _mapper.Map<WalletTransactionDetailResponse>(transaction);
+            dto.ShopName = transaction.Wallet?.User?.ShopProfile?.ShopName;
+
+            if (transaction.Type == TransactionType.Withdrawal)
+            {
+                ApplyWithdrawalDetailsFromDescription(transaction.Description, dto);
+            }
+
+            return dto;
+        }
+
         public async Task CreateWalletAsync(Guid userId)
         {
             var existing = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
@@ -129,6 +154,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Id = Guid.NewGuid(),
                 UserId = userId,
                 Amount = request.Amount,
+               // FeeAmount = feeAmount,
                 BankName = shop.BankName,
                 BankAccountNumber = shop.BankAccountNumber,
                 BankAccountName = shop.BankAccountName,
@@ -143,7 +169,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 WalletId = wallet.Id,
                 Amount = totalDeduct,
+                BalanceBeforeTransaction = wallet.Balance,
+                BalanceAfterTransaction = wallet.Balance - totalDeduct,
+                Direction = TransactionDirection.Out,
                 Type = TransactionType.Withdrawal,
+                HeldBalanceBeforeTransaction = wallet.HeldBalance,
+                HeldBalanceAfterTransaction = wallet.HeldBalance,
+                FeeAmount = feeAmount,
                 Description = $"Withdrawal request to {shop.BankName} - {shop.BankAccountNumber} - {shop.BankAccountName} (Amount: {request.Amount:N0}, Fee: {feeAmount:N0})",
                 Currency = "VND",
                 CreatedAt = DateTime.UtcNow
@@ -170,7 +202,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 WalletId = wallet.Id,
                 RelatedOrderId = orderId,
                 Amount = amount,
+                BalanceBeforeTransaction = wallet.Balance,
+                BalanceAfterTransaction = wallet.Balance - amount,
+                Direction = TransactionDirection.Out,
                 Type = TransactionType.OrderPayment,
+                HeldBalanceBeforeTransaction = wallet.HeldBalance,
+                HeldBalanceAfterTransaction = wallet.HeldBalance,
                 Description = $"Payment for order #{orderId}",
                 Currency = "VND",
                 CreatedAt = DateTime.UtcNow
@@ -180,7 +217,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
         }
 
-        public async Task AddPendingSalesToWalletAsync(Guid shopId, Guid orderId, decimal amount)
+        public async Task AddPendingSalesToWalletAsync(Guid shopId, Guid orderId, decimal amount, decimal feeAmount = 0)
         {
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(shopId);
             if (wallet == null) return;
@@ -197,7 +234,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 WalletId = wallet.Id,
                 RelatedOrderId = orderId,
                 Amount = amount,
+                BalanceBeforeTransaction = wallet.Balance,
+                BalanceAfterTransaction = wallet.Balance, // Held balance doesn't affect available
+                Direction = TransactionDirection.Held,
                 Type = TransactionType.SalesPending,
+                HeldBalanceBeforeTransaction = wallet.HeldBalance,
+                HeldBalanceAfterTransaction = wallet.HeldBalance + amount,
+                FeeAmount = feeAmount,
                 Description = $"Pending sales revenue from order #{orderId}",
                 Currency = "VND",
                 CreatedAt = DateTime.UtcNow
@@ -207,7 +250,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
         }
 
-        public async Task ReleaseHeldMoneyAsync(Guid shopId, Guid orderId, decimal amount)
+        public async Task ReleaseHeldMoneyAsync(Guid shopId, Guid orderId, decimal amount, decimal feeAmount = 0)
         {
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(shopId);
             if (wallet == null) return;
@@ -218,15 +261,21 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 if (!success) return;
 
                 var transaction = new Transaction
-                {
-                    WalletId = wallet.Id,
-                    RelatedOrderId = orderId,
-                    Amount = amount,
-                    Type = TransactionType.SalesRevenue,
+            {
+                WalletId = wallet.Id,
+                RelatedOrderId = orderId,
+                Amount = amount,
+                BalanceBeforeTransaction = wallet.Balance,
+                BalanceAfterTransaction = wallet.Balance + amount,
+                Direction = TransactionDirection.In,
+                Type = TransactionType.SalesRevenue,
+                HeldBalanceBeforeTransaction = wallet.HeldBalance,
+                HeldBalanceAfterTransaction = wallet.HeldBalance - amount,
+                FeeAmount = feeAmount,
                     Description = $"Released revenue for order #{orderId}",
                     Currency = "VND",
                     CreatedAt = DateTime.UtcNow
-                };
+            };
 
                 await _unitOfWork.Transactions.AddAsync(transaction);
                 await _unitOfWork.CommitAsync();
@@ -249,7 +298,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 WalletId = wallet.Id,
                 Amount = amount,
+                BalanceBeforeTransaction = wallet.Balance,
+                BalanceAfterTransaction = wallet.Balance + amount,
+                Direction = TransactionDirection.In,
                 Type = TransactionType.OrderRefund,
+                HeldBalanceBeforeTransaction = wallet.HeldBalance,
+                HeldBalanceAfterTransaction = wallet.HeldBalance,
                 Description = reason,
                 Currency = "VND",
                 CreatedAt = DateTime.UtcNow
@@ -264,25 +318,35 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(shopId);
             if (wallet == null) return;
 
+            decimal newBalance = wallet.Balance;
+            decimal newHeldBalance = wallet.HeldBalance;
+
             if (isOrderCompleted)
             {
                 await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, -amount, 0, true);
+                newBalance -= amount;
             }
             else
             {
                 await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, 0, -amount, true);
+                newHeldBalance -= amount;
             }
 
-            // [FIX B2] OrderRefund = cộng tiền cho buyer; đây là trừ tiền shop nên dùng ManualAdjustment
             var transaction = new Transaction
             {
                 WalletId = wallet.Id,
                 RelatedOrderId = orderId,
                 Amount = amount,
+                BalanceBeforeTransaction = wallet.Balance,
+                BalanceAfterTransaction = newBalance,
+                Direction = isOrderCompleted ? TransactionDirection.Out : TransactionDirection.Held,
                 Type = TransactionType.ManualAdjustment,
                 Description = $"[REFUND DEDUCTION] Funds deducted from shop for order #{orderId} refund",
                 Currency = "VND",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                HeldBalanceBeforeTransaction = wallet.HeldBalance,
+                HeldBalanceAfterTransaction = newHeldBalance,
+                FeeAmount = 0
             };
 
             await _unitOfWork.Transactions.AddAsync(transaction);
@@ -404,19 +468,23 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (wallet != null)
             {
-                // Hoàn lại tiền gốc + phí rút (Tính lại phí dựa trên Amount vì bảng WithdrawalRequest không lưu FeeAmount)
                 decimal feePercent = _walletSettings.WithdrawalFeePercent;
                 decimal feeAmount = withdrawalReq.Amount * feePercent;
                 decimal refundAmount = withdrawalReq.Amount + feeAmount;
 
                 await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, refundAmount, 0);
 
-                // Ghi log Transaction hoàn tiền vào sổ cái ví
                 var transaction = new Transaction
                 {
                     WalletId = wallet.Id,
                     Amount = refundAmount,
+                    BalanceBeforeTransaction = wallet.Balance,
+                    BalanceAfterTransaction = wallet.Balance + refundAmount,
+                    Direction = TransactionDirection.In,
                     Type = TransactionType.ManualAdjustment,
+                    HeldBalanceBeforeTransaction = wallet.HeldBalance,
+                    HeldBalanceAfterTransaction = wallet.HeldBalance,
+                    //FeeAmount = withdrawalReq.FeeAmount,
                     Description = $"[REJECTED] Withdrawal refunded. Reason: {request.Reason}",
                     Currency = "VND",
                     CreatedAt = DateTime.UtcNow
@@ -455,11 +523,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, request.Amount, 0, true);
 
+            var direction = request.Amount > 0 ? TransactionDirection.In : TransactionDirection.Out;
+
             var transaction = new Transaction
             {
                 WalletId = wallet.Id,
-                Amount = request.Amount,
+                Amount = Math.Abs(request.Amount),
+                BalanceBeforeTransaction = wallet.Balance,
+                BalanceAfterTransaction = wallet.Balance + request.Amount, // Balance đã được update bên DB, nhưng đây là record trước update của ta cần reflect chính xác
+                Direction = direction,
                 Type = TransactionType.ManualAdjustment,
+                HeldBalanceBeforeTransaction = wallet.HeldBalance,
+                HeldBalanceAfterTransaction = wallet.HeldBalance,
                 Description = $"{request.Reason} (Adjusted by Admin {adminId})",
                 Currency = "VND",
                 CreatedAt = DateTime.UtcNow
@@ -658,19 +733,23 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
             if (wallet == null) return new WalletStatisticsResponse();
 
-            var transactions = await _unitOfWork.Transactions.GetByWalletIdAsync(wallet.Id);
-            var withdrawals = await _unitOfWork.WithdrawalRequests.GetByUserIdAsync(userId);
             var now = DateTime.UtcNow;
+
+            // Query thẳng DB, không load vào memory
+            var totalRevenue = await _unitOfWork.Transactions
+                .SumAmountByTypeAsync(wallet.Id, TransactionType.SalesRevenue);
+
+            var thisMonthRevenue = await _unitOfWork.Transactions
+                .SumAmountByTypeAsync(wallet.Id, TransactionType.SalesRevenue, now.Month, now.Year);
+
+            var withdrawals = await _unitOfWork.WithdrawalRequests.GetByUserIdAsync(userId);
 
             return new WalletStatisticsResponse
             {
                 AvailableBalance = wallet.Balance,
                 HeldBalance = wallet.HeldBalance,
-                // Doanh thu = Tổng các giao dịch SalesRevenue
-                TotalRevenue = transactions.Where(t => t.Type == TransactionType.SalesRevenue).Sum(t => t.Amount),
-                ThisMonthRevenue = transactions.Where(t => t.Type == TransactionType.SalesRevenue && t.CreatedAt.Month == now.Month && t.CreatedAt.Year == now.Year).Sum(t => t.Amount),
-
-                // Rút tiền lấy từ bảng WithdrawalRequests
+                TotalRevenue = totalRevenue,
+                ThisMonthRevenue = thisMonthRevenue,
                 TotalWithdrawn = withdrawals.Where(w => w.Status == WithdrawalStatus.Completed).Sum(w => w.Amount),
                 PendingWithdrawal = withdrawals.Where(w => w.Status == WithdrawalStatus.Pending).Sum(w => w.Amount)
             };
@@ -681,10 +760,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
             if (wallet == null) return new List<HeldTransactionResponse>();
 
-            var transactions = await _unitOfWork.Transactions.GetByWalletIdAsync(wallet.Id);
-
-            // Lọc ra các giao dịch đang treo (SalesPending)
-            var heldTransactions = transactions.Where(t => t.Type == TransactionType.SalesPending).ToList();
+            // Query thẳng DB chỉ lấy SalesPending
+            var heldTransactions = await _unitOfWork.Transactions
+                .GetByWalletIdAndTypeAsync(wallet.Id, TransactionType.SalesPending);
 
             return _mapper.Map<List<HeldTransactionResponse>>(heldTransactions).ConvertDatesToLocal();
         }
@@ -706,7 +784,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 WalletId = wallet.Id,
                 OrderGroupId = orderGroupId,
                 Amount = amount,
+                BalanceBeforeTransaction = wallet.Balance,
+                BalanceAfterTransaction = wallet.Balance - amount,
+                Direction = TransactionDirection.Out,
                 Type = TransactionType.OrderPayment,
+                HeldBalanceBeforeTransaction = wallet.HeldBalance,
+                HeldBalanceAfterTransaction = wallet.HeldBalance,
                 Description = $"Payment for Order Group #{orderGroupId}",
                 Currency = "VND",
                 CreatedAt = DateTime.UtcNow
