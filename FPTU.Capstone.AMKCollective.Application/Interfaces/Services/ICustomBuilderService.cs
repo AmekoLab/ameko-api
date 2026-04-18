@@ -20,23 +20,23 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task ResetBuilderConfigAsync(Guid baseKitId);
         Task<bool> IsMatchAsync(Guid baseKitId, Guid componentId);
 
-        Task<BuilderStepResponse> RemovePartFromSessionAsync(Guid sessionId, string stepName);
+        Task<BuilderStepResponse> RemovePartFromSessionAsync(Guid sessionId, string stepName, Guid? userId);
         Task<(bool Success, Guid? CommissionRequestId, string ErrorMessage)> ConvertSessionToCommissionAsync(Guid userId, BuilderToCommissionRequest request);
         //SERVER-DRIVEN FLOW
         // 1. Bắt đầu phiên Build
         Task<BuilderStepResponse> StartBuilderSessionAsync(BuilderStartRequest request, Guid? userId);
 
         // 2. Chọn linh kiện và lấy bước tiếp theo
-        Task<BuilderStepResponse> SelectPartAsync(BuilderSelectRequest request);
+        Task<BuilderStepResponse> SelectPartAsync(BuilderSelectRequest request, Guid? userId);
 
-        Task<BuilderStepResponse> GetExistingSessionAsync(Guid sessionId, string? requestStep = null);
+        Task<BuilderStepResponse> GetExistingSessionAsync(Guid sessionId, string? requestStep = null, Guid? userId = null);
         Task<List<BuilderSessionSummaryResponse>> GetUserSessionsAsync(Guid userId);
         Task<Guid> CreateSessionFromOrderAsync(Guid orderItemId, Guid userId);
-        Task<BuilderStepResponse> AddExtraPartToSessionAsync(BuilderAddonRequest request);
-        Task<BuilderStepResponse> RemoveExtraPartFromSessionAsync(Guid sessionId, string addonKey);
+        Task<BuilderStepResponse> AddExtraPartToSessionAsync(BuilderAddonRequest request, Guid? userId);
+        Task<BuilderStepResponse> RemoveExtraPartFromSessionAsync(Guid sessionId, string addonKey, Guid? userId);
 
         /// Lấy danh sách linh kiện có thể add-on tại vị trí trên bàn phím ảo.
-        Task<AddonOptionsResponse> GetAddonOptionsAsync(Guid sessionId, string addonType, string? searchTerm = null, int page = 1, int pageSize = 20);
+        Task<AddonOptionsResponse> GetAddonOptionsAsync(Guid sessionId, string addonType, Guid? userId, string? searchTerm = null, int page = 1, int pageSize = 20);
         Task UpdateOptionAsync(Guid id, UpdateKitOptionRequest request);
     }
 }

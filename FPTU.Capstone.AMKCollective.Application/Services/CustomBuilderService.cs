@@ -203,12 +203,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             );
         }
 
-        public async Task<BuilderStepResponse> SelectPartAsync(BuilderSelectRequest request)
+        public async Task<BuilderStepResponse> SelectPartAsync(BuilderSelectRequest request, Guid? userId)
         {
             // 1. Lấy Session
             var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.SessionId);
             if (session == null) throw new KeyNotFoundException("Session expired or not found");
-
+            if (session.UserId.HasValue && session.UserId != userId)
+                throw new UnauthorizedAccessException("Access denied to this session.");
             // TODO (PRODUCTION): Bỏ comment để check expiry khi deploy thật
             // if (session.ExpiresAt < DateTime.UtcNow)
             //     throw new KeyNotFoundException("Session has expired. Please start a new session.");
@@ -329,7 +330,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         }
 
 
-        public async Task<BuilderStepResponse> RemovePartFromSessionAsync(Guid sessionId, string stepName)
+        public async Task<BuilderStepResponse> RemovePartFromSessionAsync(Guid sessionId, string stepName, Guid? userId)
         {
             // 1. Lấy Session
             var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(sessionId);
@@ -337,6 +338,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 throw new KeyNotFoundException("Session not found or expired");
             }
+            if (session.UserId.HasValue && session.UserId != userId)
+                throw new UnauthorizedAccessException("Access denied to this session.");
 
             // 2. Parse JSON hiện tại
             var currentSelection = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson)
@@ -473,7 +476,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return result;
         }
 
-        public async Task<BuilderStepResponse> GetExistingSessionAsync(Guid sessionId, string? requestStep = null)
+        public async Task<BuilderStepResponse> GetExistingSessionAsync(Guid sessionId, string? requestStep = null, Guid? userId = null)
         {
             // 1. Validate Session
             var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(sessionId);
@@ -481,6 +484,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 throw new KeyNotFoundException("Session not found");
             }
+            if (session.UserId.HasValue && userId.HasValue && session.UserId != userId)
+                throw new UnauthorizedAccessException("Access denied to this session.");
 
             // TODO: Tạm thời tắt check Hết hạn để code/test ở môi trường Dev
             // if (session.ExpiresAt < DateTime.UtcNow)
@@ -542,6 +547,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // Lưu ý: Cần đảm bảo Repo Order lấy cả OrderItemComponents (Include)
             var orderItem = await _unitOfWork.Orders.GetOrderItemByIdAsync(orderItemId);
             if (orderItem == null) throw new KeyNotFoundException("Order item not found");
+            if (orderItem.Order?.CustomerId != userId)
+                throw new UnauthorizedAccessException("This order item does not belong to you.");
             if (!orderItem.IsCustom || orderItem.ProductId == null) throw new InvalidOperationException("Not a custom kit");
 
             // 2. Lấy cấu hình gốc của Kit để map ngược ComponentId -> StepName (VD: ID 123 -> "case")
@@ -648,7 +655,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return (true, newCommission.Id, string.Empty);
         }
 
-        public async Task<BuilderStepResponse> AddExtraPartToSessionAsync(BuilderAddonRequest request)
+        public async Task<BuilderStepResponse> AddExtraPartToSessionAsync(BuilderAddonRequest request, Guid? userId)
         {
             // 1. Basic Validations
             if (request.SessionId == Guid.Empty)
@@ -661,7 +668,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(request.SessionId);
             if (session == null)
                 throw new KeyNotFoundException($"Builder session with ID {request.SessionId} not found.");
-
+            if (session.UserId.HasValue && session.UserId != userId)
+                throw new UnauthorizedAccessException("Access denied to this session.");
             if (session.BaseKit == null)
                 throw new InvalidOperationException("BaseKit information is missing for this session.");
 
@@ -765,11 +773,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return await GetExistingSessionAsync(session.Id, session.CurrentStep);
         }
 
-        public async Task<BuilderStepResponse> RemoveExtraPartFromSessionAsync(Guid sessionId, string addonKey)
+        public async Task<BuilderStepResponse> RemoveExtraPartFromSessionAsync(Guid sessionId, string addonKey, Guid? userId)
         {
             var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(sessionId);
             if (session == null) throw new KeyNotFoundException("Session expired or not found");
-
+            if (session.UserId.HasValue && session.UserId != userId)
+                throw new UnauthorizedAccessException("Access denied to this session.");
             var currentSelection = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson)
                                    ?? new Dictionary<string, SelectedPartResponse>();
 
@@ -814,7 +823,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         ///   Không truyền / "all" → trả toàn bộ addon-eligible parts của shop.
         /// </summary>
         public async Task<AddonOptionsResponse> GetAddonOptionsAsync(
-            Guid sessionId, string addonType, string? searchTerm = null, int page = 1, int pageSize = 20)
+            Guid sessionId, string addonType, Guid? userId, string? searchTerm = null, int page = 1, int pageSize = 20)
         {
             var session = await _unitOfWork.BuilderSessions.GetSessionByIdAsync(sessionId);
             if (session == null)

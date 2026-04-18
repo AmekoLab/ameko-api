@@ -311,7 +311,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return await _context.OrderItems
                 .AsNoTracking()
                 .Include(oi => oi.OrderItemComponents) 
-                .Include(oi => oi.Product) 
+                .Include(oi => oi.Product)
+                .Include(o => o.Order)
                 .FirstOrDefaultAsync(oi => oi.Id == id, token);
         }
 

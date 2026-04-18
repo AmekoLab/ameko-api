@@ -115,8 +115,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.RecipeStabilizerCount, opt => opt.MapFrom(src =>
                     GetRecipeValue(src.Specifications, "stabilizer")))
                 .ForMember(dest => dest.Status, opt => opt.MapFrom(src =>
-                    src.StockQuantity > 0 ? StockStatus.InStock : StockStatus.OutOfStock));
-
+                    src.StockQuantity > 0 ? StockStatus.InStock : StockStatus.OutOfStock))
+                .ForMember(dest => dest.IsDeleted, opt => opt.MapFrom(src => src.IsDeleted));
             CreateMap<CreateUpdatePartRequest, Model>()
                 .ForMember(dest => dest.ThumbnailURL, opt => opt.Ignore())
                 .ForMember(dest => dest.DefaultLayerImageUrl, opt => opt.Ignore())
