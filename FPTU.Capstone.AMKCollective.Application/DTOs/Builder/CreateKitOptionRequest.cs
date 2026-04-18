@@ -20,6 +20,9 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Builder
         /// <summary>Tag nhánh mà option này thuộc về, VD: "case-den". Null = tương thích mọi nhánh.</summary>
         public string? Tags { get; set; }
         /// <summary>Luật lọc bước tiếp theo, VD: "plate:case-den". Null = không lọc.</summary>
+        /// muốn 1 linh kiện nhiều nhánh thì bước tiếp theo nhập trùng tag ở nhiều linh kiện tiếp theo là được.
+        /// VD bước tiếp theo là plate thì nhập thế này: plate:tag
+        /// ở bước plate thì tag sẽ là như thế này: tag
         public string? NextStepFilterRule { get; set; }
     }
 }

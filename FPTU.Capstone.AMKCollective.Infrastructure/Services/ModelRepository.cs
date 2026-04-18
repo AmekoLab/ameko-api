@@ -90,7 +90,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<IEnumerable<Model>> GetByIdsAsync(IEnumerable<Guid> ids, CancellationToken cancellationToken = default)
         {
             return await _context.Models
-                .AsNoTracking()
                 .Include(x => x.Shop)
                 .Where(x => ids.Contains(x.Id) && !x.IsDeleted)
                 .ToListAsync(cancellationToken);

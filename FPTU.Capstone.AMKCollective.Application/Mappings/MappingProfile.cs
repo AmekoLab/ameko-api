@@ -146,10 +146,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
 
             CreateMap<CreateKitOptionRequest, KitDesignOption>()
                 .ForMember(dest => dest.LayerImageUrl, opt => opt.Ignore()); // Handled in service
-            // Tags và NextStepFilterRule được AutoMapper map tự động (trùng tên)
+                                                                             // Tags và NextStepFilterRule được AutoMapper map tự động (trùng tên)
+
+            CreateMap<UpdateKitOptionRequest, KitDesignOption>()
+                // 1. Bỏ qua ảnh vì ảnh (IFormFile) được xử lý upload riêng ra Cloud/Storage
+                .ForMember(dest => dest.LayerImageUrl, opt => opt.Ignore())
+
+                // 2. Chỉ map những trường mà FE gửi lên (khác null). 
+                // Nếu FE không gửi null, giữ nguyên giá trị cũ trong DB.
+                .ForAllMembers(opts => opts.Condition((src, dest, srcMember) => srcMember != null));
             //==================KITDESIGN=======================//
 
-           
+
             //==================ShopProfile=====================//
             CreateMap<ShopProfile, ShopResponse>();
 
