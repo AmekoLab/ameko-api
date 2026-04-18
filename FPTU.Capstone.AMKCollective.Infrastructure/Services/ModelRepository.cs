@@ -28,7 +28,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             var query = _context.Models.AsNoTracking();
             if (!includeDeleted)
             {
+                // User thường set cứng, không cho FE override
                 query = query.Where(x => !x.IsDeleted);
+            }
+            else if (queryParams.IsDeleted.HasValue)
+            {
+                // Shop owner truyền filter cụ thể
+                query = query.Where(x => x.IsDeleted == queryParams.IsDeleted.Value);
             }
 
             // Filter logic

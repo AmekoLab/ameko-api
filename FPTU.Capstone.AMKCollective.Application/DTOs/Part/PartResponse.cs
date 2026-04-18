@@ -26,5 +26,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Part
         public string ShopName { get; set; } = string.Empty;
         public string CategoryName { get; set; } = string.Empty;
         public bool IsAddonEligible { get; set; }
+        public bool IsDeleted { get; set; }
     }
 }

@@ -92,7 +92,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var result = await _service.SelectPartAsync(request);
+                var userId = GetCurrentUserId();
+                var result = await _service.SelectPartAsync(request, userId);
                 return SuccessResponse(result);
             }
             catch (KeyNotFoundException ex)
@@ -403,7 +404,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var result = await _service.GetExistingSessionAsync(sessionId, stepName);
+                var userId = GetCurrentUserId();
+                var result = await _service.GetExistingSessionAsync(sessionId, stepName, userId);
                 return SuccessResponse(result);
             }
             catch (KeyNotFoundException)
@@ -428,7 +430,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var result = await _service.RemovePartFromSessionAsync(sessionId, stepName);
+                var userId = GetCurrentUserId();
+                var result = await _service.RemovePartFromSessionAsync(sessionId, stepName, userId);
                 return SuccessResponse(result);
             }
             catch (KeyNotFoundException ex)
@@ -573,8 +576,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             {
                 // Đảm bảo SessionId trong đường dẫn (route) khớp với body gửi lên
                 request.SessionId = sessionId;
-
-                var result = await _service.AddExtraPartToSessionAsync(request);
+                var userId = GetCurrentUserId();
+                var result = await _service.AddExtraPartToSessionAsync(request, userId);
                 return SuccessResponse(result);
             }
             catch (KeyNotFoundException ex)
@@ -608,7 +611,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var result = await _service.RemoveExtraPartFromSessionAsync(sessionId, addonKey);
+                var userId = GetCurrentUserId();
+                var result = await _service.RemoveExtraPartFromSessionAsync(sessionId, addonKey, userId);
                 return SuccessResponse(result);
             }
             catch (KeyNotFoundException ex)
@@ -658,8 +662,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             {
                 if (string.IsNullOrWhiteSpace(addonType))
                     return ErrorResponse<string>("addonType is required. Supported values: 'switch', 'keycap'.");
-
-                var result = await _service.GetAddonOptionsAsync(sessionId, addonType, searchTerm, page, pageSize);
+                var userId = GetCurrentUserId();
+                var result = await _service.GetAddonOptionsAsync(sessionId, addonType, userId, searchTerm, page, pageSize);
                 return SuccessResponse(result);
             }
             catch (KeyNotFoundException ex)
