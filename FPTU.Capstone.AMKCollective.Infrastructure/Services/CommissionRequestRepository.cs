@@ -43,7 +43,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<IEnumerable<CommissionRequest>> GetOpenPoolRequestsAsync()
         {
             return await _context.CommissionRequests
-                .Where(r => r.Status == CommissionStatus.OpenPool)
+                .Where(r => (r.Status == CommissionStatus.OpenPool) ||
+                 (r.Status == CommissionStatus.Quoted && r.TargetedShopId == null))
                 .Include(r => r.User)
                 .OrderByDescending(r => r.CreatedAt)
                 .ToListAsync();

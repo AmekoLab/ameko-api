@@ -228,7 +228,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var shop = await _unitOfWork.Shops.GetByUserIdAsync(shopUserId);
             if (shop == null) return (false, "Only shop accounts are allowed to submit quotations.");
 
-            // [Fix #2] Không cho Shop bị ban/inactive/pending submit báo giá
+            // Không cho Shop bị ban/inactive/pending submit báo giá
             if (shop.Status == ShopStatus.Banned)
                 return (false, "Your shop has been banned and cannot submit quotations.");
             if (shop.Status == ShopStatus.Inactive || !shop.IsActive)
@@ -252,7 +252,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 return (false, "This request is not published for quotations yet.");
             }
-
+            if (request.TargetedShopId.HasValue && request.TargetedShopId != shop.Id)
+            {
+                return (false, "This request is reserved for a specific shop and is not open for bidding.");
+            }
             // Check shop đã có báo giá pending (tránh báo giá trùng khi chưa có quyết định)
             if (request.Quotes.Any(q => q.ShopId == shop.Id && q.Status == QuoteStatus.PendingUserDecision))
             {
@@ -338,7 +341,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 request.Status = CommissionStatus.OpenPool;
             }
 
-            if (!request.ShopResponseDeadlineAt.HasValue)
+            if (!request.ShopResponseDeadlineAt.HasValue || request.ShopResponseDeadlineAt.Value <= DateTime.UtcNow)
             {
                 var responseHours = request.ShopResponseWindowHours > 0
                     ? request.ShopResponseWindowHours
