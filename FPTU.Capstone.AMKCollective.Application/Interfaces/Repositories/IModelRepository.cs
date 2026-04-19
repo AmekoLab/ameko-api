@@ -27,6 +27,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<bool> ExistsAsync(Guid id, CancellationToken token = default);
         Task<bool> IsPartInActiveOrderAsync(Guid partId, CancellationToken token = default);
         Task<Guid> GetShopIdByAssembledProductAsync(Guid assembledProductId, CancellationToken token = default);
+        Task<Model?> GetByIdIncludeDeletedAsync(Guid id, CancellationToken cancellationToken = default);
+        Task RestoreAsync(Guid id, CancellationToken cancellationToken = default);
     }
 }
 

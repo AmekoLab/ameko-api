@@ -18,5 +18,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 
         Task<IEnumerable<PartResponse>> GetRecommendationsAsync(Guid baseKitId, string partType);
         Task<Dictionary<Guid, int>> CheckStockAvailabilityAsync(List<Guid> productIds);
+        Task RestoreAsync(Guid userId, Guid id);
     }
 }

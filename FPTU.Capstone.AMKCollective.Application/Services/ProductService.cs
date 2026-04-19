@@ -265,8 +265,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             return await _unitOfWork.Models.CheckStockBatchAsync(productIds);
         }
+        public async Task RestoreAsync(Guid userId, Guid id)
+        {
+            var entity = await _unitOfWork.Models.GetByIdIncludeDeletedAsync(id);
+            if (entity == null) throw new KeyNotFoundException("Product not found");
 
-        
+            if (!entity.IsDeleted) throw new InvalidOperationException("Product is already active, not deleted.");
+            var shopId = await GetShopIdFromUserId(userId);
+            if (entity.ShopId != shopId)
+                throw new UnauthorizedAccessException("You do not have permission to restore this product.");
+
+            await _unitOfWork.Models.RestoreAsync(id);
+            await _unitOfWork.CommitAsync();
+        }
+
     }
 }
 

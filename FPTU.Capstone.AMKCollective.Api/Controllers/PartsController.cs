@@ -171,6 +171,45 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return ServerErrorResponse<string>("An error occurred while deleting part");
             }
         }
+
+        // PATCH: api/v1/parts/{id}/restore
+        [HttpPatch("{id}/restore")]
+        //TODO: uncomment authorize sau khi test xong
+        // [Authorize(Roles = "Shop")] 
+        [SwaggerOperation(
+            Summary = "Restore Deleted Part (Shop/Admin)",
+            Description = "Restores a soft-deleted part and sets it back to active."
+        )]
+        [SwaggerResponse(200, "Part restored successfully")]
+        [SwaggerResponse(400, "Part is already active")]
+        [SwaggerResponse(404, "Part not found")]
+        public async Task<IActionResult> Restore(Guid id)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                await _service.RestoreAsync(userId, id);
+                return SuccessResponse("Part restored successfully");
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFoundResponse<string>($"Part with id {id} not found");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<string>(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error restoring part: {Id}", id);
+                return ServerErrorResponse<string>("An error occurred while restoring part");
+            }
+        }
+
         // GET: api/parts/recommendations
         [HttpGet("recommendations")]
         [SwaggerOperation(

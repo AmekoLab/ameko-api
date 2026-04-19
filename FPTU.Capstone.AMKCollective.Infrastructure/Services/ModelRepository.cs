@@ -239,5 +239,23 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Select(m => m.ShopId)
                 .FirstOrDefaultAsync(token);
         }
+        public async Task<Model?> GetByIdIncludeDeletedAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            return await _context.Models
+                .Include(x => x.Shop)
+                .Include(x => x.Category)
+                .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        }
+
+        public async Task RestoreAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            await _context.Models
+                .Where(x => x.Id == id)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.IsDeleted, false)
+                    .SetProperty(x => x.IsActive, true)
+                    .SetProperty(x => x.UpdatedAt, DateTime.UtcNow),
+                    cancellationToken);
+        }
     }
 }
