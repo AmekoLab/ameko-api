@@ -71,7 +71,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (transaction.WalletId != wallet.Id)
                 throw new UnauthorizedAccessException("You do not have permission to view this transaction.");
 
-            var dto = _mapper.Map<WalletTransactionDetailResponse>(transaction);
+            var dto = _mapper.Map<WalletTransactionDetailResponse>(transaction).ConvertDatesToLocal();
             dto.ShopName = transaction.Wallet?.User?.ShopProfile?.ShopName;
 
             if (transaction.Type == TransactionType.Withdrawal)

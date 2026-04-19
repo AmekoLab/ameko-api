@@ -172,6 +172,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Helpers
             return dtos;
         }
 
+        public static WalletTransactionDetailResponse ConvertDatesToLocal(this WalletTransactionDetailResponse dto)
+        {
+            dto.CreatedAt = dto.CreatedAt.ConvertToLocalTime();
+            return dto;
+        }
+
         // ===================== VOUCHER =====================
         public static VoucherResponse ConvertDatesToLocal(this VoucherResponse dto)
         {

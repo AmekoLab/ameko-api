@@ -1,5 +1,6 @@
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -86,6 +87,18 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                     && q.UpdatedAt.HasValue
                     && q.UpdatedAt.Value <= acceptedBefore)
                 .ToListAsync();
+        }
+
+        public async Task<HashSet<Guid>> GetRequestIdsWithPendingQuoteByShopAsync(Guid shopId, List<Guid> requestIds)
+        {
+            var result = await _context.CommissionQuotes
+                .Where(q => q.ShopId == shopId
+                         && q.Status == QuoteStatus.PendingUserDecision
+                         && requestIds.Contains(q.CommissionRequestId))
+                .Select(q => q.CommissionRequestId)
+                .ToListAsync();
+
+            return result.ToHashSet();
         }
     }
 }

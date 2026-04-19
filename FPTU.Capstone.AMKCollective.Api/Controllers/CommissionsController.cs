@@ -175,7 +175,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         [Authorize] 
         public async Task<IActionResult> GetOpenPoolRequests()
         {
-            var requests = await _commissionService.GetOpenPoolRequestsAsync();
+            var userId = GetCurrentUserId();
+            var requests = await _commissionService.GetOpenPoolRequestsAsync(userId);
             return SuccessResponse(requests, "Open pool requests retrieved successfully");
         }
         /// <summary>

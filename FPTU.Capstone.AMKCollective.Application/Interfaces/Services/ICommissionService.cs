@@ -20,7 +20,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<(bool Success, string ErrorMessage)> CancelRequestAsync(Guid userId, Guid requestId);
         Task<(bool Success, string ErrorMessage)> PublishToPoolAsync(Guid userId, Guid requestId);
         // Shop
-        Task<IEnumerable<CommissionRequestResponse>> GetOpenPoolRequestsAsync();
+        Task<IEnumerable<CommissionRequestResponse>> GetOpenPoolRequestsAsync(Guid? currentUserId = null);
         Task<(bool Success, string ErrorMessage)> SubmitQuoteAsync(Guid shopUserId, Guid requestId, SubmitQuoteRequest request);
         Task<(bool Success, string ErrorMessage)> UpdateQuoteAsync(Guid shopUserId, Guid quoteId, SubmitQuoteRequest updateRequest);
         Task<(bool Success, string ErrorMessage)> RevokeQuoteAsync(Guid shopUserId, Guid quoteId);

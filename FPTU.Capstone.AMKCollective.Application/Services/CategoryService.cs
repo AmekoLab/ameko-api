@@ -24,20 +24,30 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _mapper = mapper;
         }
 
-        public async Task<IEnumerable<CategorySummaryResponse>> GetCategoriesAsync(GetCategoriesFilterRequest queryParams, CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<CategorySummaryResponse>> GetCategoriesAsync(
+    GetCategoriesFilterRequest queryParams,
+    Guid? userId,                          // ← thêm param
+    CancellationToken cancellationToken = default)
         {
+            // Nếu FE không truyền ShopId thì tự resolve từ userId
+            if (!queryParams.ShopId.HasValue && userId.HasValue)
+            {
+                var shopId = await ResolveShopIdAsync(userId.Value);
+                if (shopId.HasValue)
+                    queryParams.ShopId = shopId; // Shop đang đăng nhập → thấy Global + Private của họ
+            }
+
             var (categories, totalCount) = await _unitOfWork.Categories.GetPagedAsync(
                 queryParams.PageNumber,
                 queryParams.PageSize,
                 queryParams.IsActive,
                 queryParams.ParentId,
                 queryParams.IncludeSubCategories,
-                queryParams.ShopId, // Pass shopId filter
+                queryParams.ShopId,
                 false,
                 cancellationToken);
 
-            // Manual mapping để kiểm soát dữ liệu tốt hơn
-            var categoryDtos = categories.Select(c => new CategorySummaryResponse
+            return categories.Select(c => new CategorySummaryResponse
             {
                 Id = c.Id,
                 Name = c.Name,
@@ -49,8 +59,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 SubCategoryCount = c.SubCategories.Count,
                 PartCount = c.Models.Count
             }).ToList();
-
-            return categoryDtos;
         }
 
         public async Task<CategoryResponse?> GetCategoryByIdAsync(Guid id, bool includeSubCategories = false, CancellationToken cancellationToken = default)
@@ -60,24 +68,24 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return MapToCategoryDto(category, includeSubCategories);
         }
 
-        public async Task<CategoryResponse> CreateCategoryAsync(CreateCategoryRequest request, Guid? shopId, CancellationToken cancellationToken = default)
+        public async Task<CategoryResponse> CreateCategoryAsync(CreateCategoryRequest request, Guid userId, CancellationToken cancellationToken = default)
         {
+            // Resolve shopId từ userId — null nếu là Admin/Customer
+            var shopId = await ResolveShopIdAsync(userId);
+
             if (request.ParentId.HasValue)
             {
                 var parentExists = await _unitOfWork.Categories.ExistsAsync(request.ParentId.Value, cancellationToken);
                 if (!parentExists) throw new ArgumentException("Parent category does not exist.");
             }
 
-            // Lấy tên Shop để làm Namespace cho Slug (nếu là Shop tạo)
             string? shopName = null;
-            // Coi Guid.Empty là Admin -> không cần lấy tên
-            if (shopId.HasValue && shopId != Guid.Empty)
+            if (shopId.HasValue)
             {
                 var shop = await _unitOfWork.Shops.GetByIdAsync(shopId.Value);
-                if (shop != null) shopName = shop.ShopName;
+                shopName = shop?.ShopName;
             }
 
-            //truyền shopName vào
             string uniqueSlug = await GenerateUniqueSlugAsync(request.Name, shopName, null, cancellationToken);
 
             var category = new Category
@@ -87,7 +95,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Slug = uniqueSlug,
                 ParentId = request.ParentId,
                 IsActive = request.IsActive,
-                ShopId = shopId, // Can be null (global) or specific Shop ID (private)
+                ShopId = shopId,
                 ThumbnailURL = null
             };
 
@@ -106,12 +114,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return MapToCategoryDto(category, false);
         }
 
-        public async Task<CategoryResponse> UpdateCategoryAsync(Guid id, UpdateCategoryRequest request, Guid? requesterShopId, CancellationToken cancellationToken = default)
+        public async Task<CategoryResponse> UpdateCategoryAsync(Guid id, UpdateCategoryRequest request, Guid userId, CancellationToken cancellationToken = default)
         {
             var category = await _unitOfWork.Categories.GetByIdAsync(id, false, cancellationToken);
             if (category == null) throw new KeyNotFoundException($"Category with id {id} not found.");
+            var requesterShopId = await ResolveShopIdAsync(userId);
 
-            // [Fix #2] Admin luôn có requesterShopId = null (GetCurrentUserContextAsync chỉ set shopId khi role == "Shop")
+            // Admin luôn có requesterShopId = null (GetCurrentUserContextAsync chỉ set shopId khi role == "Shop")
             // Guid.Empty không bao giờ xảy ra — bỏ condition thừa để tránh hiểu nhầm
             bool isAdmin = !requesterShopId.HasValue;
 
@@ -162,12 +171,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return MapToCategoryDto(category, false);
         }
 
-        public async Task<bool> DeleteCategoryAsync(Guid id, Guid? requesterShopId, CancellationToken cancellationToken = default)
+        public async Task<bool> DeleteCategoryAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
         {
             var category = await _unitOfWork.Categories.GetByIdAsync(id, false, cancellationToken);
             if (category == null) return false;
+            var requesterShopId = await ResolveShopIdAsync(userId);
 
-            // [Fix #2] Admin luôn có requesterShopId = null
+            // Admin luôn có requesterShopId = null
             bool isAdmin = !requesterShopId.HasValue;
 
             if (!isAdmin && category.ShopId != requesterShopId)
@@ -314,6 +324,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             return finalSlug;
+        }
+
+        private async Task<Guid?> ResolveShopIdAsync(Guid userId)
+        {
+            if (userId == Guid.Empty) return null;
+            var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
+            return shop?.Id; // null = Admin hoặc Customer
         }
     }
 }

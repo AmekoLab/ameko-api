@@ -20,5 +20,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<List<CommissionQuote>> GetAcceptedQuotesPastPaymentDeadlineAsync(DateTime acceptedBefore);
         Task AddAsync(CommissionQuote quote);
         Task UpdateAsync(CommissionQuote quote);
+        Task<HashSet<Guid>> GetRequestIdsWithPendingQuoteByShopAsync(Guid shopId, List<Guid> requestIds);
+
     }
 }
