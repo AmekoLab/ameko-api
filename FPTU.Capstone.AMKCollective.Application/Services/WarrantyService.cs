@@ -17,6 +17,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IWalletService _walletService;
         private readonly INotificationService _notificationService;
         private readonly IAIService _aiService;
+        private readonly IReputationService _reputationService;
 
         public WarrantyService(
             IUnitOfWork unitOfWork, 
@@ -24,7 +25,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             IConfiguration configuration,
             IWalletService walletService,
             INotificationService notificationService,
-            IAIService aiService)
+            IAIService aiService,
+            IReputationService reputationService)
         {
             _unitOfWork = unitOfWork;
             _paymentService = paymentService;
@@ -32,6 +34,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _walletService = walletService;
             _notificationService = notificationService;
             _aiService = aiService;
+            _reputationService = reputationService;
         }
 
         // =================================================================
@@ -720,12 +723,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task AutoCancelExpiredIssuesAsync(CancellationToken ct = default)
         {
-            // Issues in AwaitingReturn for more than X days (based on UpdatedAt)
-            int timeoutDays = _configuration.GetValue<int>("WarrantySettings:ReturnShippingTimeoutDays", 3);
-            var threshold = DateTime.UtcNow.AddDays(-timeoutDays);
-            var expiredIssues = await _unitOfWork.OrderIssues.GetExpiredIssuesAsync(threshold);
+            // --- 1. Handle Shop No-Reply (InProgress) ---
+            int shopTimeoutDays = _configuration.GetValue<int>("WarrantySettings:ShopNoReplyTimeoutDays", 3);
+            int shopPenaltyPoints = _configuration.GetValue<int>("ReputationSettings:PointsDeductWarrantyNoResponse", 3);
+            var shopThreshold = DateTime.UtcNow.AddDays(-shopTimeoutDays);
 
-            foreach (var issue in expiredIssues)
+            var shopExpiredIssues = await _unitOfWork.OrderIssues.GetExpiredIssuesByStatusAsync(OrderIssueStatus.InProgress, shopThreshold);
+
+            foreach (var issue in shopExpiredIssues)
             {
                 issue.Status = OrderIssueStatus.AutoCancelled;
                 issue.UpdatedAt = DateTime.UtcNow;
@@ -736,14 +741,49 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     ActionById = Guid.Empty, // System
                     ActionByRole = RoleType.Admin,
                     Action = OrderIssueAction.SystemCancel,
-                    Comment = $"Auto-cancelled: customer did not ship return within {timeoutDays} days.",
+                    Comment = $"Auto-cancelled: Shop did not respond within {shopTimeoutDays} days.",
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                // Penalty for Shop
+                if (issue.Order != null && issue.Order.ShopId.HasValue)
+                {
+                    await _reputationService.AdjustShopScoreAsync(
+                        issue.Order.ShopId.Value,
+                        -shopPenaltyPoints,
+                        $"Penalty: Shop ignored warranty request #{issue.Id} for {shopTimeoutDays} days.",
+                        "OrderIssue",
+                        issue.Id.ToString());
+                }
+
+                _unitOfWork.OrderIssues.Update(issue);
+            }
+
+            // --- 2. Handle Customer No-Return (AwaitingReturn) ---
+            int customerTimeoutDays = _configuration.GetValue<int>("WarrantySettings:ReturnShippingTimeoutDays", 7);
+            var customerThreshold = DateTime.UtcNow.AddDays(-customerTimeoutDays);
+
+            var customerExpiredIssues = await _unitOfWork.OrderIssues.GetExpiredIssuesByStatusAsync(OrderIssueStatus.AwaitingReturn, customerThreshold);
+
+            foreach (var issue in customerExpiredIssues)
+            {
+                issue.Status = OrderIssueStatus.AutoCancelled;
+                issue.UpdatedAt = DateTime.UtcNow;
+
+                await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
+                {
+                    OrderIssueId = issue.Id,
+                    ActionById = Guid.Empty, // System
+                    ActionByRole = RoleType.Admin,
+                    Action = OrderIssueAction.SystemCancel,
+                    Comment = $"Auto-cancelled: Customer did not ship return within {customerTimeoutDays} days.",
                     CreatedAt = DateTime.UtcNow
                 });
 
                 _unitOfWork.OrderIssues.Update(issue);
             }
 
-            if (expiredIssues.Any())
+            if (shopExpiredIssues.Any() || customerExpiredIssues.Any())
             {
                 await _unitOfWork.CommitAsync();
             }
