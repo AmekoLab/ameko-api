@@ -17,6 +17,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IWalletService _walletService;
         private readonly INotificationService _notificationService;
         private readonly IAIService _aiService;
+        private readonly IReputationService _reputationService;
 
         public WarrantyService(
             IUnitOfWork unitOfWork, 
@@ -24,7 +25,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             IConfiguration configuration,
             IWalletService walletService,
             INotificationService notificationService,
-            IAIService aiService)
+            IAIService aiService,
+            IReputationService reputationService)
         {
             _unitOfWork = unitOfWork;
             _paymentService = paymentService;
@@ -32,6 +34,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _walletService = walletService;
             _notificationService = notificationService;
             _aiService = aiService;
+            _reputationService = reputationService;
         }
 
         // =================================================================
@@ -463,73 +466,87 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 var shop = await _unitOfWork.Shops.GetByIdAsync(order.ShopId!.Value);
                 if (shop == null) throw new KeyNotFoundException("Shop not found.");
 
-                await _walletService.RefundToWalletAsync(order.CustomerId, refundAmount, $"Refund for warranty/return (Order #{order.Id}, Issue #{issue.Id})");
-                bool isReleased = order.PaymentStatus == PaymentStatus.Released;
-                await _walletService.DeductFundsForRefundAsync(shop.UserId, order.Id, refundAmount, isReleased);
-
-                await _notificationService.SendNotificationAsync(order.CustomerId, 
-                    "Refund Successful", 
-                    $"Your refund of {refundAmount:N0} for order #{order.Id} has been processed to your wallet.", 
-                    "Warranty",
-                    referenceId: issue.Id.ToString(),
-                    referenceType: "OrderIssue",
-                    redirectUrl: $"/warranty-requests/{issue.Id}",
-                    actorId: adminId);
-
-                // ── [FIX] Record Transaction for Warranty Reference ──
-                // RelatedOrderId must be a valid OrderId due to DB FK constraints.
-                // We store OrderId here and include IssueId in the description.
-                var customerWallet = await _unitOfWork.Wallets.GetByUserIdAsync(order.CustomerId);
-                var shopWallet = await _unitOfWork.Wallets.GetByUserIdAsync(shop.UserId);
-
-                if (customerWallet != null)
+                await _unitOfWork.ExecuteTransactionAsync(async () =>
                 {
-                    await _unitOfWork.Transactions.AddAsync(new Transaction
+                    await _walletService.RefundToWalletAsync(order.CustomerId, refundAmount, $"Refund for warranty/return (Order #{order.Id}, Issue #{issue.Id})");
+                    bool isReleased = order.PaymentStatus == PaymentStatus.Released;
+                    await _walletService.DeductFundsForRefundAsync(shop.UserId, order.Id, refundAmount, isReleased);
+
+                    await _notificationService.SendNotificationAsync(order.CustomerId, 
+                        "Refund Successful", 
+                        $"Your refund of {refundAmount:N0} for order #{order.Id} has been processed to your wallet.", 
+                        "Warranty",
+                        referenceId: issue.Id.ToString(),
+                        referenceType: "OrderIssue",
+                        redirectUrl: $"/warranty-requests/{issue.Id}",
+                        actorId: adminId);
+
+                    // ── [FIX] Record Transaction for Warranty Reference ──
+                    var customerWallet = await _unitOfWork.Wallets.GetByUserIdAsync(order.CustomerId);
+                    var shopWallet = await _unitOfWork.Wallets.GetByUserIdAsync(shop.UserId);
+
+                    if (customerWallet != null)
                     {
-                        WalletId = customerWallet.Id,
-                        RelatedOrderId = order.Id, 
-                        Amount = refundAmount,
-                        Type = TransactionType.OrderRefund,
-                        Description = $"[Warranty Refund] Refund for Issue #{issue.Id}",
+                        await _unitOfWork.Transactions.AddAsync(new Transaction
+                        {
+                            WalletId = customerWallet.Id,
+                            RelatedOrderId = order.Id, 
+                            Amount = refundAmount,
+                            Type = TransactionType.OrderRefund,
+                            Description = $"[Warranty Refund] Refund for Issue #{issue.Id}",
+                            Direction = TransactionDirection.In,
+                            BalanceBeforeTransaction = customerWallet.Balance - refundAmount,
+                            BalanceAfterTransaction = customerWallet.Balance,
+                            HeldBalanceBeforeTransaction = customerWallet.HeldBalance, // Customer: No HeldBalance change
+                            HeldBalanceAfterTransaction = customerWallet.HeldBalance,  // Customer: No HeldBalance change
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                    if (shopWallet != null)
+                    {
+                        await _unitOfWork.Transactions.AddAsync(new Transaction
+                        {
+                            WalletId = shopWallet.Id,
+                            RelatedOrderId = order.Id,
+                            Amount = refundAmount,
+                            Type = TransactionType.ManualAdjustment,
+                            Description = $"[Warranty Deduction] Deduction for Issue #{issue.Id}",
+                            Direction = isReleased ? TransactionDirection.Out : TransactionDirection.Held,
+                            BalanceBeforeTransaction = isReleased ? shopWallet.Balance + refundAmount : shopWallet.Balance,
+                            BalanceAfterTransaction = shopWallet.Balance,
+                            HeldBalanceBeforeTransaction = isReleased ? shopWallet.HeldBalance : shopWallet.HeldBalance + refundAmount,
+                            HeldBalanceAfterTransaction = shopWallet.HeldBalance,
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+
+                    // ── Stock Reintegration (No Return Case) ──
+                    await ReintegrateStockForIssueAsync(issue);
+
+                    issue.Status = OrderIssueStatus.Completed;
+                    issue.AdminNote = dto.AdminNote;
+                    issue.UpdatedAt = DateTime.UtcNow;
+
+                    // Update OrderStatus to Refunded if it's a full order refund
+                    if (issue.Description != null && issue.Description.StartsWith("[OrderLevel]"))
+                    {
+                        order.OrderStatus = OrderStatus.Refunded;
+                        await _unitOfWork.Orders.UpdateOrderAsync(order, ct);
+                    }
+
+                    await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
+                    {
+                        OrderIssueId = issue.Id,
+                        ActionById = adminId,
+                        ActionByRole = RoleType.Admin,
+                        Action = OrderIssueAction.AdminDecision,
+                        AdminDecision = true,
+                        Comment = dto.AdminNote ?? "Approved: refund only (item not shipped or cancellation) + stock reintegrated.",
                         CreatedAt = DateTime.UtcNow
                     });
-                }
-                if (shopWallet != null)
-                {
-                    await _unitOfWork.Transactions.AddAsync(new Transaction
-                    {
-                        WalletId = shopWallet.Id,
-                        RelatedOrderId = order.Id,
-                        Amount = refundAmount,
-                        Type = TransactionType.ManualAdjustment,
-                        Description = $"[Warranty Deduction] Deduction for Issue #{issue.Id}",
-                        CreatedAt = DateTime.UtcNow
-                    });
-                }
 
-                // ── Stock Reintegration (No Return Case) ──
-                await ReintegrateStockForIssueAsync(issue);
-
-                issue.Status = OrderIssueStatus.Completed;
-                issue.AdminNote = dto.AdminNote;
-                issue.UpdatedAt = DateTime.UtcNow;
-
-                // Update OrderStatus to Refunded if it's a full order refund
-                if (issue.Description != null && issue.Description.StartsWith("[OrderLevel]"))
-                {
-                    order.OrderStatus = OrderStatus.Refunded;
-                    await _unitOfWork.Orders.UpdateOrderAsync(order, ct);
-                }
-
-                await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
-                {
-                    OrderIssueId = issue.Id,
-                    ActionById = adminId,
-                    ActionByRole = RoleType.Admin,
-                    Action = OrderIssueAction.AdminDecision,
-                    AdminDecision = true,
-                    Comment = dto.AdminNote ?? "Approved: refund only (item not shipped or cancellation) + stock reintegrated.",
-                    CreatedAt = DateTime.UtcNow
+                    _unitOfWork.OrderIssues.Update(issue);
+                    await _unitOfWork.CommitAsync();
                 });
             }
 
@@ -627,57 +644,73 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var shopEntity = await _unitOfWork.Shops.GetByIdAsync(order.ShopId!.Value);
             if (shopEntity == null) throw new KeyNotFoundException("Shop not found.");
 
-            await _walletService.RefundToWalletAsync(issue.UserId, refundAmount, $"Refund for warranty/return (Order #{order.Id}, Issue #{issue.Id})");
-            bool isReleasedNow = order.PaymentStatus == PaymentStatus.Released;
-            await _walletService.DeductFundsForRefundAsync(shopEntity.UserId, order.Id, refundAmount, isReleasedNow);
-
-            // ── Notification ──
-            await _notificationService.SendNotificationAsync(issue.UserId, 
-                "Refund Successful", 
-                $"Your refund of {refundAmount:N0} for order #{order.Id} has been processed to your wallet after successful return and stock reintegration.", 
-                "Warranty",
-                referenceId: issue.Id.ToString(),
-                referenceType: "OrderIssue",
-                redirectUrl: $"/warranty-requests/{issue.Id}",
-                actorId: shopOwnerId);
-
-            // ── [FIX] Record Transaction for Warranty Reference ──
-            var customerWalletSub = await _unitOfWork.Wallets.GetByUserIdAsync(issue.UserId);
-            var shopWalletSub = await _unitOfWork.Wallets.GetByUserIdAsync(shopEntity.UserId);
-
-            if (customerWalletSub != null)
+            await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
-                await _unitOfWork.Transactions.AddAsync(new Transaction
+                await _walletService.RefundToWalletAsync(issue.UserId, refundAmount, $"Refund for warranty/return (Order #{order.Id}, Issue #{issue.Id})");
+                bool isReleasedNow = order.PaymentStatus == PaymentStatus.Released;
+                await _walletService.DeductFundsForRefundAsync(shopEntity.UserId, order.Id, refundAmount, isReleasedNow);
+
+                // ── Notification ──
+                await _notificationService.SendNotificationAsync(issue.UserId, 
+                    "Refund Successful", 
+                    $"Your refund of {refundAmount:N0} for order #{order.Id} has been processed to your wallet after successful return and stock reintegration.", 
+                    "Warranty",
+                    referenceId: issue.Id.ToString(),
+                    referenceType: "OrderIssue",
+                    redirectUrl: $"/warranty-requests/{issue.Id}",
+                    actorId: shopOwnerId);
+
+                // ── [FIX] Record Transaction for Warranty Reference ──
+                var customerWalletSub = await _unitOfWork.Wallets.GetByUserIdAsync(issue.UserId);
+                var shopWalletSub = await _unitOfWork.Wallets.GetByUserIdAsync(shopEntity.UserId);
+
+                if (customerWalletSub != null)
                 {
-                    WalletId = customerWalletSub.Id,
-                    RelatedOrderId = order.Id, 
-                    Amount = refundAmount,
-                    Type = TransactionType.OrderRefund,
-                    Description = $"[Warranty Refund] Refund for Issue #{issue.Id} (After Return)",
+                    await _unitOfWork.Transactions.AddAsync(new Transaction
+                    {
+                        WalletId = customerWalletSub.Id,
+                        RelatedOrderId = order.Id, 
+                        Amount = refundAmount,
+                        Type = TransactionType.OrderRefund,
+                        Description = $"[Warranty Refund] Refund for Issue #{issue.Id} (After Return)",
+                        Direction = TransactionDirection.In,
+                        BalanceBeforeTransaction = customerWalletSub.Balance - refundAmount,
+                        BalanceAfterTransaction = customerWalletSub.Balance,
+                        HeldBalanceBeforeTransaction = customerWalletSub.HeldBalance, // Customer: No HeldBalance change
+                        HeldBalanceAfterTransaction = customerWalletSub.HeldBalance,  // Customer: No HeldBalance change
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+                if (shopWalletSub != null)
+                {
+                    await _unitOfWork.Transactions.AddAsync(new Transaction
+                    {
+                        WalletId = shopWalletSub.Id,
+                        RelatedOrderId = order.Id,
+                        Amount = refundAmount,
+                        Type = TransactionType.ManualAdjustment,
+                        Description = $"[Warranty Deduction] Deduction for Issue #{issue.Id} (After Return)",
+                        Direction = isReleasedNow ? TransactionDirection.Out : TransactionDirection.Held,
+                        BalanceBeforeTransaction = isReleasedNow ? shopWalletSub.Balance + refundAmount : shopWalletSub.Balance,
+                        BalanceAfterTransaction = shopWalletSub.Balance,
+                        HeldBalanceBeforeTransaction = isReleasedNow ? shopWalletSub.HeldBalance : shopWalletSub.HeldBalance + refundAmount,
+                        HeldBalanceAfterTransaction = shopWalletSub.HeldBalance,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+
+                await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
+                {
+                    OrderIssueId = issue.Id,
+                    ActionById = shopOwnerId,
+                    ActionByRole = RoleType.Shop,
+                    Action = OrderIssueAction.ShopReceivedReturn,
+                    Comment = "Shop confirmed receipt of returned product. Stock reintegrated. Issue completed.",
                     CreatedAt = DateTime.UtcNow
                 });
-            }
-            if (shopWalletSub != null)
-            {
-                await _unitOfWork.Transactions.AddAsync(new Transaction
-                {
-                    WalletId = shopWalletSub.Id,
-                    RelatedOrderId = order.Id,
-                    Amount = refundAmount,
-                    Type = TransactionType.ManualAdjustment,
-                    Description = $"[Warranty Deduction] Deduction for Issue #{issue.Id} (After Return)",
-                    CreatedAt = DateTime.UtcNow
-                });
-            }
 
-            await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
-            {
-                OrderIssueId = issue.Id,
-                ActionById = shopOwnerId,
-                ActionByRole = RoleType.Shop,
-                Action = OrderIssueAction.ShopReceivedReturn,
-                Comment = "Shop confirmed receipt of returned product. Stock reintegrated. Issue completed.",
-                CreatedAt = DateTime.UtcNow
+                _unitOfWork.OrderIssues.Update(issue);
+                await _unitOfWork.CommitAsync();
             });
 
             _unitOfWork.OrderIssues.Update(issue);
@@ -690,12 +723,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task AutoCancelExpiredIssuesAsync(CancellationToken ct = default)
         {
-            // Issues in AwaitingReturn for more than X days (based on UpdatedAt)
-            int timeoutDays = _configuration.GetValue<int>("WarrantySettings:ReturnShippingTimeoutDays", 3);
-            var threshold = DateTime.UtcNow.AddDays(-timeoutDays);
-            var expiredIssues = await _unitOfWork.OrderIssues.GetExpiredIssuesAsync(threshold);
+            // --- 1. Handle Shop No-Reply (InProgress) ---
+            int shopTimeoutDays = _configuration.GetValue<int>("WarrantySettings:ShopNoReplyTimeoutDays", 3);
+            int shopPenaltyPoints = _configuration.GetValue<int>("ReputationSettings:PointsDeductWarrantyNoResponse", 3);
+            var shopThreshold = DateTime.UtcNow.AddDays(-shopTimeoutDays);
 
-            foreach (var issue in expiredIssues)
+            var shopExpiredIssues = await _unitOfWork.OrderIssues.GetExpiredIssuesByStatusAsync(OrderIssueStatus.InProgress, shopThreshold);
+
+            foreach (var issue in shopExpiredIssues)
             {
                 issue.Status = OrderIssueStatus.AutoCancelled;
                 issue.UpdatedAt = DateTime.UtcNow;
@@ -706,14 +741,49 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     ActionById = Guid.Empty, // System
                     ActionByRole = RoleType.Admin,
                     Action = OrderIssueAction.SystemCancel,
-                    Comment = $"Auto-cancelled: customer did not ship return within {timeoutDays} days.",
+                    Comment = $"Auto-cancelled: Shop did not respond within {shopTimeoutDays} days.",
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                // Penalty for Shop
+                if (issue.Order != null && issue.Order.ShopId.HasValue)
+                {
+                    await _reputationService.AdjustShopScoreAsync(
+                        issue.Order.ShopId.Value,
+                        -shopPenaltyPoints,
+                        $"Penalty: Shop ignored warranty request #{issue.Id} for {shopTimeoutDays} days.",
+                        "OrderIssue",
+                        issue.Id.ToString());
+                }
+
+                _unitOfWork.OrderIssues.Update(issue);
+            }
+
+            // --- 2. Handle Customer No-Return (AwaitingReturn) ---
+            int customerTimeoutDays = _configuration.GetValue<int>("WarrantySettings:ReturnShippingTimeoutDays", 7);
+            var customerThreshold = DateTime.UtcNow.AddDays(-customerTimeoutDays);
+
+            var customerExpiredIssues = await _unitOfWork.OrderIssues.GetExpiredIssuesByStatusAsync(OrderIssueStatus.AwaitingReturn, customerThreshold);
+
+            foreach (var issue in customerExpiredIssues)
+            {
+                issue.Status = OrderIssueStatus.AutoCancelled;
+                issue.UpdatedAt = DateTime.UtcNow;
+
+                await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
+                {
+                    OrderIssueId = issue.Id,
+                    ActionById = Guid.Empty, // System
+                    ActionByRole = RoleType.Admin,
+                    Action = OrderIssueAction.SystemCancel,
+                    Comment = $"Auto-cancelled: Customer did not ship return within {customerTimeoutDays} days.",
                     CreatedAt = DateTime.UtcNow
                 });
 
                 _unitOfWork.OrderIssues.Update(issue);
             }
 
-            if (expiredIssues.Any())
+            if (shopExpiredIssues.Any() || customerExpiredIssues.Any())
             {
                 await _unitOfWork.CommitAsync();
             }
@@ -859,9 +929,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                         if (order.OrderItems == null) return 0;
 
-                        return order.OrderItems
+                        decimal itemsGrossSum = order.OrderItems
                             .Where(oi => itemIds.Contains(oi.Id))
                             .Sum(oi => oi.TotalPrice);
+
+                        // Proportional refund logic:
+                        // (Selected Items Gross / Order SubTotal) * (Actual Paid Amount - Shipping Fee)
+                        if (order.SubTotal <= 0) return 0;
+
+                        decimal ratio = itemsGrossSum / order.SubTotal;
+                        decimal paidProductsTotal = Math.Max(0, order.TotalAmount - order.ShippingFee);
+
+                        return Math.Round(ratio * paidProductsTotal, 2);
                     }
                     catch { return 0; }
                 }
@@ -962,9 +1041,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                             if (issue.Order?.OrderItems != null)
                             {
-                                refund = issue.Order.OrderItems
+                                decimal itemsGrossSum = issue.Order.OrderItems
                                     .Where(oi => itemIds.Contains(oi.Id))
                                     .Sum(oi => oi.TotalPrice);
+
+                                // Proportional refund logic (Voucher-aware)
+                                if (issue.Order.SubTotal > 0)
+                                {
+                                    decimal ratio = itemsGrossSum / issue.Order.SubTotal;
+                                    decimal paidProductsTotal = Math.Max(0, issue.Order.TotalAmount - issue.Order.ShippingFee);
+                                    refund = Math.Round(ratio * paidProductsTotal, 2);
+                                }
                             }
                         }
                         catch { /* Fallback to 0 if tag is corrupted */ }

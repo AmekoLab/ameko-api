@@ -35,5 +35,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Settings
         public int PointsDeductNoResponseAfterAccept { get; set; } = 5;
         public int PointsDeductValidComplaint { get; set; } = 5;
         public int PointsDeductIgnoredRequest { get; set; } = 2;
+        public int PointsDeductWarrantyNoResponse { get; set; } = 3;
     }
 }
