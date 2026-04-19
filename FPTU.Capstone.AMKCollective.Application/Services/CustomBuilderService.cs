@@ -75,8 +75,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         }
         public async Task CreateOptionAsync(CreateKitOptionRequest request)
         {
+            // Ánh xạ dữ liệu cơ bản từ request sang entity
             var entity = _mapper.Map<KitDesignOption>(request);
 
+            // ==========================================
+            // XỬ LÝ ẢNH 3 TẦNG
+            // ==========================================
+
+            // 1. ƯU TIÊN 1: Nếu có file mới -> Upload lên Cloudinary
             if (request.LayerImageFile != null && request.LayerImageFile.Length > 0)
             {
                 var fileUrl = await _storageService.UploadAsync(
@@ -87,8 +93,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                 entity.LayerImageUrl = fileUrl;
             }
+            // 2. Nếu không có file mới, nhưng có gửi link cũ lên, Giữ nguyên link ảnh
+            else if (!string.IsNullOrEmpty(request.ExistingLayerUrl))
+            {
+                entity.LayerImageUrl = request.ExistingLayerUrl;
+            }
+            // Ưu tiên 3: Nếu cả 2 đều trống thì để mặc định theo logic gốc
+
+            // ==========================================
+
+            // Tạo ID mới nếu chưa có
             if (entity.Id == Guid.Empty) entity.Id = Guid.NewGuid();
 
+            // Lưu vào Database
             await _unitOfWork.KitDesignOptions.CreateAsync(entity);
             await _unitOfWork.CommitAsync();
         }

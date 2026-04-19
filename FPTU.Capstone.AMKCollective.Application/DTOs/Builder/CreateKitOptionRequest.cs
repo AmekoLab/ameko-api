@@ -24,5 +24,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Builder
         /// VD bước tiếp theo là plate thì nhập thế này: plate:tag
         /// ở bước plate thì tag sẽ là như thế này: tag
         public string? NextStepFilterRule { get; set; }
+        public string? ExistingLayerUrl { get; set; }
     }
 }
