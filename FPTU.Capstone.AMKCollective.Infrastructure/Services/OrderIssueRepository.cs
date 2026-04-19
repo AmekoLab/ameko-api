@@ -89,9 +89,22 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<List<OrderIssue>> GetExpiredIssuesAsync(DateTime threshold)
         {
             return await _context.OrderIssues
-                .Include(x => x.Order)  // [Fix #3] Worker cần order.ShopId để xử lý
+                .Include(x => x.Order)
                     .ThenInclude(o => o.Shop)
-                .Where(x => x.Status == OrderIssueStatus.InProgress && x.CreatedAt <= threshold)
+                .Where(x => (x.Status == OrderIssueStatus.InProgress || x.Status == OrderIssueStatus.AwaitingReturn) 
+                             && (x.UpdatedAt ?? x.CreatedAt) <= threshold 
+                             && !x.IsDeleted)
+                .ToListAsync();
+        }
+
+        public async Task<List<OrderIssue>> GetExpiredIssuesByStatusAsync(OrderIssueStatus status, DateTime threshold)
+        {
+            return await _context.OrderIssues
+                .Include(x => x.Order)
+                    .ThenInclude(o => o.Shop)
+                .Where(x => x.Status == status 
+                             && (x.UpdatedAt ?? x.CreatedAt) <= threshold 
+                             && !x.IsDeleted)
                 .ToListAsync();
         }
 
