@@ -30,6 +30,8 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Commission
         public DateTime? ShopResponseDeadlineAt { get; set; }
         public int ReminderCount { get; set; }
         public DateTime? LastReminderAt { get; set; }
+        public bool? HasMyPendingQuote { get; set; }
+
 
         // Danh sách các báo giá của các Shop dành cho yêu cầu này
         public List<CommissionQuoteResponse> Quotes { get; set; } = new List<CommissionQuoteResponse>();

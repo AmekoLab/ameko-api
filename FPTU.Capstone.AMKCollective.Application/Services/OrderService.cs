@@ -619,8 +619,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (request.Status == OrderStatus.Completed)
             {
-                var tz = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
-                order.ExpectedDeliveryDate = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
+                // Luôn lưu UTC vào DB; ConvertDatesToLocal() sẽ convert sang giờ VN khi response
+                order.ExpectedDeliveryDate = DateTime.UtcNow;
             }
 
             order.OrderStatus = request.Status;

@@ -32,35 +32,35 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         // Helper to get current user role and shopId
-        private async Task<(string Role, Guid? ShopId)> GetCurrentUserContextAsync()
-        {
-            var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "Guest";
-            Guid? shopId = null;
+        //private async Task<(string Role, Guid? ShopId)> GetCurrentUserContextAsync()
+        //{
+        //    var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "Guest";
+        //    Guid? shopId = null;
 
-            if (role == "Shop")
-            {
-                var userIdString = User.FindFirst("id")?.Value 
-                                   ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        //    if (role == "Shop")
+        //    {
+        //        var userIdString = User.FindFirst("id")?.Value 
+        //                           ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
-                if (Guid.TryParse(userIdString, out var userId))
-                {
-                    try
-                    {
-                        var shop = await _shopService.GetMyShopAsync(userId);
-                        if (shop != null)
-                        {
-                            shopId = shop.Id;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Could not resolve ShopId for Shop User {UserId}", userId);
-                    }
-                }
-            }
+        //        if (Guid.TryParse(userIdString, out var userId))
+        //        {
+        //            try
+        //            {
+        //                var shop = await _shopService.GetMyShopAsync(userId);
+        //                if (shop != null)
+        //                {
+        //                    shopId = shop.Id;
+        //                }
+        //            }
+        //            catch (Exception ex)
+        //            {
+        //                _logger.LogWarning(ex, "Could not resolve ShopId for Shop User {UserId}", userId);
+        //            }
+        //        }
+        //    }
 
-            return (role, shopId);
-        }
+        //    return (role, shopId);
+        //}
 
         [HttpGet]
         [AllowAnonymous] // Public — Guest/Customer/Shop đều xem được danh sách category
@@ -69,22 +69,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
     [FromQuery] GetCategoriesFilterRequest queryParams,
     CancellationToken cancellationToken)
         {
-            var (role, userShopId) = await GetCurrentUserContextAsync();
-            if (role == "Shop" && userShopId.HasValue)
-            {
-                // Nếu là Shop đang đăng nhập: Bắt buộc ngữ cảnh là Shop của họ
-                // Để họ thấy được cả Global Category + Private Category của họ
-                queryParams.ShopId = userShopId;
-            }
-            else
-            {
-                // Nếu là Guest hoặc Customer:
-                // - Họ đang xem trang chủ -> Repository sẽ trả về Global.
-                // - Họ đang xem trang của Shop cụ thể -> Repository trả về Global + Shop đó.
-                // => KHÔNG CẦN LÀM GÌ CẢ, để nguyên giá trị FE gửi lên.
-            }
-
-            var categories = await _categoryService.GetCategoriesAsync(queryParams, cancellationToken);
+            var userId = GetCurrentUserId();
+            var categories = await _categoryService.GetCategoriesAsync(queryParams, userId, cancellationToken);
             return SuccessResponse(categories);
         }
 
@@ -190,32 +176,11 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             [FromForm] CreateCategoryRequest request,
             CancellationToken cancellationToken)
         {
-            try
-            {
-                // AUTHORIZATION CHECK
-                var (role, userShopId) = await GetCurrentUserContextAsync();
+            var userId = GetCurrentUserId();
+            if (userId == Guid.Empty) return Unauthorized();
 
-                // If User is Shop, they MUST have a ShopId in token
-                if (role == "Shop" && !userShopId.HasValue)
-                {
-                    return UnauthorizedResponse<string>("Shop user does not have a valid Shop ID in token.");
-                }
-
-                // If Admin, userShopId is likely null, which creates a Global category.
-                // If Shop, userShopId is valid, creating Private category.
-
-                var category = await _categoryService.CreateCategoryAsync(request, userShopId, cancellationToken);
-                return SuccessResponse(category, "Category created successfully");
-            }
-            catch (ArgumentException ex)
-            {
-                return ErrorResponse<string>(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error occurred while creating category");
-                return ServerErrorResponse<string>("An error occurred while creating the category");
-            }
+            var category = await _categoryService.CreateCategoryAsync(request, userId, cancellationToken);
+            return SuccessResponse(category, "Category created successfully");
         }
 
         [HttpPatch("{id:guid}")]
@@ -236,41 +201,11 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             [FromForm] UpdateCategoryRequest request,
             CancellationToken cancellationToken)
         {
-            try
-            {
-                var (role, userShopId) = await GetCurrentUserContextAsync();
+            var userId = GetCurrentUserId();
+            if (userId == Guid.Empty) return Unauthorized();
 
-                // Pass userShopId to Service to enforce ownership
-                // If user is Admin, userShopId is null -> Service treats as Admin (or Global check, depending on implementation)
-                // Actually my service impl: if (shopId.HasValue && category.ShopId != shopId) throw Unauthorized
-                // If Admin (shopId=null), it bypasses the check? 
-                // Wait. If Admin (null) tries to edit a private shop category?
-                // The service check: if (shopId.HasValue && ...) -> If shopId is null, no check.
-                // So Admin can edit ANYTHING. This seems acceptable for Admin.
-                // If strictness required: Admin should only edit Global.
-                // Current prompt focus is "Why force user/shop to input ShopId".
-                // I'll stick to passing userShopId.
-                
-                var category = await _categoryService.UpdateCategoryAsync(id, request, userShopId, cancellationToken);
-                return SuccessResponse(category);
-            }
-            catch (KeyNotFoundException ex)
-            {
-                return NotFoundResponse<string>(ex.Message);
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                return UnauthorizedResponse<string>(ex.Message);
-            }
-            catch (ArgumentException ex)
-            {
-                return ErrorResponse<string>(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error occurred while updating category {CategoryId}", id);
-                return ServerErrorResponse<string>("An error occurred while updating the category");
-            }
+            var category = await _categoryService.UpdateCategoryAsync(id, request, userId, cancellationToken);
+            return SuccessResponse(category);
         }
 
         [HttpDelete("{id:guid}")]
@@ -294,32 +229,12 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
              Guid id,
              CancellationToken cancellationToken)
         {
-            try
-            {
-                var (role, userShopId) = await GetCurrentUserContextAsync();
-                
-                // Pass userShopId to Service to enforce ownership
-                var result = await _categoryService.DeleteCategoryAsync(id, userShopId, cancellationToken);
+            var userId = GetCurrentUserId();
+            if (userId == Guid.Empty) return Unauthorized();
 
-                if (!result)
-                {
-                    return NotFoundResponse<string>($"Category with id {id} not found");
-                }
-                return SuccessResponse<string>("Category deleted successfully");
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                return UnauthorizedResponse<string>(ex.Message);
-            }
-            catch (InvalidOperationException ex)
-            {
-                return ErrorResponse<string>(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error occurred while deleting category {CategoryId}", id);
-                return ServerErrorResponse<string>("An error occurred while deleting the category");
-            }
+            var result = await _categoryService.DeleteCategoryAsync(id, userId, cancellationToken);
+            if (!result) return NotFoundResponse<string>($"Category with id {id} not found");
+            return SuccessResponse<string>("Category deleted successfully");
         }
 
         [HttpGet("root")]

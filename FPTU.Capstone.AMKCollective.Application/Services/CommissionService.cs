@@ -50,25 +50,27 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (request == null) return null;
 
             var response = _mapper.Map<CommissionRequestResponse>(request);
-            // Chỉ chủ request hoặc Shop được target mới xem được nội dung đầy đủ đối với targeted request
+
             if (request.UserId != currentUserId)
             {
                 var shop = await _unitOfWork.Shops.GetByUserIdAsync(currentUserId);
-
                 if (shop != null)
                 {
-                    // Nếu là targeted request và shop này không phải target → block
                     if (request.Status == CommissionStatus.PendingTarget && request.TargetedShopId != shop.Id)
-                        return null; // Trả 404 trín controller
+                        return null;
 
                     response.Quotes = response.Quotes.Where(q => q.ShopId == shop.Id).ToList();
+
+                    // Cờ cho FE
+                    response.HasMyPendingQuote = request.Quotes
+                        .Any(q => q.ShopId == shop.Id && q.Status == QuoteStatus.PendingUserDecision);
                 }
                 else
                 {
-                    // User thường — không cho xem nếu không phải chủ request
                     return null;
                 }
             }
+            // Nếu là chủ request thì không cần cờ này (null = không hiển thị nút báo giá)
 
             return response.ConvertDatesToLocal();
         }
@@ -79,10 +81,28 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return _mapper.Map<CommissionRequestResponse>(request).ConvertDatesToLocal();
         }
 
-        public async Task<IEnumerable<CommissionRequestResponse>> GetOpenPoolRequestsAsync()
+        public async Task<IEnumerable<CommissionRequestResponse>> GetOpenPoolRequestsAsync(Guid? currentUserId = null)
         {
             var requests = await _unitOfWork.CommissionRequests.GetOpenPoolRequestsAsync();
-            return _mapper.Map<IEnumerable<CommissionRequestResponse>>(requests).ConvertDatesToLocal();
+            var responses = _mapper.Map<IEnumerable<CommissionRequestResponse>>(requests).ToList();
+
+            if (currentUserId.HasValue)
+            {
+                var shop = await _unitOfWork.Shops.GetByUserIdAsync(currentUserId.Value);
+                if (shop != null)
+                {
+                    var requestIds = requests.Select(r => r.Id).ToList();
+                    var pendingRequestIds = await _unitOfWork.CommissionQuotes
+                        .GetRequestIdsWithPendingQuoteByShopAsync(shop.Id, requestIds);
+
+                    foreach (var response in responses)
+                    {
+                        response.HasMyPendingQuote = pendingRequestIds.Contains(response.CommissionRequestId);
+                    }
+                }
+            }
+
+            return responses.ConvertDatesToLocal();
         }
 
         public async Task<(bool Success, Guid? RequestId, string ErrorMessage)> CreateRequestAsync(Guid userId, CreateCommissionRequest requestDto)
