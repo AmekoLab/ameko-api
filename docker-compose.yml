@@ -39,7 +39,7 @@ services:
       EmailSettings__Password: "${EMAIL_PASSWORD}"
 
       # CORS Settings
-      Cors__AllowedOrigins__0: "${CORS_ALLOWED_ORIGIN_0:-http://localhost:3000}"
+      Cors__AllowedOrigins__0: "${CORS_ALLOWED_ORIGIN_0:-https://ameko-web.vercel.app}"
       Cors__AllowedOrigins__1: "${CORS_ALLOWED_ORIGIN_1:-https://your-frontend-domain.com}"
 
       # ASP.NET Core Settings
@@ -77,11 +77,11 @@ services:
       OrderSettings__CustomerResponseReminderMaxCount: "${OrderSettings__CustomerResponseReminderMaxCount:-3}"
 
       # Frontend URL Settings
-      FrontendUrls__PaymentSuccessPath: "${FrontendUrls__PaymentSuccessPath:-http://localhost:3000/payment-success}"
-      FrontendUrls__PaymentCancelPath: "${FrontendUrls__PaymentCancelPath:-http://localhost:3000/payment/cancel}"
-      FrontendUrls__OrderPendingPath: "${FrontendUrls__OrderPendingPath:-http://localhost:3000/orders?status=pending}"
-      FrontendUrls__DepositSuccessPath: "${FrontendUrls__DepositSuccessPath:-http://localhost:3000/payment-success}"
-      FrontendUrls__DepositCancelPath: "${FrontendUrls__DepositCancelPath:-http://localhost:3000/wallet/deposit-cancel}"
+      FrontendUrls__PaymentSuccessPath: "${FrontendUrls__PaymentSuccessPath:-https://ameko-web.vercel.app/payment-success}"
+      FrontendUrls__PaymentCancelPath: "${FrontendUrls__PaymentCancelPath:-https://ameko-web.vercel.app/payment/cancel}"
+      FrontendUrls__OrderPendingPath: "${FrontendUrls__OrderPendingPath:-https://ameko-web.vercel.app/orders?status=pending}"
+      FrontendUrls__DepositSuccessPath: "${FrontendUrls__DepositSuccessPath:-https://ameko-web.vercel.app/payment-success}"
+      FrontendUrls__DepositCancelPath: "${FrontendUrls__DepositCancelPath:-https://ameko-web.vercel.app/wallet/deposit-cancel}"
 
       # Builder/Voucher/Wallet Settings
       BuilderSettings__SessionExpirationHours: "${BuilderSettings__SessionExpirationHours:-48}"
@@ -111,13 +111,14 @@ services:
       WarrantySettings__MaxWithdrawCount: "${WarrantySettings__MaxWithdrawCount:-3}"
       WarrantySettings__WarrantyRequestWindowDays: "${WarrantySettings__WarrantyRequestWindowDays:-7}"
       WarrantySettings__ReturnShippingTimeoutDays: "${WarrantySettings__ReturnShippingTimeoutDays:-7}"
+      WarrantySettings__ShopNoReplyTimeoutDays: "${WarrantySettings__ShopNoReplyTimeoutDays:-3}"
 
       # VNPay Settings
       Vnpay__TmnCode: "${Vnpay__TmnCode:-}"
       Vnpay__HashSecret: "${Vnpay__HashSecret:-}"
       Vnpay__BaseUrl: "${Vnpay__BaseUrl:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}"
       Vnpay__ReturnUrl: "${Vnpay__ReturnUrl:-https://ameko-web.vercel.app/payment/vnpay-return}"
-      Vnpay__IpnUrl: "${Vnpay__IpnUrl:-https://your-api-domain.com/api/v1/payment/vnpay-ipn}"
+      Vnpay__IpnUrl: "${Vnpay__IpnUrl:-https://api.amekolab.online/api/v1/payment/vnpay-ipn}"
       Vnpay__Command: "${Vnpay__Command:-pay}"
       Vnpay__CurrCode: "${Vnpay__CurrCode:-VND}"
       Vnpay__Version: "${Vnpay__Version:-2.1.0}"
@@ -171,6 +172,7 @@ services:
       ReputationSettings__PointsDeductNoResponseAfterAccept: "${ReputationSettings__PointsDeductNoResponseAfterAccept:-5}"
       ReputationSettings__PointsDeductValidComplaint: "${ReputationSettings__PointsDeductValidComplaint:-5}"
       ReputationSettings__PointsDeductIgnoredRequest: "${ReputationSettings__PointsDeductIgnoredRequest:-2}"
+      ReputationSettings__PointsDeductWarrantyNoResponse: "${ReputationSettings__PointsDeductWarrantyNoResponse:-3}"
 
       # AI/TimeZone Settings
       AISettings__GoogleApiKey: "${AISettings__GoogleApiKey:-}"
