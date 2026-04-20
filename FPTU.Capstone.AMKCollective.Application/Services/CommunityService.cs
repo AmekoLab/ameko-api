@@ -103,7 +103,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             return new CursorPagedResult<CommentResponse>
             {
-                Items = itemsToReturn,
+                Items = itemsToReturn.ConvertDatesToLocal().ToList(),
                 HasMore = hasMore,
                 NextCursor = nextCursor
             };
@@ -147,7 +147,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             return new CursorPagedResult<PostFeedResponse>
             {
-                Items = itemsToReturn,
+                Items = itemsToReturn.ConvertDatesToLocal().ToList(),
                 HasMore = hasMore,
                 NextCursor = nextCursor
             };
@@ -204,7 +204,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _postEnricher.EnrichAsync(new[] { response }, cancellationToken);
 
-            return response;
+            return response.ConvertDatesToLocal();
         }
 
         public async Task<PostFeedResponse> GetPostByIdAsync(int id, Guid? currentUserId, CancellationToken cancellationToken = default)
@@ -234,7 +234,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             };
             
             await _postEnricher.EnrichAsync(new[] { responseItem }, cancellationToken);
-            return responseItem;
+            return responseItem.ConvertDatesToLocal();
         }
 
         public async Task<PostFeedResponse> UpdatePostAsync(int id, Guid userId, UpdatePostDto request, CancellationToken cancellationToken = default)
@@ -359,7 +359,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 AvatarUrl = r.User.Image,
                 ReactionType = r.Type.ToString(),
                 CreatedAt = r.CreatedAt
-            });
+            }).ConvertDatesToLocal();
         }
 
         public async Task<CommentResponse> AddCommentAsync(int postId, Guid userId, CreateCommentDto request, CancellationToken cancellationToken = default)
@@ -404,7 +404,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 AvatarUrl = user?.Image,
                 Content = comment.Content,
                 CreatedAt = comment.CreatedAt
-            };
+            }.ConvertDatesToLocal();
         }
 
         public async Task<CursorPagedResult<CommentResponse>> GetPostCommentsAsync(int postId, string? cursor, int pageSize, CancellationToken cancellationToken = default)
@@ -476,7 +476,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 CreatedAt = comment.CreatedAt,
                 IsEdited = data.History.Any(),
                 EditHistory = data.History
-            };
+            }.ConvertDatesToLocal();
         }
 
         public async Task SoftDeleteCommentAsync(int commentId, Guid userId, string userRole, CancellationToken cancellationToken = default)

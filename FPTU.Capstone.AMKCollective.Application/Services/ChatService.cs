@@ -66,7 +66,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 await _unitOfWork.CommitAsync();
             }
 
-            return await BuildConversationResponseAsync(currentUserId, conversation.Id);
+            return (await BuildConversationResponseAsync(currentUserId, conversation.Id)).ConvertDatesToLocal();
         }
 
         public async Task<ChatMessageResponse> SendMessageAsync(Guid senderId, SendMessageRequest request, CancellationToken cancellationToken = default)
@@ -138,7 +138,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             response.ConversationId = conversationId;
 
             await _chatRealtimePublisher.PublishMessageReceivedAsync(response, cancellationToken);
-            return response;
+            return response.ConvertDatesToLocal();
         }
 
         public async Task<CursorPagedResult<ConversationResponse>> GetUserConversationsAsync(Guid userId, string? cursor, int pageSize, CancellationToken cancellationToken = default)
@@ -184,7 +184,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             return new CursorPagedResult<ConversationResponse>
             {
-                Items = dtos,
+                Items = dtos.ConvertDatesToLocal().ToList(),
                 HasMore = hasMore,
                 NextCursor = nextCursor
             };
@@ -243,7 +243,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             return new CursorPagedResult<ChatMessageResponse>
             {
-                Items = dtos,
+                Items = dtos.ConvertDatesToLocal().ToList(),
                 HasMore = hasMore,
                 NextCursor = nextCursor
             };
@@ -280,8 +280,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<MessageReactionResponse> SetMessageReactionAsync(Guid userId, int conversationId, int messageId, MessageReaction? reaction, CancellationToken cancellationToken = default)
         {
             var result = await UpdateReactionAsync(userId, conversationId, messageId, reaction, cancellationToken);
-            await _chatRealtimePublisher.PublishReactionChangedAsync(result, cancellationToken);
-            return result;
+            var convertedResult = result.ConvertDatesToLocal();
+            await _chatRealtimePublisher.PublishReactionChangedAsync(convertedResult, cancellationToken);
+            return convertedResult;
         }
 
         public async Task<bool> IsUserInConversationAsync(Guid userId, int conversationId, CancellationToken cancellationToken = default)
