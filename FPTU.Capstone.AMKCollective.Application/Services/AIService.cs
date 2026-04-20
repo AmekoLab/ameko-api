@@ -72,7 +72,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (!targetShopId.HasValue && recommendationMode == RecommendationMode.PartBundle)
             {
                 // Try to find a shop mentioned in the prompt via semantic search
-                var candidateShops = await _qdrantService.SearchAsync("shops", promptVector, limit: 1);
+                var candidateShops = await SearchQdrantSafelyAsync("shops", promptVector, limit: 1);
                 if (candidateShops.Any())
                 {
                     // Note: Here we could add a similarity threshold check
@@ -89,8 +89,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             string contextData;
             if (preferAssembledRecommendation)
             {
-                var buildIds = await _qdrantService.SearchAsync("builds", promptVector, limit: 5, shopId: targetShopId);
-                assembledCandidates = (await _unitOfWork.AssembledProducts.GetByIdsAsync(buildIds)).ToList();
+                var buildIds = await SearchQdrantSafelyAsync("builds", promptVector, limit: 5, shopId: targetShopId);
+                if (buildIds.Any())
+                {
+                    assembledCandidates = (await _unitOfWork.AssembledProducts.GetByIdsAsync(buildIds)).ToList();
+                }
+
+                if (!assembledCandidates.Any())
+                {
+                    // Fallback path when vector search is unavailable or returns empty.
+                    assembledCandidates = await LoadFallbackAssembledCandidatesAsync(limit: 5);
+                }
 
                 contextData = string.Join(
                     "\n",
@@ -100,8 +109,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             else
             {
                 // Filter by ShopId if identified or provided
-                var partIds = await _qdrantService.SearchAsync("parts", promptVector, limit: 5, shopId: targetShopId);
-                partCandidates = (await _unitOfWork.Models.GetByIdsAsync(partIds)).ToList();
+                var partIds = await SearchQdrantSafelyAsync("parts", promptVector, limit: 5, shopId: targetShopId);
+                if (partIds.Any())
+                {
+                    partCandidates = (await _unitOfWork.Models.GetByIdsAsync(partIds)).ToList();
+                }
+
+                if (!partCandidates.Any())
+                {
+                    // Fallback path when vector search is unavailable or returns empty.
+                    partCandidates = await LoadFallbackPartCandidatesAsync(targetShopId, limit: 5);
+                }
 
                 contextData = string.Join(
                     "\n",
@@ -178,7 +196,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<IEnumerable<FPTU.Capstone.AMKCollective.Application.DTOs.Shop.ShopResponse>> SearchShopsAsync(string query, int limit = 10)
         {
             var vector = await _embeddingService.GenerateEmbeddingAsync(query);
-            var ids = await _qdrantService.SearchAsync("shops", vector, limit);
+            var ids = await SearchQdrantSafelyAsync("shops", vector, limit);
             if (!ids.Any()) return Enumerable.Empty<FPTU.Capstone.AMKCollective.Application.DTOs.Shop.ShopResponse>();
             var shops = await _unitOfWork.Shops.GetByIdsAsync(ids);
             return _mapper.Map<IEnumerable<FPTU.Capstone.AMKCollective.Application.DTOs.Shop.ShopResponse>>(shops);
@@ -187,10 +205,68 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         public async Task<IEnumerable<FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct.AssembledProductResponse>> SearchBuildsAsync(string query, int limit = 10)
         {
             var vector = await _embeddingService.GenerateEmbeddingAsync(query);
-            var ids = await _qdrantService.SearchAsync("builds", vector, limit);
+            var ids = await SearchQdrantSafelyAsync("builds", vector, limit);
             if (!ids.Any()) return Enumerable.Empty<FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct.AssembledProductResponse>();
             var builds = await _unitOfWork.AssembledProducts.GetByIdsAsync(ids);
             return _mapper.Map<IEnumerable<FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct.AssembledProductResponse>>(builds);
+        }
+
+        private async Task<List<Guid>> SearchQdrantSafelyAsync(string collectionName, float[] vector, int limit, Guid? shopId = null)
+        {
+            try
+            {
+                return await _qdrantService.SearchAsync(collectionName, vector, limit, shopId);
+            }
+            catch (Exception ex) when (IsQdrantAccessOrAvailabilityIssue(ex))
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Qdrant search failed for collection {Collection}. Falling back to DB candidates.",
+                    collectionName);
+                return new List<Guid>();
+            }
+        }
+
+        private async Task<List<Model>> LoadFallbackPartCandidatesAsync(Guid? shopId, int limit)
+        {
+            var filter = new GetPartsFilterRequest
+            {
+                ShopId = shopId,
+                IsActive = true,
+                PageNumber = 1,
+                PageSize = limit
+            };
+
+            var (items, _) = await _unitOfWork.Models.GetPagedAsync(filter);
+            var candidates = (items ?? Enumerable.Empty<Model>()).ToList();
+
+            // If shop-constrained fallback returns nothing, relax the shop filter.
+            if (!candidates.Any() && shopId.HasValue)
+            {
+                filter.ShopId = null;
+                var (relaxedItems, _) = await _unitOfWork.Models.GetPagedAsync(filter);
+                candidates = (relaxedItems ?? Enumerable.Empty<Model>()).ToList();
+            }
+
+            return candidates;
+        }
+
+        private async Task<List<AssembledProduct>> LoadFallbackAssembledCandidatesAsync(int limit)
+        {
+            var (items, _) = await _unitOfWork.AssembledProducts.GetAllPagedAsync(1, limit);
+            return items.Take(limit).ToList();
+        }
+
+        private static bool IsQdrantAccessOrAvailabilityIssue(Exception ex)
+        {
+            var raw = ex.ToString();
+            return raw.Contains("PermissionDenied", StringComparison.OrdinalIgnoreCase)
+                || raw.Contains("Unauthenticated", StringComparison.OrdinalIgnoreCase)
+                || raw.Contains("HTTP status code: 401", StringComparison.OrdinalIgnoreCase)
+                || raw.Contains("HTTP status code: 403", StringComparison.OrdinalIgnoreCase)
+                || raw.Contains("Unavailable", StringComparison.OrdinalIgnoreCase)
+                || raw.Contains("DeadlineExceeded", StringComparison.OrdinalIgnoreCase)
+                || raw.Contains("Connection refused", StringComparison.OrdinalIgnoreCase);
         }
 
         public async Task SyncAllEntitiesToQdrantAsync()
@@ -392,6 +468,7 @@ Description: {issue.Description}
             IEnumerable<Model> candidateParts)
         {
             var items = new List<AIRecommendationItemDTO>();
+            candidateParts ??= Enumerable.Empty<Model>();
 
             // Build part cards from selected ids.
             var selectedPartIds = new[]
@@ -405,16 +482,38 @@ Description: {issue.Description}
             .Distinct()
             .ToList();
 
-            var partById = candidateParts.ToDictionary(x => x.Id, x => x);
+            var partById = candidateParts
+                .Where(x => x != null)
+                .ToDictionary(x => x.Id, x => x);
             var missingPartIds = selectedPartIds.Where(id => !partById.ContainsKey(id)).ToList();
 
             if (missingPartIds.Count > 0)
             {
                 var fetched = await _unitOfWork.Models.GetByIdsAsync(missingPartIds);
-                foreach (var model in fetched)
+                foreach (var model in fetched ?? Enumerable.Empty<Model>())
                 {
+                    if (model == null)
+                    {
+                        continue;
+                    }
+
                     partById[model.Id] = model;
                 }
+            }
+
+            var missingPartShopIds = partById.Values
+                .Where(model => model.Shop == null)
+                .Select(model => model.ShopId)
+                .Distinct()
+                .ToList();
+
+            var shopsById = new Dictionary<Guid, ShopProfile>();
+            if (missingPartShopIds.Count > 0 && _unitOfWork.Shops != null)
+            {
+                var fetchedShops = await _unitOfWork.Shops.GetByIdsAsync(missingPartShopIds);
+                shopsById = (fetchedShops ?? Enumerable.Empty<ShopProfile>())
+                    .Where(shop => shop != null)
+                    .ToDictionary(shop => shop.Id, shop => shop);
             }
 
             foreach (var id in selectedPartIds)
@@ -424,7 +523,7 @@ Description: {issue.Description}
                     continue;
                 }
 
-                items.Add(MapPartItem(model));
+                items.Add(MapPartItem(model, shopsById));
             }
 
             // Build assembled-product card if returned by AI.
@@ -433,15 +532,18 @@ Description: {issue.Description}
                 var assembled = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(recommendation.AssembledProductId.Value);
                 if (assembled != null && !assembled.IsDeleted)
                 {
-                    items.Insert(0, MapAssembledItem(assembled));
+                    items.Insert(0, await MapAssembledItemAsync(assembled));
                 }
             }
 
             return items;
         }
 
-        private static AIRecommendationItemDTO MapPartItem(Model model)
+        private static AIRecommendationItemDTO MapPartItem(Model model, IReadOnlyDictionary<Guid, ShopProfile> fallbackShops)
         {
+            fallbackShops.TryGetValue(model.ShopId, out var fallbackShop);
+            var shop = model.Shop ?? fallbackShop;
+
             return new AIRecommendationItemDTO
             {
                 Id = model.Id,
@@ -451,16 +553,24 @@ Description: {issue.Description}
                 ImageUrl = FirstNonEmpty(model.ThumbnailURL, model.DefaultLayerImageUrl),
                 DetailPath = $"/shop/product/{model.Id}",
                 ShopId = model.ShopId,
-                ShopName = model.Shop?.ShopName,
-                ShopAvatarUrl = model.Shop?.LogoUrl
+                ShopName = shop?.ShopName,
+                ShopAvatarUrl = shop?.LogoUrl
             };
         }
 
-        private static AIRecommendationItemDTO MapAssembledItem(AssembledProduct assembled)
+        private async Task<AIRecommendationItemDTO> MapAssembledItemAsync(AssembledProduct assembled)
         {
             var shop = assembled.ProductAssembledDetails?
                 .Select(d => d.BaseKit?.Shop)
-                .FirstOrDefault(s => s != null);
+                .FirstOrDefault(s => s != null)
+                ?? assembled.ProductAssembledDetails?
+                    .Select(d => d.Component?.Shop)
+                    .FirstOrDefault(s => s != null);
+
+            if (shop == null && assembled.CreatedBy.HasValue)
+            {
+                shop = await _unitOfWork.Shops.GetByUserIdAsync(assembled.CreatedBy.Value);
+            }
 
             return new AIRecommendationItemDTO
             {
