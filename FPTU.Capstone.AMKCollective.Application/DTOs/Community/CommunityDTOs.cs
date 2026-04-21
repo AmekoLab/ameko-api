@@ -12,6 +12,8 @@ public class ProductPreviewDto
     public List<string> ImageUrls { get; set; } = new();
     public int Quantity { get; set; }
     public bool IsAvailable => Quantity > 0;
+
+    public int SoldQuantity { get; set; }
 }
 
 public class PostFeedResponse

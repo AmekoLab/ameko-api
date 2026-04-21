@@ -1,5 +1,6 @@
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -135,6 +136,21 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .ExecuteUpdateAsync(
                     s => s.SetProperty(ap => ap.Embedding, embedding),
                     ct);
+        }
+        public async Task<Dictionary<Guid, int>> GetSoldQuantitiesAsync(IEnumerable<Guid> productIds, CancellationToken cancellationToken = default)
+        {
+            // Sử dụng DbContext để query thẳng vào OrderItem và nhóm lại tính tổng
+            return await _context.Set<OrderItem>()
+                .Where(oi => oi.AssembledProductId.HasValue
+                          && productIds.Contains(oi.AssembledProductId.Value)
+                          && oi.Order.OrderStatus == OrderStatus.Completed) // Chỉ đếm những đơn đã giao thành công / hoàn thành
+                .GroupBy(oi => oi.AssembledProductId.Value)
+                .Select(g => new
+                {
+                    ProductId = g.Key,
+                    Sold = g.Sum(oi => oi.Quantity)
+                })
+                .ToDictionaryAsync(x => x.ProductId, x => x.Sold, cancellationToken);
         }
     }
 }
