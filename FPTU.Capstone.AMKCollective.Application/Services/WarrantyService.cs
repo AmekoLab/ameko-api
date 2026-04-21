@@ -481,44 +481,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         redirectUrl: $"/warranty-requests/{issue.Id}",
                         actorId: adminId);
 
-                    // ── [FIX] Record Transaction for Warranty Reference ──
-                    var customerWallet = await _unitOfWork.Wallets.GetByUserIdAsync(order.CustomerId);
-                    var shopWallet = await _unitOfWork.Wallets.GetByUserIdAsync(shop.UserId);
-
-                    if (customerWallet != null)
-                    {
-                        await _unitOfWork.Transactions.AddAsync(new Transaction
-                        {
-                            WalletId = customerWallet.Id,
-                            RelatedOrderId = order.Id, 
-                            Amount = refundAmount,
-                            Type = TransactionType.OrderRefund,
-                            Description = $"[Warranty Refund] Refund for Issue #{issue.Id}",
-                            Direction = TransactionDirection.In,
-                            BalanceBeforeTransaction = customerWallet.Balance - refundAmount,
-                            BalanceAfterTransaction = customerWallet.Balance,
-                            HeldBalanceBeforeTransaction = customerWallet.HeldBalance, // Customer: No HeldBalance change
-                            HeldBalanceAfterTransaction = customerWallet.HeldBalance,  // Customer: No HeldBalance change
-                            CreatedAt = DateTime.UtcNow
-                        });
-                    }
-                    if (shopWallet != null)
-                    {
-                        await _unitOfWork.Transactions.AddAsync(new Transaction
-                        {
-                            WalletId = shopWallet.Id,
-                            RelatedOrderId = order.Id,
-                            Amount = refundAmount,
-                            Type = TransactionType.ManualAdjustment,
-                            Description = $"[Warranty Deduction] Deduction for Issue #{issue.Id}",
-                            Direction = isReleased ? TransactionDirection.Out : TransactionDirection.Held,
-                            BalanceBeforeTransaction = isReleased ? shopWallet.Balance + refundAmount : shopWallet.Balance,
-                            BalanceAfterTransaction = shopWallet.Balance,
-                            HeldBalanceBeforeTransaction = isReleased ? shopWallet.HeldBalance : shopWallet.HeldBalance + refundAmount,
-                            HeldBalanceAfterTransaction = shopWallet.HeldBalance,
-                            CreatedAt = DateTime.UtcNow
-                        });
-                    }
+                    // ── Removed duplicate transaction logging; WalletService already handles it ──
 
                     // ── Stock Reintegration (No Return Case) ──
                     await ReintegrateStockForIssueAsync(issue);
@@ -660,44 +623,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     redirectUrl: $"/warranty-requests/{issue.Id}",
                     actorId: shopOwnerId);
 
-                // ── [FIX] Record Transaction for Warranty Reference ──
-                var customerWalletSub = await _unitOfWork.Wallets.GetByUserIdAsync(issue.UserId);
-                var shopWalletSub = await _unitOfWork.Wallets.GetByUserIdAsync(shopEntity.UserId);
-
-                if (customerWalletSub != null)
-                {
-                    await _unitOfWork.Transactions.AddAsync(new Transaction
-                    {
-                        WalletId = customerWalletSub.Id,
-                        RelatedOrderId = order.Id, 
-                        Amount = refundAmount,
-                        Type = TransactionType.OrderRefund,
-                        Description = $"[Warranty Refund] Refund for Issue #{issue.Id} (After Return)",
-                        Direction = TransactionDirection.In,
-                        BalanceBeforeTransaction = customerWalletSub.Balance - refundAmount,
-                        BalanceAfterTransaction = customerWalletSub.Balance,
-                        HeldBalanceBeforeTransaction = customerWalletSub.HeldBalance, // Customer: No HeldBalance change
-                        HeldBalanceAfterTransaction = customerWalletSub.HeldBalance,  // Customer: No HeldBalance change
-                        CreatedAt = DateTime.UtcNow
-                    });
-                }
-                if (shopWalletSub != null)
-                {
-                    await _unitOfWork.Transactions.AddAsync(new Transaction
-                    {
-                        WalletId = shopWalletSub.Id,
-                        RelatedOrderId = order.Id,
-                        Amount = refundAmount,
-                        Type = TransactionType.ManualAdjustment,
-                        Description = $"[Warranty Deduction] Deduction for Issue #{issue.Id} (After Return)",
-                        Direction = isReleasedNow ? TransactionDirection.Out : TransactionDirection.Held,
-                        BalanceBeforeTransaction = isReleasedNow ? shopWalletSub.Balance + refundAmount : shopWalletSub.Balance,
-                        BalanceAfterTransaction = shopWalletSub.Balance,
-                        HeldBalanceBeforeTransaction = isReleasedNow ? shopWalletSub.HeldBalance : shopWalletSub.HeldBalance + refundAmount,
-                        HeldBalanceAfterTransaction = shopWalletSub.HeldBalance,
-                        CreatedAt = DateTime.UtcNow
-                    });
-                }
+                // ── Removed duplicate transaction logging; WalletService already handles it ──
 
                 await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
                 {
