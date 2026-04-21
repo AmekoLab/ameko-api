@@ -241,5 +241,17 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             await _communityService.HardDeleteCommentAsync(commentId, userId, role, cancellationToken);
             return SuccessResponse("Comment deleted permanently");
         }
+
+        [HttpGet("personalized-feed")]
+        [Authorize]
+        [SwaggerOperation(Summary = "Get Personalized Feed", Description = "Retrieves a personalized community feed based on user preferences, shop ratings, and purchase history.")]
+        [SwaggerResponse(200, "Successfully retrieved personalized feed", typeof(PaginatedResult<PostFeedResponse>))]
+        [SwaggerResponse(401, "Unauthorized")]
+        public async Task<IActionResult> GetPersonalizedFeed([FromQuery] int page = 1, [FromQuery] int size = 10, CancellationToken cancellationToken = default)
+        {
+            Guid userId = GetCurrentUserId();
+            var result = await _communityService.GetPersonalizedFeedAsync(userId, page, size, cancellationToken);
+            return SuccessResponse(result);
+        }
     }
 }

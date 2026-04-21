@@ -349,5 +349,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Where(o => !o.IsDeleted && o.CreatedAt >= fromUtc && o.CreatedAt <= toUtc)
                 .ToListAsync(token);
         }
+        public async Task<List<Guid>> GetPurchasedShopIdsByUserAsync(Guid userId, CancellationToken cancellationToken = default)
+        {
+            return await _context.Orders
+                .Where(o => o.CustomerId == userId && o.OrderStatus == FPTU.Capstone.AMKCollective.Domain.Enums.OrderStatus.Completed)
+                .Where(o => o.ShopId.HasValue) // Chỉ lấy những đơn có Shop
+                .Select(o => o.ShopId!.Value)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+        }
     }
 }

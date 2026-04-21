@@ -171,7 +171,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             return new CursorPagedResult<NotificationDto>
             {
-                Items = dtos,
+                Items = dtos.Select(d => d.ConvertDatesToLocal()).ToList(),
                 HasMore = hasMore,
                 NextCursor = nextCursor
             };
@@ -193,7 +193,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 IsRead = n.IsRead,
                 CreatedAt = n.CreatedAt
             });
-            return (dtos, totalCount);
+            return (dtos.Select(d => d.ConvertDatesToLocal()), totalCount);
         }
 
         public async Task<NotificationDto> GetNotificationByIdAsync(int id, CancellationToken cancellationToken = default)
@@ -212,7 +212,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 RedirectUrl = n.RedirectUrl,
                 IsRead = n.IsRead,
                 CreatedAt = n.CreatedAt
-            };
+            }.ConvertDatesToLocal();
         }
 
         public async Task<NotificationDto> CreateSystemNotificationAsync(CreateSystemNotificationDto request, CancellationToken cancellationToken = default)

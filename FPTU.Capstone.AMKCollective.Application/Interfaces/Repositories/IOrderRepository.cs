@@ -57,5 +57,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         /// Read-only dataset for dashboard analytics.
         /// </summary>
         Task<List<Order>> GetOrdersForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default);
+        Task<List<Guid>> GetPurchasedShopIdsByUserAsync(Guid userId, CancellationToken cancellationToken = default);
     }
 }

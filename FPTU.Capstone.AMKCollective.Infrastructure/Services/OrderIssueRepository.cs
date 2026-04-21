@@ -97,6 +97,18 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .ToListAsync();
         }
 
+        public async Task<List<OrderIssue>> GetExpiredCancelRequestsAsync(DateTime threshold)
+        {
+            return await _context.OrderIssues
+                .Include(x => x.Order)
+                    .ThenInclude(o => o.Shop)
+                .Where(x => x.Type == OrderIssueType.CancelRequest
+                         && x.Status == OrderIssueStatus.InProgress
+                         && (x.UpdatedAt ?? x.CreatedAt) <= threshold
+                         && !x.IsDeleted)
+                .ToListAsync();
+        }
+
         public async Task<List<OrderIssue>> GetExpiredIssuesByStatusAsync(OrderIssueStatus status, DateTime threshold)
         {
             return await _context.OrderIssues

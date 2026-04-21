@@ -41,10 +41,7 @@ namespace FPTU.Capstone.AMKCollective.API.Workers
                         // 1. Tìm các Issue quá hạn (Logic này cần thêm vào Repo)
                         // Lấy các đơn InProgress tạo cách đây hơn 24h
                         var timeoutThreshold = DateTime.UtcNow.AddHours(-_orderSettings.ShopResponseTimeoutHours);
-
-                        // Cần thêm hàm này vào IOrderIssueRepository:
-                        // Task<List<OrderIssue>> GetExpiredIssuesAsync(DateTime threshold);
-                        var expiredIssues = await unitOfWork.OrderIssues.GetExpiredIssuesAsync(timeoutThreshold);
+                        var expiredIssues = await unitOfWork.OrderIssues.GetExpiredCancelRequestsAsync(timeoutThreshold);
 
                         if (expiredIssues != null && expiredIssues.Count > 0)
                         {

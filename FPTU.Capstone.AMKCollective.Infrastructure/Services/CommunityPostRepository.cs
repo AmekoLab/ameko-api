@@ -114,5 +114,86 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             _context.CommunityPosts.Remove(post);
         }
+
+        public async Task<(List<CommunityPost> Items, int TotalCount)> GetPersonalizedFeedPagedAsync(Guid userId, List<Guid> purchasedShopIds, List<string> topSearchKeywords, int pageNumber, int pageSize, CancellationToken cancellationToken = default)
+        {
+            // Phase 1: Only necessary field to calculate points
+            var lightweightPosts = await _context.CommunityPosts
+                .AsNoTracking()
+                .Where(p => !p.IsDeleted)
+                .OrderByDescending(p => p.CreatedAt)
+                .Take(300)
+                .Select(p => new
+                {
+                    p.Id,
+                    p.Title,
+                    p.CreatedAt,
+                    ShopId = p.User.ShopProfile != null ? p.User.ShopProfile.Id : (Guid?)null,
+                    ShopRating = p.User.ShopProfile != null ? (double)p.User.ShopProfile.Rating : 0 // float/decimal to double if need
+                })
+                .ToListAsync(cancellationToken);
+
+            var totalCount = lightweightPosts.Count;
+
+            // Phase 2: Calculate points on RAM
+            var scoredPosts = lightweightPosts.Select(p =>
+            {
+                double score = 0;
+
+                // 1: Shop Rating (vd: Rating 5 star -> +15 Points)
+                score += p.ShopRating * 3;
+
+                // 2: Order history (+20 points if regular customer)
+                if (p.ShopId.HasValue && purchasedShopIds.Contains(p.ShopId.Value))
+                {
+                    score += 20;
+                }
+
+                // 3: keyword search (+10 points if keyword matches)
+                if (topSearchKeywords.Any() && !string.IsNullOrEmpty(p.Title))
+                {
+                    var titleLower = p.Title.ToLower();
+                    foreach (var kw in topSearchKeywords)
+                    {
+                        if (titleLower.Contains(kw)) score += 10;
+                    }
+                }
+
+                // 4: Freshness (older posts get lower scores, subtract 0.5 points per day)
+                var daysOld = (DateTime.UtcNow - p.CreatedAt).TotalDays;
+                score -= (daysOld * 0.5);
+
+                return new { PostId = p.Id, TotalScore = score };
+            });
+
+            // Sort by score and select only the IDs of the top 10 posts to display (pageSize)
+            var pagedPostIds = scoredPosts
+                .OrderByDescending(x => x.TotalScore)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(x => x.PostId)
+                .ToList();
+
+            if (!pagedPostIds.Any()) return (new List<CommunityPost>(), totalCount);
+
+            // Phase 3: Query full data ONLY for the selected 10 posts
+            var finalPosts = await _context.CommunityPosts
+                .Include(p => p.User)
+                    .ThenInclude(u => u.ShopProfile)
+                .Include(p => p.Attachments)
+                .Include(p => p.PostReactions.Where(r => !r.IsDeleted))
+                .Include(p => p.PostComments.Where(c => !c.IsDeleted))
+                .Where(p => pagedPostIds.Contains(p.Id))
+                .AsNoTracking()
+                .ToListAsync(cancellationToken);
+
+            // The .Where(Contains) query in SQL does not preserve the in-memory order,
+            // need to re-sort `finalPosts` based on the calculated score order above.
+            var orderedFinalPosts = pagedPostIds
+                .Select(id => finalPosts.First(p => p.Id == id))
+                .ToList();
+
+            return (orderedFinalPosts, totalCount);
+        }
     }
 }

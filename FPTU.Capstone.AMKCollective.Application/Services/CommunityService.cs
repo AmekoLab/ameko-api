@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -103,7 +103,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             return new CursorPagedResult<CommentResponse>
             {
-                Items = itemsToReturn,
+                Items = itemsToReturn.ConvertDatesToLocal().ToList(),
                 HasMore = hasMore,
                 NextCursor = nextCursor
             };
@@ -147,7 +147,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             return new CursorPagedResult<PostFeedResponse>
             {
-                Items = itemsToReturn,
+                Items = itemsToReturn.ConvertDatesToLocal().ToList(),
                 HasMore = hasMore,
                 NextCursor = nextCursor
             };
@@ -204,7 +204,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _postEnricher.EnrichAsync(new[] { response }, cancellationToken);
 
-            return response;
+            return response.ConvertDatesToLocal();
         }
 
         public async Task<PostFeedResponse> GetPostByIdAsync(int id, Guid? currentUserId, CancellationToken cancellationToken = default)
@@ -234,7 +234,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             };
             
             await _postEnricher.EnrichAsync(new[] { responseItem }, cancellationToken);
-            return responseItem;
+            return responseItem.ConvertDatesToLocal();
         }
 
         public async Task<PostFeedResponse> UpdatePostAsync(int id, Guid userId, UpdatePostDto request, CancellationToken cancellationToken = default)
@@ -359,7 +359,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 AvatarUrl = r.User.Image,
                 ReactionType = r.Type.ToString(),
                 CreatedAt = r.CreatedAt
-            });
+            }).ConvertDatesToLocal();
         }
 
         public async Task<CommentResponse> AddCommentAsync(int postId, Guid userId, CreateCommentDto request, CancellationToken cancellationToken = default)
@@ -386,6 +386,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 await _notificationQueue.QueueNotificationAsync(new NotificationDispatchItem
                 {
                     ActorId = userId,
+                    ReceiverId = post.UserId,
                     Type = FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType.Comment,
                     ReferenceId = postId.ToString(),
                     ReferenceType = NotificationReferenceHelper.TypePost,
@@ -404,7 +405,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 AvatarUrl = user?.Image,
                 Content = comment.Content,
                 CreatedAt = comment.CreatedAt
-            };
+            }.ConvertDatesToLocal();
         }
 
         public async Task<CursorPagedResult<CommentResponse>> GetPostCommentsAsync(int postId, string? cursor, int pageSize, CancellationToken cancellationToken = default)
@@ -476,7 +477,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 CreatedAt = comment.CreatedAt,
                 IsEdited = data.History.Any(),
                 EditHistory = data.History
-            };
+            }.ConvertDatesToLocal();
         }
 
         public async Task SoftDeleteCommentAsync(int commentId, Guid userId, string userRole, CancellationToken cancellationToken = default)
@@ -510,6 +511,54 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             _unitOfWork.PostComments.Remove(comment);
             await _unitOfWork.CommitAsync();
+        }
+
+        public async Task<PaginatedResult<PostFeedResponse>> GetPersonalizedFeedAsync(Guid currentUserId, int pageNumber, int pageSize, CancellationToken cancellationToken = default)
+        {
+            // 1. Lấy dữ liệu thói quen người dùng
+            var purchasedShopIds = await _unitOfWork.Orders.GetPurchasedShopIdsByUserAsync(currentUserId, cancellationToken);
+
+            var searchHistory = await _unitOfWork.UserSearchHistories.GetTopSearchesByUserAsync(currentUserId, 10, cancellationToken);
+            var topSearchKeywords = searchHistory.Select(h => h.Keyword.ToLower()).ToList();
+
+            // 2. Gọi hàm tính điểm và lấy danh sách Post
+            var (posts, totalCount) = await _unitOfWork.CommunityPosts.GetPersonalizedFeedPagedAsync(
+                currentUserId,
+                purchasedShopIds,
+                topSearchKeywords,
+                pageNumber,
+                pageSize,
+                cancellationToken);
+
+            // 3. Map sang Response DTO (Sử dụng lại logic MapPostsToFeedResponse nhưng bỏ Cursor)
+            var responseItems = posts.Select(p => new PostFeedResponse
+            {
+                Id = p.Id,
+                UserId = p.UserId,
+                Username = p.User?.Username ?? "Unknown",
+                FullName = p.User != null ? $"{p.User.FirstName} {p.User.LastName}" : "Unknown",
+                AvatarUrl = p.User?.Image,
+                ShopId = p.User?.ShopProfile?.Id,
+                ShopName = p.User?.ShopProfile?.ShopName,
+                Role = p.User?.Role != null ? p.User.Role.Name.ToString() : "Customer",
+                Title = p.Title,
+                CreatedAt = p.CreatedAt,
+                AssembledProductId = p.AssembledProductId,
+                AttachmentUrls = p.Attachments.Select(a => a.FileUrl).ToList(),
+                ReactionCount = p.PostReactions.Count(r => !r.IsDeleted),
+                CommentCount = p.PostComments.Count(c => !c.IsDeleted),
+                CurrentUserReaction = p.PostReactions.FirstOrDefault(r => r.UserId == currentUserId && !r.IsDeleted)?.Type.ToString()
+            }).ToList();
+
+            await _postEnricher.EnrichAsync(responseItems, cancellationToken);
+
+            return new PaginatedResult<PostFeedResponse>
+            {
+                Items = responseItems.ConvertDatesToLocal().ToList(),
+                TotalCount = totalCount,
+                CurrentPage = pageNumber,
+                PageSize = pageSize
+            };
         }
     }
 }

@@ -12,7 +12,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
     public interface IShopService
     {
         Task<ShopResponse> GetShopPublicProfileAsync(Guid shopId);
-        Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetMarketplaceShopAsync(string? searchTerm, int page, int size);
+        Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetMarketplaceShopAsync(Guid? currentUserId, string? searchTerm, int page, int size);
         Task<ShopDetailResponse> GetMyShopAsync(Guid userId);
         Task<ShopResponse> RegisterShopAsync(Guid userId, CreateShopRequest request);
         Task PatchMyShopAsync(Guid userId, PatchShopRequest request); 

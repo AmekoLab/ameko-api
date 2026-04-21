@@ -23,5 +23,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task SoftDeleteCommentAsync(int commentId, Guid userId, string userRole, CancellationToken cancellationToken = default);
         Task HardDeleteCommentAsync(int commentId, Guid userId, string userRole, CancellationToken cancellationToken = default);
         Task HardDeleteReactionAsync(int postId, Guid userId, string userRole, CancellationToken cancellationToken = default);
+        Task<PaginatedResult<PostFeedResponse>> GetPersonalizedFeedAsync(Guid currentUserId, int pageNumber, int pageSize, CancellationToken cancellationToken = default);
     }
 }

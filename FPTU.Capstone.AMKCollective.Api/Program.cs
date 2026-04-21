@@ -192,7 +192,7 @@ internal class Program
         builder.Services.AddHostedService<QualityScoreRefreshWorker>();
         builder.Services.AddHostedService<CommissionReminderWorker>();
         builder.Services.AddHostedService<AssemblyTrackingTimeoutWorker>();
-
+        builder.Services.AddHostedService<SearchHistoryWorker>();
         // Social Commerce Queues
         builder.Services.AddSingleton<INotificationQueue, NotificationQueue>();
         builder.Services.AddHostedService<NotificationBackgroundWorker>();

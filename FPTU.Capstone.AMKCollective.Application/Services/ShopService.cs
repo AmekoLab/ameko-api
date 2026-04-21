@@ -1,18 +1,19 @@
 using AutoMapper;
-using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Search;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Shop;
+using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.AI;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 
 namespace FPTU.Capstone.AMKCollective.Application.Services
 {
@@ -25,7 +26,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IWalletService _walletService;
         private readonly IEmailService _emailService;
         private readonly IAIService _aiService;
-        private readonly ILogger<ShopService> _logger; 
+        private readonly ILogger<ShopService> _logger;
+        private readonly ISearchHistoryQueue _searchQueue;
 
         public ShopService(
             IUnitOfWork unitOfWork,
@@ -35,7 +37,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             IWalletService walletService,  
             IEmailService emailService,
             IAIService aiService,
-            ILogger<ShopService> logger) 
+            ILogger<ShopService> logger,
+            ISearchHistoryQueue searchQueue) 
         {
             _unitOfWork = unitOfWork;
             _storage = storage;
@@ -44,7 +47,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _walletService = walletService;
             _emailService = emailService;
             _aiService = aiService;
-            _logger = logger; 
+            _logger = logger;
+            _searchQueue = searchQueue;
         }
 
         public async Task<ShopResponse> GetShopPublicProfileAsync(Guid shopId)
@@ -66,9 +70,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return response;
         }
 
-        public async Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetMarketplaceShopAsync(string? searchTerm, int page, int size)
+        public async Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetMarketplaceShopAsync(Guid? currentUserId,string? searchTerm, int page, int size)
         {
             var (items, total) = await _unitOfWork.Shops.GetActiveShopsForUserAsync(searchTerm, page, size);
+            if (currentUserId.HasValue && !string.IsNullOrWhiteSpace(searchTerm))
+            {
+                // Bắn vào Queue (RAM) ngay lập tức, không dùng await, không làm chậm request
+                _searchQueue.TryQueueSearch(new SearchLogEvent(currentUserId.Value, searchTerm, "Shop"));
+            }
             return (_mapper.Map<IEnumerable<ShopResponse>>(items).ConvertDatesToLocal(), total);
         }
 
