@@ -21,6 +21,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         // [Fix] Kiểm tra order đã có issue đang InProgress chưa — tránh duplicate cancel request
         Task<bool> HasActiveIssueForOrderAsync(Guid orderId);
         Task<List<OrderIssue>> GetExpiredIssuesAsync(DateTime threshold);
+        Task<List<OrderIssue>> GetExpiredCancelRequestsAsync(DateTime threshold);
+
         Task<List<OrderIssue>> GetExpiredIssuesByStatusAsync(OrderIssueStatus status, DateTime threshold);
         
         Task<(IEnumerable<OrderIssue> Items, int TotalCount)> GetAllPagedAsync(OrderIssueStatus? status, int pageNumber, int pageSize, CancellationToken token = default);
