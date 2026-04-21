@@ -30,6 +30,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // Fetch products efficiently in bulk mapping to ProductPreviewDto
             var rawProducts = await _unitOfWork.AssembledProducts.GetByIdsAsync(productIds, cancellationToken);
+            var soldQuantities = await _unitOfWork.AssembledProducts.GetSoldQuantitiesAsync(productIds, cancellationToken);
             var productsDict = rawProducts.ToDictionary(
                 p => p.Id,
                 p => new ProductPreviewDto
@@ -41,7 +42,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     ImageUrls = new[] { p.Image1, p.Image2, p.Image3 }
                                  .Where(url => !string.IsNullOrEmpty(url))
                                  .ToList()!,
-                    Quantity = p.Quantity ?? 0
+                    Quantity = p.Quantity ?? 0,
+                    SoldQuantity = soldQuantities.TryGetValue(p.Id, out var sold) ? sold : 0
                 });
 
             foreach (var post in posts)

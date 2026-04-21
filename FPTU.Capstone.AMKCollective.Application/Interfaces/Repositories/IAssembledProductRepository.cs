@@ -16,5 +16,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task UpdateAsync(AssembledProduct assembledProduct);
         Task DeleteAsync(AssembledProduct assembledProduct);
         Task UpdateEmbeddingAsync(Guid id, string? embedding, CancellationToken ct = default);
+        Task<Dictionary<Guid, int>> GetSoldQuantitiesAsync(IEnumerable<Guid> productIds, CancellationToken cancellationToken = default);
     }
 }
