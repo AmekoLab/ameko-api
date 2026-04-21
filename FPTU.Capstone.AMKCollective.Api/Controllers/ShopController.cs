@@ -36,7 +36,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var (items, total) = await _shopService.GetMarketplaceShopAsync(searchTerm, page, size);
+                var userId = GetCurrentUserId();
+                var (items, total) = await _shopService.GetMarketplaceShopAsync(userId, searchTerm, page, size);
                 var response = new
                 {
                     items,

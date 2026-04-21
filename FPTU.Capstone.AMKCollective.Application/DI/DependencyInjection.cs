@@ -25,7 +25,9 @@ namespace FPTU.Capstone.AMKCollective.Application.DI
             
             // AI Services
             services.AddHttpClient<IAIService, AIService>();
-            
+
+
+            services.AddSingleton<ISearchHistoryQueue, SearchHistoryQueue>();
             return services;
         }
     }

@@ -15,5 +15,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task AddAsync(CommunityPost post, CancellationToken ct = default);
         void Update(CommunityPost post);
         void Remove(CommunityPost post);
+
+        Task<(List<CommunityPost> Items, int TotalCount)> GetPersonalizedFeedPagedAsync(
+            Guid userId,
+            List<Guid> purchasedShopIds,
+            List<string> topSearchKeywords,
+            int pageNumber,
+            int pageSize,
+            CancellationToken cancellationToken = default);
     }
 }
