@@ -413,7 +413,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // =========================================================
             CreateMap<Feedback, FeedbackResponse>()
                 .ForMember(dest => dest.FeedbackId, opt => opt.MapFrom(src => src.Id))
-                .ForMember(dest => dest.FromUserName, opt => opt.MapFrom(src => src.FromUser.Username))
+                .ForMember(dest => dest.FromUserName, opt => opt.MapFrom(src => src.FromUser != null ? $"{src.FromUser.FirstName} {src.FromUser.LastName}".Trim() : string.Empty))
                 .ForMember(dest => dest.FromUserAvatar, opt => opt.MapFrom(src => src.FromUser.Image))
                 .ForMember(dest => dest.CreatedDate, opt => opt.MapFrom(src => src.CreatedAt))
                 .ForMember(dest => dest.ImageUrls, opt => opt.Ignore());
@@ -423,11 +423,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // =========================================================
             CreateMap<AssembledProductFeedback, AssembledProductFeedbackResponse>()
                 .ForMember(dest => dest.FeedbackId, opt => opt.MapFrom(src => src.Id))
-                .ForMember(dest => dest.FromUserName, opt => opt.MapFrom(src => src.FromUser.Username))
+                .ForMember(dest => dest.FromUserName, opt => opt.MapFrom(src => src.FromUser != null ? $"{src.FromUser.FirstName} {src.FromUser.LastName}".Trim() : string.Empty))
                 .ForMember(dest => dest.FromUserAvatar, opt => opt.MapFrom(src => src.FromUser.Image))
                 .ForMember(dest => dest.CreatedDate, opt => opt.MapFrom(src => src.CreatedAt))
                 .ForMember(dest => dest.ImageUrls, opt => opt.Ignore());
-
         }
 
         //HELPER

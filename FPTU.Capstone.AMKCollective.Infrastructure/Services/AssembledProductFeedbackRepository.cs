@@ -92,5 +92,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             return await _context.AssembledProductFeedbacks.AnyAsync(f => f.OrderItemId == orderItemId);
         }
+        public async Task<AssembledProductFeedback?> GetByOrderItemIdAsync(Guid orderItemId)
+        {
+            return await _context.AssembledProductFeedbacks
+                .Include(f => f.Images)
+                .Include(f => f.FromUser)
+                .FirstOrDefaultAsync(f => f.OrderItemId == orderItemId);
+        }
     }
 }
