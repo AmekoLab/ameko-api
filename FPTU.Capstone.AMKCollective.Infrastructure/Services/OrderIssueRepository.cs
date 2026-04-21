@@ -91,10 +91,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return await _context.OrderIssues
                 .Include(x => x.Order)
                     .ThenInclude(o => o.Shop)
-                    .Where(x => x.Type == OrderIssueType.CancelRequest &&           // chỉ luồng hủy đơn
-                                x.Status == OrderIssueStatus.InProgress &&          // bỏ AwaitingReturn ra
-                               (x.UpdatedAt ?? x.CreatedAt) <= threshold &&
-                               !x.IsDeleted).ToListAsync();
+                        .Where(x => (x.Status == OrderIssueStatus.InProgress || x.Status == OrderIssueStatus.AwaitingReturn)
+                             && (x.UpdatedAt ?? x.CreatedAt) <= threshold
+                             && !x.IsDeleted)
+                .ToListAsync();
         }
 
         public async Task<List<OrderIssue>> GetExpiredIssuesByStatusAsync(OrderIssueStatus status, DateTime threshold)

@@ -85,6 +85,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             await _context.RefreshTokens.AddAsync(token);
         }
 
+        public Task RemoveRefreshTokenAsync(RefreshToken token)
+        {
+            _context.RefreshTokens.Remove(token);
+            return Task.CompletedTask;
+        }
+
         public async Task RemoveAllRefreshTokensAsync(Guid userId)
         {
             var tokens = await _context.RefreshTokens.Where(rt => rt.UserId == userId).ToListAsync();
