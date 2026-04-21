@@ -256,6 +256,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             };
         }
 
+        public async Task<AssembledProductFeedbackResponse?> GetMyFeedbackByItemAsync(Guid userId, Guid orderItemId)
+        {
+            var feedback = await _unitOfWork.AssembledProductFeedbacks.GetByOrderItemIdAsync(orderItemId);
+
+            if (feedback == null) return null;
+            if (feedback.FromUserId != userId)
+                throw new UnauthorizedAccessException("You do not have permission to reply to this shop's feedback.");
+
+            var response = _mapper.Map<AssembledProductFeedbackResponse>(feedback);
+            response.ImageUrls = feedback.Images.Select(img => img.ImageUrl).ToList();
+
+            return response;
+        }
+
         private HashSet<string> LoadBadWords(string contentRootPath)
         {
             var filePath = Path.Combine(contentRootPath, "VietnameseBadWord.txt");

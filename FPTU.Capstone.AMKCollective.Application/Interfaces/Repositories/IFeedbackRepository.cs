@@ -1,4 +1,5 @@
-﻿using FPTU.Capstone.AMKCollective.Domain.Entities;
+﻿using FPTU.Capstone.AMKCollective.Application.DTOs.Feedback;
+using FPTU.Capstone.AMKCollective.Domain.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;

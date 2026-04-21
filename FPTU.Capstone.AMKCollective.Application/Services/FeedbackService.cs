@@ -279,5 +279,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 AssembledItems = assembledEligibility
             };
         }
+        public async Task<FeedbackResponse?> GetMyFeedbackByOrderAsync(Guid userId, Guid orderId)
+        {
+            var feedback = await _unitOfWork.Feedbacks.GetByOrderIdAsync(orderId);
+
+            if (feedback == null) return null;
+
+            // Bảo mật: Chỉ cho phép chính người mua xem lại đánh giá của mình
+            if (feedback.FromUserId != userId)
+                throw new UnauthorizedAccessException("You do not have permission to access this order.");
+
+            var response = _mapper.Map<FeedbackResponse>(feedback);
+            response.ImageUrls = feedback.Images.Select(img => img.ImageUrl).ToList();
+
+            return response;
+        }
     }
 }

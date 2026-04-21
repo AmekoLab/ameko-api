@@ -180,5 +180,33 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return ErrorResponse(ex.Message);
             }
         }
+        /// <summary>
+        /// Khach hang xem lai chi tiet danh gia cua chinh minh cho mot don hang (danh gia shop).
+        /// </summary>
+        [HttpGet("orders/{orderId}/my-feedback")]
+        [Authorize]
+        public async Task<IActionResult> GetMyFeedbackByOrder(Guid orderId)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var result = await _feedbackService.GetMyFeedbackByOrderAsync(userId, orderId);
+
+                if (result == null)
+                {
+                    return SuccessResponse<FeedbackResponse?>(null, "Feedback not found.");
+                }
+
+                return SuccessResponse(result, "Fetched my feedback successfully.");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return UnauthorizedResponse<object>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ErrorResponse(ex.Message);
+            }
+        }
     }
 }
