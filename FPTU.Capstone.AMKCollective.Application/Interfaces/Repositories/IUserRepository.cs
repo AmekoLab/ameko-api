@@ -19,6 +19,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<Role?> GetRoleByNameAsync(RoleType roleName);
         Task<User?> GetUserWithRefreshTokensAsync(Guid id);
         Task AddRefreshTokenAsync(RefreshToken token);
+        Task RemoveRefreshTokenAsync(RefreshToken token);
         Task RemoveAllRefreshTokensAsync(Guid userId);
         Task<(IEnumerable<User> Items, int TotalCount)> SearchByNamePagedAsync(string name, int pageNumber, int pageSize, CancellationToken token = default);
 

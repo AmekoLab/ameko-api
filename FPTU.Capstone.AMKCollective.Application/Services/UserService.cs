@@ -219,7 +219,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (tokenToRemove != null)
             {
-                user.RefreshTokens.Remove(tokenToRemove);
+                await _unitOfWork.Users.RemoveRefreshTokenAsync(tokenToRemove);
                 await _unitOfWork.CommitAsync();
             }
 
@@ -236,7 +236,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (tokenToRemove == null) return (null, "Invalid Refresh Token");
 
-            user.RefreshTokens.Remove(tokenToRemove);
+            await _unitOfWork.Users.RemoveRefreshTokenAsync(tokenToRemove);
 
             var newToken = _tokenService.CreateToken(user);
             var newRefreshTokenRaw = await SaveRefreshTokenAsync(user);
@@ -265,7 +265,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 var oldestToken = user.RefreshTokens.OrderBy(rt => rt.CreatedAt).FirstOrDefault();
                 if (oldestToken != null)
                 {
-                    user.RefreshTokens.Remove(oldestToken);
+                    await _unitOfWork.Users.RemoveRefreshTokenAsync(oldestToken);
                 }
             }
 
