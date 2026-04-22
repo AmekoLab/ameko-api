@@ -12,5 +12,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Settings
         public decimal MinimumBalanceAfterWithdrawal { get; set; }
         public decimal MinimumWithdrawalAmount { get; set; }
         public int PinResetOtpExpiryMinutes { get; set; }
+        public Guid SystemWalletId { get; set; }
     }
 }

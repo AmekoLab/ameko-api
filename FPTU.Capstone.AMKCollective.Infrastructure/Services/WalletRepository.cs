@@ -41,8 +41,18 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             wallet.IsDeleted = true;
             _context.Wallets.Update(wallet);
         }
-        public async Task<bool> UpdateBalancesAsync(Guid walletId, decimal balanceChange, decimal heldBalanceChange = 0, bool allowNegative = false)
+        public async Task<(bool Success, decimal OldBalance, decimal OldHeldBalance)> UpdateBalancesAsync(Guid walletId, decimal balanceChange, decimal heldBalanceChange = 0, bool allowNegative = false)
         {
+            // [FIX #6] Đọc snapshot trước khi update — dùng AsNoTracking để tránh conflict với EF change tracker
+            var snapshot = await _context.Wallets
+                .AsNoTracking()
+                .Where(w => w.Id == walletId)
+                .Select(w => new { w.Balance, w.HeldBalance })
+                .FirstOrDefaultAsync();
+
+            if (snapshot == null)
+                return (false, 0, 0);
+
             var query = _context.Wallets.Where(w => w.Id == walletId);
 
             if (!allowNegative)
@@ -53,7 +63,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .SetProperty(w => w.Balance, w => w.Balance + balanceChange)
                 .SetProperty(w => w.HeldBalance, w => w.HeldBalance + heldBalanceChange));
 
-            return rowsAffected > 0;
+            return (rowsAffected > 0, snapshot.Balance, snapshot.HeldBalance);
         }
     }
 }

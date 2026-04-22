@@ -1,3 +1,4 @@
+using FPTU.Capstone.AMKCollective.Domain.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,5 +15,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Wallet
         public decimal HeldBalanceAfterTransaction { get; set; }
         public Guid? RelatedOrderId { get; set; }
         public Guid? OrderGroupId { get; set; }
+        TransactionMetadata? Metadata { get; set; }
     }
 }

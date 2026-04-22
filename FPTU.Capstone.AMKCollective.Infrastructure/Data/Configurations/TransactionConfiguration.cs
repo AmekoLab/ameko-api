@@ -17,7 +17,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                     "`OrderGroupId` IS NULL OR `RelatedOrderId` IS NULL"
                 );
             });
-
             builder.HasKey(t => t.Id);
 
             builder.Property(t => t.Amount)
@@ -51,6 +50,13 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(t => t.Description)
                 .HasMaxLength(500);
 
+            builder.Property(t => t.TransactionCode)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            builder.Property(t => t.IdempotencyKey)
+                .HasMaxLength(100);
+
             builder.Property(t => t.WalletId)
                 .IsRequired();
 
@@ -64,6 +70,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.HasIndex(t => t.RelatedOrderId)
                 .HasDatabaseName("IX_Transactions_RelatedOrderId");
 
+            builder.HasIndex(t => t.TransactionCode)
+                .IsUnique()
+                .HasDatabaseName("IX_Transactions_TransactionCode");
+
+            builder.HasIndex(t => t.IdempotencyKey)
+                .IsUnique()
+                .HasDatabaseName("IX_Transactions_IdempotencyKey")
+                .HasFilter("`IdempotencyKey` IS NOT NULL");
             // Relationships
             builder.HasOne(t => t.Wallet)
                 .WithMany(w => w.Transactions)

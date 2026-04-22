@@ -22,5 +22,9 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
         public string? Note { get; set; }
         public List<Guid>? CustomComponentIds { get; set; }
         public List<OrderItemComponentDto> OrderItemComponents { get; set; } = new();
+
+        /// <summary>True khi shop của item này bị ban/inactive — FE hiển thị warning và block checkout.</summary>
+        public bool IsShopUnavailable { get; set; }
+        public string? ShopUnavailableReason { get; set; }
     }
 }

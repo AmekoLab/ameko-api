@@ -355,6 +355,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     mappedItems.Add(await ValidateAndMapCartItemAsync(item));
                 }
 
+                var unavailableItem = mappedItems.FirstOrDefault(i => i.IsShopUnavailable);
+                if (unavailableItem != null)
+                    throw new InvalidOperationException(unavailableItem.ShopUnavailableReason);
+
                 await EnforceReputationMonthlyLimitsAsync(userId, mappedItems, token);
 
                 var orderGroup = new OrderGroup
@@ -826,8 +830,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                             await _walletService.RefundToWalletAsync(
                                 issue.UserId,
-                                refundToCustomer,
-                                refundPhrase
+                                cashPaidAmount,
+                                refundPhrase,
+                                customerPenaltyAmount
                             );
 
                             // BƯỚC 3.2.2: Trừ doanh thu tạm tính đang bị treo trong HeldBalance của Shop (Bắt buộc do đơn đã hủy)
@@ -842,15 +847,23 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             if (customerPenaltyAmount > 0)
                             {
                                 decimal shopCompensation = customerPenaltyAmount * _orderSettings.ShopPayoutRate;
+                                decimal platformPenaltyShare = customerPenaltyAmount - shopCompensation;
+
                                 await _walletService.AdjustBalanceAsync(
                                     realActionUserId,
                                     new AdjustBalanceRequest
                                     {
                                         UserId = realActionUserId,
                                         Amount = shopCompensation,
-                                        Reason = $"Compensation fee from user cancelled order #{order.Id}"
+                                        Reason = $"Shop compensation for cancelled order #{order.Id}: customer penalty {customerPenaltyAmount:N0} VND × {_orderSettings.ShopPayoutRate * 100:0}% payout = {shopCompensation:N0} VND"
                                     }
                                 );
+
+                                if (platformPenaltyShare > 0)
+                                    await _walletService.CreditPlatformFeeAsync(
+                                        platformPenaltyShare,
+                                        $"Platform penalty share for cancelled order #{order.Id}: {customerPenaltyAmount:N0} VND × {(1 - _orderSettings.ShopPayoutRate) * 100:0}% = {platformPenaltyShare:N0} VND"
+                                    );
                             }
 
                             // BƯỚC 3.2.3: Phân định lỗi & Xử phạt
@@ -2006,6 +2019,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     var shop = await _unitOfWork.Shops.GetByIdAsync(relatedModel.ShopId);
                     if (shop != null && shop.UserId == cart.CustomerId)
                         throw new InvalidOperationException("You cannot add your own shop product to cart.");
+                    if (shop != null && (shop.Status == ShopStatus.Banned || shop.Status == ShopStatus.Inactive || !shop.IsActive))
+                        throw new InvalidOperationException($"Shop '{shop.ShopName}' is currently unavailable.");
                 }
             }
 
@@ -2101,9 +2116,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     catch { /* Bỏ qua lỗi Parse */ }
                 }
             }
+            bool shopUnavailable = false;
+            string? shopUnavailableReason = null;
             if (shopId != Guid.Empty)
             {
                 var shop = await _unitOfWork.Shops.GetByIdAsync(shopId);
+                if (shop != null && (shop.Status == ShopStatus.Banned || shop.Status == ShopStatus.Inactive || !shop.IsActive))
+                {
+                    shopUnavailable = true;
+                    shopUnavailableReason = shop.Status == ShopStatus.Banned
+                        ? $"Shop '{shop.ShopName}' has been banned and cannot accept new orders."
+                        : $"Shop '{shop.ShopName}' is currently inactive.";
+                }
                 shopName = shop?.ShopName ?? "Shop";
             }
             else
@@ -2124,7 +2148,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 IsCustom = item.IsCustom,
                 ShopId = shopId,
                 ShopName = shopName,
-                OrderItemComponents = componentsDto
+                OrderItemComponents = componentsDto,
+                IsShopUnavailable = shopUnavailable,
+                ShopUnavailableReason = shopUnavailableReason
             };
         }
 
