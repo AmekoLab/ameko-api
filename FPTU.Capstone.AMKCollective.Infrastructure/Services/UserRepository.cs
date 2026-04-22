@@ -123,6 +123,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .ToListAsync(token);
         }
 
+        public Task<int> CountNewUsersAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default)
+            => _context.Users
+                .AsNoTracking()
+                .CountAsync(u => !u.IsDeleted && u.CreatedAt >= fromUtc && u.CreatedAt <= toUtc, token);
+
         public async Task<int> DeleteUnverifiedAccountsOlderThanAsync(DateTime thresholdUtc, CancellationToken token = default)
         {
             var usersToDelete = await _context.Users

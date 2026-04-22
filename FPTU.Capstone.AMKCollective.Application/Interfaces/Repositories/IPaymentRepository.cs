@@ -1,4 +1,5 @@
-﻿using FPTU.Capstone.AMKCollective.Domain.Entities;
+﻿using FPTU.Capstone.AMKCollective.Application.DTOs.AdminDashboard;
+using FPTU.Capstone.AMKCollective.Domain.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -36,6 +37,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         /// Returns all payments in the provided time range for dashboard analytics.
         /// </summary>
         Task<List<Payment>> GetPaymentsForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default);
+
+        /// <summary>
+        /// Returns pre-aggregated payment stats computed entirely in the database.
+        /// </summary>
+        Task<PaymentDashboardStats> GetPaymentStatsForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default);
 
     }
 }

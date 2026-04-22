@@ -1,4 +1,5 @@
-﻿using FPTU.Capstone.AMKCollective.Domain.Entities;
+﻿using FPTU.Capstone.AMKCollective.Application.DTOs.AdminDashboard;
+using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
 using System.Collections.Generic;
@@ -57,6 +58,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         /// Read-only dataset for dashboard analytics.
         /// </summary>
         Task<List<Order>> GetOrdersForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default);
+
+        /// <summary>
+        /// Returns pre-aggregated order stats computed entirely in the database.
+        /// Replaces loading all orders into memory for dashboard calculations.
+        /// </summary>
+        Task<OrderDashboardStats> GetOrderStatsForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default);
         Task<List<Guid>> GetPurchasedShopIdsByUserAsync(Guid userId, CancellationToken cancellationToken = default);
     }
 }

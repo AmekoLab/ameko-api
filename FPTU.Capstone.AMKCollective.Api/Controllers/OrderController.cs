@@ -134,6 +134,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // 2. GET PAYMENT HISTORY (Grouped)
         [HttpGet("my-payment-history")]
+        [Authorize]
         [SwaggerOperation(
             Summary = "Get payment history (Grouped)",
             Description = "Returns a list of payment batches (Order Groups). Each group contains multiple child orders."

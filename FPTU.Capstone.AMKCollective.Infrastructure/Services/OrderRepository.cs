@@ -1,4 +1,5 @@
-﻿using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
+﻿using FPTU.Capstone.AMKCollective.Application.DTOs.AdminDashboard;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
@@ -348,6 +349,46 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .AsNoTracking()
                 .Where(o => !o.IsDeleted && o.CreatedAt >= fromUtc && o.CreatedAt <= toUtc)
                 .ToListAsync(token);
+        }
+
+        public async Task<OrderDashboardStats> GetOrderStatsForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default)
+        {
+            var baseQuery = _context.Orders
+                .AsNoTracking()
+                .Where(o => !o.IsDeleted
+                         && o.OrderStatus != OrderStatus.InCart
+                         && o.CreatedAt >= fromUtc
+                         && o.CreatedAt <= toUtc);
+
+            // Tất cả counts/sums chạy trong 1 SQL query duy nhất nhờ GroupBy(1)
+            var stats = await baseQuery
+                .GroupBy(_ => 1)
+                .Select(g => new OrderDashboardStats
+                {
+                    TotalOrders     = g.Count(),
+                    CompletedOrders = g.Count(o => o.OrderStatus == OrderStatus.Completed),
+                    CancelledOrders = g.Count(o => o.OrderStatus == OrderStatus.Cancelled),
+                    RefundedOrders  = g.Count(o => o.OrderStatus == OrderStatus.Refunded
+                                                || o.PaymentStatus == PaymentStatus.Refunded),
+                    GrossMerchandiseValue = g.Sum(o => o.TotalAmount),
+                    NetRevenue = g.Where(o => o.PaymentStatus == PaymentStatus.Paid
+                                           && o.OrderStatus != OrderStatus.Cancelled
+                                           && o.OrderStatus != OrderStatus.Refunded)
+                                  .Sum(o => (decimal?)o.TotalAmount) ?? 0m,
+                })
+                .FirstOrDefaultAsync(token);
+
+            if (stats == null)
+                return new OrderDashboardStats();
+
+            // ActiveBuyers cần Distinct — EF Core không hỗ trợ Distinct trong GroupBy projection
+            // nên chạy thành 1 query riêng nhỏ (chỉ SELECT CustomerId, không load entity)
+            stats.ActiveBuyers = await baseQuery
+                .Select(o => o.CustomerId)
+                .Distinct()
+                .CountAsync(token);
+
+            return stats;
         }
         public async Task<List<Guid>> GetPurchasedShopIdsByUserAsync(Guid userId, CancellationToken cancellationToken = default)
         {

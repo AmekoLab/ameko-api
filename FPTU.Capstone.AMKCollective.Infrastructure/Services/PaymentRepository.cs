@@ -1,4 +1,5 @@
-﻿using FPTU.Capstone.AMKCollective.Application.DTOs.Payment;
+﻿using FPTU.Capstone.AMKCollective.Application.DTOs.AdminDashboard;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Payment;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
@@ -155,6 +156,61 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .AsNoTracking()
                 .Where(p => p.CreatedAt >= fromUtc && p.CreatedAt <= toUtc)
                 .ToListAsync(token);
+        }
+
+        public async Task<PaymentDashboardStats> GetPaymentStatsForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default)
+        {
+            var baseQuery = _context.Payments
+                .AsNoTracking()
+                .Where(p => p.CreatedAt >= fromUtc && p.CreatedAt <= toUtc);
+
+            var summary = await baseQuery
+                .GroupBy(_ => 1)
+                .Select(g => new
+                {
+                    Total      = g.Count(),
+                    Successful = g.Count(p => p.Status == PaymentStatus.Paid || p.Status == PaymentStatus.Released),
+                    Failed     = g.Count(p => p.Status == PaymentStatus.Failed),
+                    Refunded   = g.Count(p => p.Status == PaymentStatus.Refunded),
+                    SuccessVol = g.Where(p => p.Status == PaymentStatus.Paid || p.Status == PaymentStatus.Released)
+                                  .Sum(p => (decimal?)p.Amount) ?? 0m,
+                })
+                .FirstOrDefaultAsync(token);
+
+            // GroupBy theo Method và Type — mỗi cái là 1 SQL GROUP BY riêng, nhẹ vì chỉ select scalar
+            var methodMetrics = await baseQuery
+                .GroupBy(p => p.Method)
+                .Select(g => new PaymentMethodMetric
+                {
+                    Method     = g.Key,
+                    Total      = g.Count(),
+                    Successful = g.Count(p => p.Status == PaymentStatus.Paid || p.Status == PaymentStatus.Released),
+                    Failed     = g.Count(p => p.Status == PaymentStatus.Failed),
+                })
+                .OrderByDescending(x => x.Total)
+                .ToListAsync(token);
+
+            var typeMetrics = await baseQuery
+                .GroupBy(p => p.Type)
+                .Select(g => new PaymentTypeMetric
+                {
+                    Type   = g.Key,
+                    Total  = g.Count(),
+                    Amount = g.Sum(p => p.Amount),
+                })
+                .OrderByDescending(x => x.Total)
+                .ToListAsync(token);
+
+            return new PaymentDashboardStats
+            {
+                TotalPayments      = summary?.Total ?? 0,
+                SuccessfulPayments = summary?.Successful ?? 0,
+                FailedPayments     = summary?.Failed ?? 0,
+                RefundedPayments   = summary?.Refunded ?? 0,
+                SuccessfulVolume   = summary?.SuccessVol ?? 0m,
+                MethodMetrics      = methodMetrics,
+                TypeMetrics        = typeMetrics,
+            };
         }
 
         //public async Task<(decimal TotalRevenue, decimal TotalWithdrawn, decimal PendingWithdrawal, decimal ThisMonthRevenue)> GetPaymentStatsByWalletIdAsync(Guid walletId)

@@ -1,3 +1,4 @@
+using FPTU.Capstone.AMKCollective.Application.DTOs.AdminDashboard;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
@@ -204,6 +205,35 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .AsNoTracking()
                 .Where(oi => !oi.IsDeleted && oi.CreatedAt >= fromUtc && oi.CreatedAt <= toUtc)
                 .ToListAsync(token);
+        }
+
+        public async Task<IssueDashboardStats> GetIssueStatsForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default)
+        {
+            var openStatuses = new[]
+            {
+                OrderIssueStatus.Pending,
+                OrderIssueStatus.InProgress,
+                OrderIssueStatus.ShopAccepted,
+                OrderIssueStatus.AwaitingReturn,
+                OrderIssueStatus.Returning,
+            };
+
+            var stats = await _context.OrderIssues
+                .AsNoTracking()
+                .Where(oi => !oi.IsDeleted && oi.CreatedAt >= fromUtc && oi.CreatedAt <= toUtc)
+                .GroupBy(_ => 1)
+                .Select(g => new IssueDashboardStats
+                {
+                    TotalIssues    = g.Count(),
+                    OpenIssues     = g.Count(oi => openStatuses.Contains(oi.Status)),
+                    CancelRequests = g.Count(oi => oi.Type == OrderIssueType.CancelRequest),
+                    RefundRequests = g.Count(oi => oi.Type == OrderIssueType.ReturnRequest),
+                    DisputeRequests = g.Count(oi => oi.Type == OrderIssueType.ReturnRequest
+                                                 || oi.Type == OrderIssueType.WarrantyClaim),
+                })
+                .FirstOrDefaultAsync(token);
+
+            return stats ?? new IssueDashboardStats();
         }
     }
 }

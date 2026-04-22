@@ -233,20 +233,26 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             var (_, oldBal, oldHeld) = await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, 0, amount);
 
+            // amount   = shopRevenue (net shop nhận)
+            // feeAmount = platform commission (đã trừ trước)
+            // grossAmount = tiền khách thực trả = amount + feeAmount
+            decimal grossAmount = amount + feeAmount;
+
             var transaction = new Transaction
             {
                 TransactionCode = TransactionHelper.GenerateTxCode(),
                 IdempotencyKey = $"PENDING_SALES_{orderId}",
                 WalletId = wallet.Id,
                 RelatedOrderId = orderId,
-                Amount = amount,
+                Amount = grossAmount,                    // tiền khách trả (gross)
+                FeeAmount = feeAmount,                   // phí hoa hồng sàn
+                // NetAmount = grossAmount - feeAmount = amount (shop nhận) — tính tự động ở DTO
                 BalanceBeforeTransaction = oldBal,
-                BalanceAfterTransaction = oldBal, // Held balance doesn't affect available
+                BalanceAfterTransaction = oldBal,        // Held không ảnh hưởng Balance
                 Direction = TransactionDirection.Held,
                 Type = TransactionType.SalesPending,
                 HeldBalanceBeforeTransaction = oldHeld,
-                HeldBalanceAfterTransaction = oldHeld + amount,
-                FeeAmount = feeAmount,
+                HeldBalanceAfterTransaction = oldHeld + amount, // HeldBalance tăng đúng bằng net shop nhận
                 Description = $"Pending sales revenue from order #{orderId}",
                 Currency = "VND",
                 CreatedAt = DateTime.UtcNow
@@ -269,20 +275,26 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var (success, oldBal, oldHeld) = await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, releaseAmount, -releaseAmount);
             if (!success) return;
 
+            // releaseAmount = net shop nhận vào Balance
+            // feeAmount     = platform commission (đã trừ trước, lưu để tham khảo)
+            // grossAmount   = tiền khách đã trả gốc = releaseAmount + feeAmount
+            decimal grossAmount = releaseAmount + feeAmount;
+
             var transaction = new Transaction
             {
                 TransactionCode = TransactionHelper.GenerateTxCode(),
                 IdempotencyKey = $"RELEASE_FUNDS_{orderId}",
                 WalletId = wallet.Id,
                 RelatedOrderId = orderId,
-                Amount = releaseAmount,
+                Amount = grossAmount,                       // tiền khách trả (gross)
+                FeeAmount = feeAmount,                      // phí hoa hồng sàn
+                // NetAmount = grossAmount - feeAmount = releaseAmount — tính tự động ở DTO
                 BalanceBeforeTransaction = oldBal,
-                BalanceAfterTransaction = oldBal + releaseAmount,
+                BalanceAfterTransaction = oldBal + releaseAmount, // Balance tăng đúng bằng net
                 Direction = TransactionDirection.In,
                 Type = TransactionType.SalesRevenue,
                 HeldBalanceBeforeTransaction = oldHeld,
                 HeldBalanceAfterTransaction = oldHeld - releaseAmount,
-                FeeAmount = feeAmount,
                 Description = releaseAmount < amount
                     ? $"Partial release for order #{orderId} ({releaseAmount:N0}/{amount:N0} VND — remainder already cleared by prior cancellation)"
                     : $"Released revenue for order #{orderId}",

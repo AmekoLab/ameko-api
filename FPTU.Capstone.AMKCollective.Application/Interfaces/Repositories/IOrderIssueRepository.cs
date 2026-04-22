@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using FPTU.Capstone.AMKCollective.Application.DTOs.AdminDashboard;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 
@@ -37,5 +38,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         /// Returns all issues in the provided range for risk dashboard analytics.
         /// </summary>
         Task<List<OrderIssue>> GetIssuesForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default);
+
+        /// <summary>
+        /// Returns pre-aggregated issue stats computed entirely in the database.
+        /// </summary>
+        Task<IssueDashboardStats> GetIssueStatsForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default);
     }
 }
