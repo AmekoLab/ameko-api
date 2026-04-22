@@ -118,6 +118,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return Task.CompletedTask;
         }
 
+        public Task<int> CountActiveShopsAsync(CancellationToken token = default)
+            => _context.ShopProfiles
+                .AsNoTracking()
+                .CountAsync(s => !s.IsDeleted && s.Status == ShopStatus.Active, token);
+
         public async Task<int> SaveChangesAsync(CancellationToken token = default)
         {
             return await _context.SaveChangesAsync(token);

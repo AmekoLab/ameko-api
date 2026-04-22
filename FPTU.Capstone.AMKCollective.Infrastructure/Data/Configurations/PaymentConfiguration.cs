@@ -34,6 +34,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .OnDelete(DeleteBehavior.SetNull);
             builder.HasIndex(p => p.StripeSessionId);
             builder.HasIndex(p => p.StripePaymentIntentId);
+            builder.HasIndex(p => p.CreatedAt);
+            builder.HasIndex(p => new { p.CreatedAt, p.Status })
+                   .HasDatabaseName("IX_Payments_Dashboard");
 
         }
     }

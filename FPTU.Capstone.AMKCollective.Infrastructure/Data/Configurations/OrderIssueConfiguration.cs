@@ -50,6 +50,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.HasIndex(oi => oi.OrderId);
             builder.HasIndex(oi => oi.UserId);
             builder.HasIndex(oi => oi.Status);
+            builder.HasIndex(oi => new { oi.CreatedAt, oi.IsDeleted })
+                   .HasDatabaseName("IX_OrderIssues_Dashboard");
         }
     }
 }

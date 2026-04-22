@@ -40,6 +40,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
 
            
 
+            // Indexes cho dashboard queries (filter theo CreatedAt + status)
+            builder.HasIndex(o => o.CreatedAt);
+            builder.HasIndex(o => new { o.CreatedAt, o.OrderStatus, o.IsDeleted })
+                   .HasDatabaseName("IX_Orders_Dashboard");
+
             //Relationships
             builder.HasOne(o => o.OrderGroup)
                 .WithMany(og => og.Orders)
