@@ -5,6 +5,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace FPTU.Capstone.AMKCollective.Domain.Entities
@@ -42,13 +43,34 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public string Currency { get; set; } = "VND";
 
         public TransactionType Type { get; set; }
+        [Required]
+        [MaxLength(50)]
+        public string TransactionCode { get; set; } = null!;
 
         [MaxLength(500)]
         public string? Description { get; set; } // Vd: "Thanh toán đơn hàng #123 bằng số dư ví", "Hoàn tiền đơn hàng #456"
+        [MaxLength(100)]
+        public string? IdempotencyKey { get; set; }
 
         // Navigation Properties
         public virtual Wallet? Wallet { get; set; }
         public virtual OrderGroup? OrderGroup { get; set; }
         public virtual Order? RelatedOrder { get; set; }
+
+        // Metadata JSON — stored as json column in DB (Pomelo compatible)
+        [Column(TypeName = "json")]
+        public string? MetadataJson { get; set; }
+
+        /// <summary>
+        /// Typed accessor for MetadataJson — not mapped to a DB column.
+        /// </summary>
+        [NotMapped]
+        public TransactionMetadata? Metadata
+        {
+            get => MetadataJson == null ? null
+                : JsonSerializer.Deserialize<TransactionMetadata>(MetadataJson);
+            set => MetadataJson = value == null ? null
+                : JsonSerializer.Serialize(value);
+        }
     }
 }

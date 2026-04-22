@@ -16,7 +16,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task PayOrderWithWalletAsync(Guid userId, Guid orderId, decimal amount);
         Task AddPendingSalesToWalletAsync(Guid shopId, Guid orderId, decimal amount, decimal feeAmount = 0);
         Task ReleaseHeldMoneyAsync(Guid shopId, Guid orderId, decimal amount, decimal feeAmount = 0);
-        Task RefundToWalletAsync(Guid userId, decimal amount, string reason);
+        Task RefundToWalletAsync(Guid userId, decimal amount, string reason, decimal penaltyAmount = 0m);
         Task DeductFundsForRefundAsync(Guid shopId, Guid orderId, decimal amount, bool isOrderCompleted);
 
         Task<PaginatedResult<WalletTransactionResponse>> GetTransactionsByFilterAsync(PaymentFilterRequest filter);
@@ -26,6 +26,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task RejectWithdrawalAsync(Guid adminId, Guid paymentId, WithdrawalActionRequest request);
 
         Task AdjustBalanceAsync(Guid adminId, AdjustBalanceRequest request);
+        Task CreditPlatformFeeAsync(decimal amount, string description);
         Task<string> CreateDepositTransactionAsync(Guid userId, DepositRequest request);
 
         Task<WalletStatisticsResponse> GetWalletStatisticsAsync(Guid userId);
@@ -47,6 +48,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         // --- Admin ---
         /// <summary>Admin xem danh sách đơn rút tiền đang Pending (fix cho endpoint bị broken).</summary>
         Task<PaginatedResult<WithdrawalSummaryResponse>> GetAdminPendingWithdrawalsAsync(int pageIndex, int pageSize, string? shopName = null);
+        Task<WalletTransactionDetailResponse> GetTransactionDetailForAdminAsync(Guid transactionId);
 
         /// <summary>Admin xem lịch sử đơn rút đã xử lý (Completed / Rejected).</summary>
         Task<PaginatedResult<WithdrawalSummaryResponse>> GetAdminProcessedWithdrawalsAsync(int pageIndex, int pageSize);

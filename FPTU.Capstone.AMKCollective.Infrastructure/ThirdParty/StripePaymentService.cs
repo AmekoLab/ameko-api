@@ -125,12 +125,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
 
                         if (payment != null && payment.Status != PaymentStatus.Paid)
                         {
-                            // Update Payment
+                            // Update Payment status
                             payment.Status = PaymentStatus.Paid;
                             payment.StripePaymentIntentId = session.PaymentIntentId;
                             payment.Description += " | Success";
 
-                            // Update Wallet Balance
+                            // Lấy hoặc tạo Wallet
                             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(payment.UserId);
                             if (wallet == null)
                             {
@@ -143,13 +143,41 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                                     IsActive = true
                                 };
                                 await _unitOfWork.Wallets.AddAsync(wallet);
+                                _unitOfWork.Payments.Update(payment);
+                                await _unitOfWork.CommitAsync();
+
+                                // Re-fetch để có state chính xác sau khi persist
+                                wallet = await _unitOfWork.Wallets.GetByUserIdAsync(payment.UserId);
+                                if (wallet == null) throw new Exception("Failed to create wallet for deposit.");
                             }
 
-                            // Cộng tiền
-                            wallet.Balance += payment.Amount;
-                            _unitOfWork.Wallets.Update(wallet);
+                            // [FIX Critical #2] Dùng atomic SQL update thay vì EF tracking
+                            // Tránh race condition khi Stripe gửi webhook retry song song
+                            var (success, oldBal, oldHeld) = await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, payment.Amount, 0);
+                            if (!success)
+                                throw new Exception($"Failed to update wallet balance for deposit. WalletId: {wallet.Id}");
 
-                            // C. Lưu tất cả thay đổi
+                            // [FIX Critical #1] Tạo Transaction record — trước đây Deposit không có log
+                            var txCode = $"DEP-{DateTime.UtcNow:yyMMdd}-{Guid.NewGuid().ToString().Substring(0, 6).ToUpper()}";
+                            var transaction = new Transaction
+                            {
+                                TransactionCode = txCode,
+                                IdempotencyKey = $"STRIPE_DEPOSIT_{session.Id}",
+                                WalletId = wallet.Id,
+                                Amount = payment.Amount,
+                                BalanceBeforeTransaction = oldBal,
+                                BalanceAfterTransaction = oldBal + payment.Amount,
+                                Direction = TransactionDirection.In,
+                                Type = TransactionType.Deposit,
+                                HeldBalanceBeforeTransaction = oldHeld,
+                                HeldBalanceAfterTransaction = oldHeld,
+                                FeeAmount = 0,
+                                Description = $"Deposit via Stripe (Payment: {payment.Id})",
+                                Currency = "VND",
+                                CreatedAt = DateTime.UtcNow
+                            };
+                            await _unitOfWork.Transactions.AddAsync(transaction);
+
                             _unitOfWork.Payments.Update(payment);
                             await _unitOfWork.CommitAsync();
                         }

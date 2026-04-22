@@ -575,7 +575,28 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return ServerErrorResponse<object>(ex.Message);
             }
         }
-
+        /// <summary>
+        /// [Admin] Retrieves the details of a specific transaction by ID.
+        /// </summary>
+        [HttpGet("admin/transactions/{id}")]
+        // [Authorize(Roles = "Admin")] // TODO: Bỏ comment khi deploy production
+        [SwaggerOperation(Summary = "Get Transaction Detail (Admin)")]
+        public async Task<IActionResult> GetTransactionDetailForAdmin(Guid id)
+        {
+            try
+            {
+                var result = await _walletService.GetTransactionDetailForAdminAsync(id);
+                return SuccessResponse(result, "Get transaction detail successfully");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<object>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
 
         // Helper để lấy ID từ Token (JWT)
         //private Guid GetCurrentUserId()

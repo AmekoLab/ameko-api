@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
+using System.Text.Json;
 
 namespace FPTU.Capstone.AMKCollective.Infrastructure.Data
 {
@@ -130,6 +131,34 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data
                 RoleId = adminId, 
                 EmailConfirmed = true,
                 CreatedAt = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc) 
+            });
+            var systemWalletId = Guid.Parse("99999999-9999-9999-9999-999999999999");
+
+            modelBuilder.Entity<Wallet>().HasData(new Wallet
+            {
+                Id = systemWalletId,
+                UserId = systemBotId,
+                Balance = 0,
+                HeldBalance = 0,
+                Currency = "VND",
+                IsActive = true,
+                CreatedAt = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+            // ── Transaction Indexes + JSON Metadata ──
+            modelBuilder.Entity<Transaction>(entity =>
+            {
+                // [FIX #5] Unique filtered index — chống xử lý trùng giao dịch
+                // WHERE IdempotencyKey IS NOT NULL vì nhiều Transaction không cần idempotency
+                entity.HasIndex(t => t.IdempotencyKey)
+                    .IsUnique()
+                    .HasFilter("`IdempotencyKey` IS NOT NULL")
+                    .HasDatabaseName("IX_Transactions_IdempotencyKey");
+
+                // Unique index trên TransactionCode — mỗi giao dịch có mã duy nhất
+                entity.HasIndex(t => t.TransactionCode)
+                    .IsUnique()
+                    .HasDatabaseName("IX_Transactions_TransactionCode");
             });
         }
     }

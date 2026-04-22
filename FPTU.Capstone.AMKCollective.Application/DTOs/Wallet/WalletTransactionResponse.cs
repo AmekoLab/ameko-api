@@ -9,8 +9,11 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Wallet
     public class WalletTransactionResponse
     {
         public Guid Id { get; set; }
+        public string TransactionCode { get; set; } = string.Empty;
         public decimal Amount { get; set; }
+        public decimal GrossAmount => Amount;
         public decimal FeeAmount { get; set; }
+        public decimal NetAmount => Amount - FeeAmount;
         public string FlowDirection { get; set; } = string.Empty;
         public string Currency { get; set; }
         public string Type { get; set; }   // Enum converted to string
