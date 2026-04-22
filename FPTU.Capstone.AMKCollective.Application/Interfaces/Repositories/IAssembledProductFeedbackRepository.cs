@@ -15,5 +15,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         void Update(AssembledProductFeedback feedback);
         Task<bool> ExistsByOrderItemIdAsync(Guid orderItemId);
         Task<AssembledProductFeedback?> GetByOrderItemIdAsync(Guid orderItemId);
+        Task RemoveOldImagesAsync(Guid feedbackId, IEnumerable<FeedbackImage> trackedImages);
+        Task AddImageAsync(FeedbackImage image);
     }
 }

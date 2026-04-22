@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using System;
@@ -67,6 +67,26 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<bool> ExistsByOrderIdAsync(Guid orderId)
         {
             return await _context.Feedbacks.AnyAsync(f => f.OrderId == orderId);
+        }
+        public async Task RemoveOldImagesAsync(Guid feedbackId, IEnumerable<FeedbackImage> trackedImages)
+        {
+            // Xóa trực tiếp bằng SQL - bypass EF change tracking hoàn toàn
+            // Tránh conflict giữa ClientSetNull (từ Clear()) và Deleted state
+            await _context.FeedbackImages
+                .Where(fi => fi.FeedbackId == feedbackId)
+                .ExecuteDeleteAsync();
+
+            // Detach các entity đã tracked để Clear() không sinh ra UPDATE SET FK = NULL
+            foreach (var img in trackedImages)
+            {
+                _context.Entry(img).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
+            }
+        }
+
+        public async Task AddImageAsync(FeedbackImage image)
+        {
+            // Tránh EF relationship fixup gây conflict tracking khi collection đã bị xoá ảnh cũ
+            await _context.FeedbackImages.AddAsync(image);
         }
     }
 }

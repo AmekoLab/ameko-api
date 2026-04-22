@@ -99,5 +99,25 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Include(f => f.FromUser)
                 .FirstOrDefaultAsync(f => f.OrderItemId == orderItemId);
         }
+        public async Task RemoveOldImagesAsync(Guid feedbackId, IEnumerable<FeedbackImage> trackedImages)
+        {
+            // Xóa trực tiếp bằng SQL - bypass EF change tracking hoàn toàn
+            await _context.FeedbackImages
+                .Where(fi => fi.AssembledProductFeedbackId == feedbackId)
+                .ExecuteDeleteAsync();
+
+            // Detach các entity đã tracked để Clear() sau này không sinh ra UPDATE SET FK = NULL
+            foreach (var img in trackedImages)
+            {
+                _context.Entry(img).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
+            }
+        }
+
+        public async Task AddImageAsync(FeedbackImage image)
+        {
+            // Add thẳng vào context, KHÔNG qua navigation collection
+            // Tránh EF relationship fixup gây conflict tracking khi collection đã bị xoá ảnh cũ
+            await _context.FeedbackImages.AddAsync(image);
+        }
     }
 }

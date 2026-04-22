@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Feedback;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
@@ -127,28 +127,43 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             feedback.Comment = request.Comment;
             feedback.EditCount += 1;
 
+            // Track new image URLs separately for response
+            var newImageUrls = new List<string>();
+
             if (request.Images != null && request.Images.Any())
             {
                 if (request.Images.Count > 5)
                     throw new Exception("You can only upload a maximum of 5 images.");
 
-                feedback.Images.Clear();
+                // Xóa ảnh cũ bằng SQL trực tiếp và detach entities khỏi tracker
+                await _unitOfWork.Feedbacks.RemoveOldImagesAsync(feedback.Id, feedback.Images.ToList());
+
+                // Add ảnh mới thẳng vào context
+                // Tránh EF relationship fixup gây ra các UPDATE FK = NULL không mong muốn
                 foreach (var file in request.Images)
                 {
                     using var stream = file.OpenReadStream();
                     var imageUrl = await _storageService.UploadAsync(stream, file.FileName, "feedbacks");
                     if (!string.IsNullOrEmpty(imageUrl))
                     {
-                        feedback.Images.Add(new FeedbackImage { ImageUrl = imageUrl });
+                        await _unitOfWork.Feedbacks.AddImageAsync(new FeedbackImage
+                        {
+                            FeedbackId = feedback.Id,
+                            ImageUrl = imageUrl
+                        });
+                        newImageUrls.Add(imageUrl);
                     }
                 }
             }
 
-            _unitOfWork.Feedbacks.Update(feedback);
             await _unitOfWork.CommitAsync();
 
-            var response = _mapper.Map<FeedbackResponse>(feedback);
-            response.ImageUrls = feedback.Images.Select(img => img.ImageUrl).ToList();
+            // Re-query để lấy dữ liệu mới nhất (tránh stale navigation collection)
+            var updatedFeedback = await _unitOfWork.Feedbacks.GetByIdAsync(feedback.Id);
+            var response = _mapper.Map<FeedbackResponse>(updatedFeedback);
+            response.ImageUrls = newImageUrls.Any()
+                ? newImageUrls
+                : updatedFeedback!.Images.Select(img => img.ImageUrl).ToList();
             return response;
         }
 

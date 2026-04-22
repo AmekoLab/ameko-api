@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using System;
@@ -22,17 +22,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(fi => fi.ImageUrl)
                 .IsRequired()
                 .HasMaxLength(500);
-
-            // Relationship (1-N Feedback)
-            builder.HasOne(fi => fi.Feedback)
-                .WithMany(f => f.Images)
-                .HasForeignKey(fi => fi.FeedbackId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            builder.HasOne(fi => fi.AssembledProductFeedback)
-                .WithMany(f => f.Images)
-                .HasForeignKey(fi => fi.AssembledProductFeedbackId)
-                .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }
