@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Application.DTOs.Feedback;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Feedback;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using System;
 using System.Collections.Generic;
@@ -16,5 +16,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task AddAsync(Feedback feedback);
         void Update(Feedback feedback);
         Task<bool> ExistsByOrderIdAsync(Guid orderId);
+        Task RemoveOldImagesAsync(Guid feedbackId, IEnumerable<FeedbackImage> trackedImages);
+        Task AddImageAsync(FeedbackImage image);
     }
 }

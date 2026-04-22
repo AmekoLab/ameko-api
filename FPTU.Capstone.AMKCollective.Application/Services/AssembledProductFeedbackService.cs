@@ -132,28 +132,42 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             feedback.Comment = request.Comment;
             feedback.EditCount += 1;
 
+            // Track new image URLs separately for response
+            var newImageUrls = new List<string>();
+
             if (request.Images != null && request.Images.Any())
             {
                 if (request.Images.Count > MaxImages)
                     throw new Exception("You can only upload a maximum of 5 images.");
 
-                feedback.Images.Clear();
+                // Xóa ảnh cũ bằng SQL trực tiếp và detach entities khỏi tracker
+                await _unitOfWork.AssembledProductFeedbacks.RemoveOldImagesAsync(feedback.Id, feedback.Images.ToList());
+
+                // Add ảnh mới thẳng vào context
                 foreach (var file in request.Images)
                 {
                     using var stream = file.OpenReadStream();
                     var imageUrl = await _storageService.UploadAsync(stream, file.FileName, UploadFolder);
                     if (!string.IsNullOrEmpty(imageUrl))
                     {
-                        feedback.Images.Add(new FeedbackImage { ImageUrl = imageUrl });
+                        await _unitOfWork.AssembledProductFeedbacks.AddImageAsync(new FeedbackImage
+                        {
+                            AssembledProductFeedbackId = feedback.Id,
+                            ImageUrl = imageUrl
+                        });
+                        newImageUrls.Add(imageUrl);
                     }
                 }
             }
 
-            _unitOfWork.AssembledProductFeedbacks.Update(feedback);
             await _unitOfWork.CommitAsync();
 
-            var response = _mapper.Map<AssembledProductFeedbackResponse>(feedback);
-            response.ImageUrls = feedback.Images.Select(img => img.ImageUrl).ToList();
+            // Re-query để lấy dữ liệu mới nhất
+            var updatedFeedback = await _unitOfWork.AssembledProductFeedbacks.GetByIdAsync(feedback.Id);
+            var response = _mapper.Map<AssembledProductFeedbackResponse>(updatedFeedback);
+            response.ImageUrls = newImageUrls.Any()
+                ? newImageUrls
+                : updatedFeedback!.Images.Select(img => img.ImageUrl).ToList();
             return response;
         }
 
