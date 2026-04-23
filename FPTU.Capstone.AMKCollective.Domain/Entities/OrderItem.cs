@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel.DataAnnotations.Schema;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 
 namespace FPTU.Capstone.AMKCollective.Domain.Entities
 {
@@ -19,6 +20,15 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public decimal TotalPrice { get; set; }
         [Column(TypeName = "decimal(18,2)")]
         public decimal DiscountAmount { get; set; } = 0;
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal SystemAllocatedDiscount { get; set; } = 0;
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal ShopAllocatedDiscount { get; set; } = 0;
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal AllocatedDiscount { get; set; } = 0;
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal FinalPrice { get; set; } = 0;
+        public OrderItemStatus ItemStatus { get; set; } = OrderItemStatus.Active;
         //Custom
         public bool IsCustom { get; set; } = false;
         public string? DesignConfig { get; set; }

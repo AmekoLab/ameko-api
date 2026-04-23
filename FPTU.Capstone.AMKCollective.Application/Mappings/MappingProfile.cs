@@ -256,6 +256,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.Order != null && src.Order.Shop != null ? src.Order.Shop.ShopName : "N/A"))
                .ForMember(dest => dest.UnitPrice, opt => opt.MapFrom(src => src.UnitPrice))
                .ForMember(dest => dest.TotalPrice, opt => opt.MapFrom(src => src.TotalPrice))
+               .ForMember(dest => dest.ShopAllocatedDiscount, opt => opt.MapFrom(src => src.ShopAllocatedDiscount))
+               .ForMember(dest => dest.SystemAllocatedDiscount, opt => opt.MapFrom(src => src.SystemAllocatedDiscount))
+               .ForMember(dest => dest.AllocatedDiscount, opt => opt.MapFrom(src => src.AllocatedDiscount))
+               .ForMember(dest => dest.FinalPrice, opt => opt.MapFrom(src => src.FinalPrice))
+               .ForMember(dest => dest.ItemStatus, opt => opt.MapFrom(src => src.ItemStatus.ToString()))
                .ForMember(dest => dest.Quantity, opt => opt.MapFrom(src => src.Quantity))
 
       
@@ -274,7 +279,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // =========================================================
             CreateMap<OrderIssue, OrderIssueResponse>()
                 .ForMember(dest => dest.OrderTotalAmount, opt => opt.MapFrom(src => src.Order != null ? src.Order.TotalAmount : 0))
-                .ForMember(dest => dest.CustomerName, opt => opt.MapFrom(src => src.User != null ? src.User.Username : string.Empty))
+                .ForMember(dest => dest.CancelledItemsAmount, opt => opt.MapFrom(src => OrderIssueMappingHelper.GetCancelledAmount(src)))
+                .ForMember(dest => dest.CancelledItemCount, opt => opt.MapFrom(src => OrderIssueMappingHelper.GetCancelledCount(src)))
+                .ForMember(dest => dest.CustomerName, opt => opt.MapFrom(src => OrderIssueMappingHelper.GetCustomerName(src)))
                 .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src =>
                     src.Order != null && src.Order.Shop != null ? src.Order.Shop.ShopName : string.Empty));
 
@@ -498,6 +505,43 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             }
             catch {  }
             return "N/A";
+        }
+    }
+
+    internal static class OrderIssueMappingHelper
+    {
+        internal static decimal GetCancelledAmount(OrderIssue src)
+        {
+            if (src.Order == null) return 0;
+            if (string.IsNullOrEmpty(src.CancelledItemIds)) return src.Order.TotalAmount;
+            try
+            {
+                var ids = JsonSerializer.Deserialize<List<Guid>>(src.CancelledItemIds);
+                if (ids == null || ids.Count == 0) return src.Order.TotalAmount;
+                return src.Order.OrderItems
+                    .Where(oi => ids.Contains(oi.Id))
+                    .Sum(oi => oi.FinalPrice);
+            }
+            catch { return src.Order.TotalAmount; }
+        }
+
+        internal static int GetCancelledCount(OrderIssue src)
+        {
+            if (string.IsNullOrEmpty(src.CancelledItemIds))
+                return src.Order?.OrderItems.Count(i => i.ItemStatus == OrderItemStatus.Active) ?? 0;
+            try
+            {
+                var ids = JsonSerializer.Deserialize<List<Guid>>(src.CancelledItemIds);
+                return ids?.Count ?? 0;
+            }
+            catch { return 0; }
+        }
+
+        internal static string GetCustomerName(OrderIssue src)
+        {
+            if (src.User == null) return string.Empty;
+            var fullName = $"{src.User.FirstName} {src.User.LastName}".Trim();
+            return fullName.Length > 0 ? fullName : src.User.Username;
         }
     }
 }

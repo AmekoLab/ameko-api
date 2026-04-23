@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace FPTU.Capstone.AMKCollective.Application.Services
@@ -237,6 +238,26 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task GenerateTrackingLogsForOrderItemAsync(Guid orderItemId, Guid shopId)
         {
+            var orderItem = await _unitOfWork.Orders.GetOrderItemByIdAsync(orderItemId)
+                ?? throw new KeyNotFoundException("Order item not found.");
+            if (orderItem.ItemStatus == OrderItemStatus.Cancelled)
+                throw new InvalidOperationException("Cannot initialize assembly for a cancelled item.");
+            if (orderItem.Order != null && orderItem.Order.OrderStatus == OrderStatus.Cancelled)
+                throw new InvalidOperationException("Cannot initialize assembly for a cancelled order.");
+
+            // Chặn nếu order/item đang có cancel request chờ duyệt
+            var existingIssues = await _unitOfWork.OrderIssues.GetByOrderIdAsync(orderItem.OrderId);
+            var activeCancelRequest = existingIssues.FirstOrDefault(iss =>
+                iss.Type == OrderIssueType.CancelRequest &&
+                (iss.Status == OrderIssueStatus.InProgress || iss.Status == OrderIssueStatus.Pending));
+            if (activeCancelRequest != null)
+            {
+                bool affectsThisItem = string.IsNullOrEmpty(activeCancelRequest.CancelledItemIds) ||
+                    JsonSerializer.Deserialize<List<Guid>>(activeCancelRequest.CancelledItemIds)!.Contains(orderItemId);
+                if (affectsThisItem)
+                    throw new InvalidOperationException("Cannot initialize assembly: a cancellation request for this item is pending approval.");
+            }
+
             var existingLogs = await _unitOfWork.AssemblyProgressLogs.GetLogsByOrderItemIdAsync(orderItemId);
             if (existingLogs.Any())
             {

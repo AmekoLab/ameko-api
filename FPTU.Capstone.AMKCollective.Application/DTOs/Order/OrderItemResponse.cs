@@ -18,6 +18,11 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
         public int Quantity { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal TotalPrice { get; set; }
+        public decimal ShopAllocatedDiscount { get; set; }
+        public decimal SystemAllocatedDiscount { get; set; }
+        public decimal AllocatedDiscount { get; set; }
+        public decimal FinalPrice { get; set; }
+        public string ItemStatus { get; set; } = "Active";
         public bool IsCustom { get; set; }
         public string? Note { get; set; }
         public List<Guid>? CustomComponentIds { get; set; }

@@ -36,6 +36,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
                 .HasColumnType("longtext")
                 .IsRequired(false);
 
+            builder.Property(oi => oi.CancelledItemIds)
+                .HasColumnType("json")
+                .IsRequired(false);
+
             // Relationships
             builder.HasOne(oi => oi.Order)
                 .WithMany(o => o.OrderIssues)
