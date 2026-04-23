@@ -25,6 +25,9 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public string? AdminNote { get; set; } // Ghi chú của Admin
         public string? AIAnalysisResult { get; set; } // Kết quả phân tích của AI
 
+        // Partial cancel: JSON array of OrderItem IDs. Null = cancel entire order.
+        public string? CancelledItemIds { get; set; }
+
         // Navigation Properties
         public virtual Order? Order { get; set; }
         public virtual User? User { get; set; }

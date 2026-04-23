@@ -53,6 +53,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 userId, request.Status, request.PageNumber, request.PageSize);
 
             var mappedItems = _mapper.Map<List<OrderIssueResponse>>(items);
+            mappedItems.ConvertDatesToLocal();
 
             return new PaginatedResult<OrderIssueResponse>(mappedItems, totalCount, request.PageNumber, request.PageSize);
         }
@@ -70,6 +71,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 shop.Id, request.Status, request.PageNumber, request.PageSize);
 
             var mappedItems = _mapper.Map<List<OrderIssueResponse>>(items);
+            mappedItems.ConvertDatesToLocal();
 
             return new PaginatedResult<OrderIssueResponse>(mappedItems, totalCount, request.PageNumber, request.PageSize);
         }
@@ -89,7 +91,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
             }
 
-            return _mapper.Map<OrderIssueResponse>(issue);
+            return _mapper.Map<OrderIssueResponse>(issue).ConvertDatesToLocal();
         }
 
         // 5. Lấy Lịch sử / Tiến trình xử lý (Timeline)

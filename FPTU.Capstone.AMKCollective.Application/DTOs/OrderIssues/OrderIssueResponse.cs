@@ -12,6 +12,8 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues
         public Guid Id { get; set; }
         public Guid OrderId { get; set; }
         public decimal OrderTotalAmount { get; set; }
+        public decimal CancelledItemsAmount { get; set; }
+        public int CancelledItemCount { get; set; }
         public string CustomerName { get; set; } = string.Empty;
         public string ShopName { get; set; } = string.Empty;
         public OrderIssueType Type { get; set; }

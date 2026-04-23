@@ -19,9 +19,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<OrderIssue?> GetByIdAsync(Guid id, CancellationToken token = default)
         {
             return await _context.OrderIssues
+                .AsSplitQuery()
                 .Include(oi => oi.Logs)
                 .Include(oi => oi.Order)
                     .ThenInclude(o => o.Shop)
+                .Include(oi => oi.Order)
+                    .ThenInclude(o => o.OrderItems)
                 .Include(oi => oi.User)
                 .FirstOrDefaultAsync(oi => oi.Id == id && !oi.IsDeleted, token);
         }

@@ -614,6 +614,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     throw new InvalidOperationException("Expected delivery date is required when marking an order as shipped.");
                 }
 
+                var issues = await _unitOfWork.OrderIssues.GetByOrderIdAsync(orderId);
+                var pendingCancel = issues.FirstOrDefault(iss =>
+                    iss.Type == OrderIssueType.CancelRequest &&
+                    (iss.Status == OrderIssueStatus.Pending || iss.Status == OrderIssueStatus.InProgress));
+                if (pendingCancel != null)
+                    throw new InvalidOperationException("Cannot mark order as shipped: a cancellation request is pending approval.");
+
                 var dt = request.ExpectedDeliveryDate.Value;
                 if (dt.Kind == DateTimeKind.Utc)
                     order.ExpectedDeliveryDate = dt;
@@ -651,6 +658,36 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 throw new InvalidOperationException("Cannot cancel order at this stage.");
             }
 
+            // 1b. Validate partial cancel items nếu có
+            bool isPartialCancel = request.ItemIds != null && request.ItemIds.Count > 0;
+            if (isPartialCancel)
+            {
+                if (order.OrderStatus != OrderStatus.Pending && order.OrderStatus != OrderStatus.Processing)
+                    throw new InvalidOperationException("Partial item cancellation is only allowed before the order is shipped.");
+
+                var orderItemIds = order.OrderItems.Select(i => i.Id).ToHashSet();
+                var invalidIds = request.ItemIds!.Where(id => !orderItemIds.Contains(id)).ToList();
+                if (invalidIds.Any())
+                    throw new InvalidOperationException($"Item(s) not found in this order: {string.Join(", ", invalidIds)}.");
+
+                var alreadyCancelled = order.OrderItems
+                    .Where(i => request.ItemIds!.Contains(i.Id) && i.ItemStatus == OrderItemStatus.Cancelled)
+                    .ToList();
+                if (alreadyCancelled.Any())
+                    throw new InvalidOperationException("One or more selected items have already been cancelled.");
+
+                // Chặn duplicate: item đang có pending/inprogress issue (kể cả spam-rejected)
+                var existingIssues = await _unitOfWork.OrderIssues.GetByOrderIdAsync(request.OrderId);
+                var activePartialIssue = existingIssues.FirstOrDefault(iss =>
+                    iss.Type == OrderIssueType.CancelRequest &&
+                    (iss.Status == OrderIssueStatus.InProgress || iss.Status == OrderIssueStatus.Pending) &&
+                    !string.IsNullOrEmpty(iss.CancelledItemIds) &&
+                    JsonSerializer.Deserialize<List<Guid>>(iss.CancelledItemIds!)!
+                        .Any(id => request.ItemIds!.Contains(id)));
+                if (activePartialIssue != null)
+                    throw new InvalidOperationException("One or more selected items already have a pending cancellation request.");
+            }
+
             // 2. [Fix #2] Chặn duplicate: đơn đã có issue InProgress/Pending rồi
             bool hasActiveIssue = await _unitOfWork.OrderIssues.HasActiveIssueForOrderAsync(request.OrderId);
             if (hasActiveIssue)
@@ -677,7 +714,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Reason = request.Reason,
                 Description = request.Description,
                 CreatedAt = DateTime.UtcNow,
-                IsSystemValid = !isSpamRequest
+                IsSystemValid = !isSpamRequest,
+                CancelledItemIds = isPartialCancel
+                    ? JsonSerializer.Serialize(request.ItemIds)
+                    : null
             };
 
             // 4. Decide Initial Status
@@ -724,12 +764,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         {
             await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
-                // 1. Get Issue & Order
+                // 1. Get Issue & Order (issue.Order includes Shop + OrderItems via AsSplitQuery)
                 var issue = await _unitOfWork.OrderIssues.GetByIdAsync(request.IssueId);
                 if (issue == null) throw new KeyNotFoundException("Order issue not found");
 
-                var order = await _unitOfWork.Orders.GetByIdAsync(issue.OrderId);
-                if (order == null) throw new KeyNotFoundException("Related order not found");
+                var order = issue.Order ?? throw new KeyNotFoundException("Related order not found");
 
                 if (order.Shop == null && order.ShopId.HasValue)
                 {
@@ -779,71 +818,81 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                         issue.Status = request.Decision;
 
-                        // [Fix #5] Snapshot trạng thái TRƯỚC khi đổi sang Cancelled
                         bool isCompleted = order.OrderStatus == OrderStatus.Completed;
                         bool isOrderPaid = order.PaymentStatus == PaymentStatus.Paid;
-
-                        order.OrderStatus = OrderStatus.Cancelled;
-                        order.CancelReason = request.Decision == OrderIssueStatus.AutoCancelled
-                                             ? "Request timeout 24h (Auto-Refund)"
-                                             : $"Shop approved: {issue.Reason}";
                         bool isShopFault = request.Decision == OrderIssueStatus.AutoCancelled;
 
-                        // --- 3.1 TRẢ HÀNG VỀ KHO ---
-                        if (order.OrderItems != null)
+                        // Xác định partial hay full cancel từ CancelledItemIds trên issue
+                        List<Guid>? cancelledItemIds = !string.IsNullOrEmpty(issue.CancelledItemIds)
+                            ? JsonSerializer.Deserialize<List<Guid>>(issue.CancelledItemIds)
+                            : null;
+                        bool isPartial = cancelledItemIds != null && cancelledItemIds.Count > 0;
+
+                        var itemsToCancel = isPartial
+                            ? order.OrderItems.Where(i => cancelledItemIds!.Contains(i.Id) && i.ItemStatus == OrderItemStatus.Active).ToList()
+                            : order.OrderItems.Where(i => i.ItemStatus == OrderItemStatus.Active).ToList();
+
+                        // --- 3.1 TRẢ HÀNG VỀ KHO (chỉ items bị hủy) ---
+                        foreach (var item in itemsToCancel)
                         {
-                            foreach (var item in order.OrderItems)
-                            {
-                                await RefundItemStockAsync(item);
-                            }
+                            item.ItemStatus = OrderItemStatus.Cancelled;
+                            await RefundItemStockAsync(item);
                         }
 
-                        // --- 3.2 XỬ LÝ VOUCHER & TẠO VOUCHER REFUND (BAO GỒM PHẠT SHOP / KHÁCH) ---
-                        // Chắc chắn đơn đã Paid nên không cần check if (PaymentStatus == Paid) nữa, 
-                        // nhưng muốn an toàn thì vẫn giữ.
+                        bool allItemsCancelled = order.OrderItems.All(i => i.ItemStatus == OrderItemStatus.Cancelled);
+
+                        if (allItemsCancelled)
+                        {
+                            order.OrderStatus = OrderStatus.Cancelled;
+                            order.CancelReason = request.Decision == OrderIssueStatus.AutoCancelled
+                                ? "Request timeout 24h (Auto-Refund)"
+                                : $"Shop approved: {issue.Reason}";
+                        }
+
+                        // --- 3.2 REFUND & PHẠT ---
                         if (isOrderPaid)
                         {
-                            decimal cashPaidAmount = order.TotalAmount;
-                            decimal shopReceivedAmount = ShopRevenueCalculator.CalculateShopRevenue(
-                                order,
+                            // Số tiền hoàn = FinalPrice của items bị hủy + ShippingFee nếu hủy hết
+                            decimal cancelledItemsValue = itemsToCancel.Sum(i => i.FinalPrice);
+                            decimal shippingRefund = allItemsCancelled ? order.ShippingFee : 0;
+                            decimal cashRefundBase = cancelledItemsValue + shippingRefund;
+
+                            decimal shopDeductAmount = ShopRevenueCalculator.CalculateItemsRevenue(
+                                itemsToCancel,
+                                allItemsCancelled ? order.ShippingFee : 0,
                                 _orderSettings.ShopPayoutRate,
                                 _orderSettings.SystemVoucherShopShareRate,
                                 _orderSettings.SystemVoucherShopShareCap);
 
-                            // [LOGIC MỚI] 1. Tính toán Phạt Khách Hàng (%)
-                            decimal refundToCustomer = cashPaidAmount;
+                            // Tính phạt khách (chỉ khi không phải lỗi shop)
                             decimal customerPenaltyAmount = 0m;
-
-                            // Chỉ phạt khách nếu đây KHÔNG PHẢI lỗi do Shop lơ đơn (Quá 24h Auto-cancel)
-                            // Tức là Shop chủ động duyệt (Accept) yêu cầu hủy của khách
-                            if (!isShopFault) 
+                            if (!isShopFault)
                             {
-                                decimal customerPenaltyRate = _orderSettings.CustomerCancellationPenaltyRate; 
-                                customerPenaltyAmount = cashPaidAmount * customerPenaltyRate;
-                                refundToCustomer = cashPaidAmount - customerPenaltyAmount;
+                                customerPenaltyAmount = cashRefundBase * _orderSettings.CustomerCancellationPenaltyRate;
                             }
 
-                            // BƯỚC 3.2.1: Hoàn tiền vào Ví Khách Hàng (Tùy thuộc có bị phạt không)
-                            string refundPhrase = customerPenaltyAmount > 0 
-                                ? $"Refund for cancelled order #{order.Id} (minus {_orderSettings.CustomerCancellationPenaltyRate * 100}% penalty fee)" 
-                                : $"Refund for cancelled order #{order.Id}";
+                            string refundPhrase = allItemsCancelled
+                                ? customerPenaltyAmount > 0
+                                    ? $"Refund for cancelled order #{order.Id} (minus {_orderSettings.CustomerCancellationPenaltyRate * 100}% penalty)"
+                                    : $"Refund for cancelled order #{order.Id}"
+                                : customerPenaltyAmount > 0
+                                    ? $"Partial refund for {itemsToCancel.Count} cancelled item(s) in order #{order.Id} (minus {_orderSettings.CustomerCancellationPenaltyRate * 100}% penalty)"
+                                    : $"Partial refund for {itemsToCancel.Count} cancelled item(s) in order #{order.Id}";
 
                             await _walletService.RefundToWalletAsync(
                                 issue.UserId,
-                                cashPaidAmount,
+                                cashRefundBase,
                                 refundPhrase,
                                 customerPenaltyAmount
                             );
 
-                            // BƯỚC 3.2.2: Trừ doanh thu tạm tính đang bị treo trong HeldBalance của Shop (Bắt buộc do đơn đã hủy)
                             await _walletService.DeductFundsForRefundAsync(
                                 realActionUserId,
                                 order.Id,
-                                shopReceivedAmount,
+                                shopDeductAmount,
                                 isCompleted
                             );
 
-                            // [LOGIC MỚI] 2. Nạp trực tiếp tiền phạt vào Số Dư (Balance) của Shop để đền bù
                             if (customerPenaltyAmount > 0)
                             {
                                 decimal shopCompensation = customerPenaltyAmount * _orderSettings.ShopPayoutRate;
@@ -855,64 +904,64 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                                     {
                                         UserId = realActionUserId,
                                         Amount = shopCompensation,
-                                        Reason = $"Shop compensation for cancelled order #{order.Id}: customer penalty {customerPenaltyAmount:N0} VND × {_orderSettings.ShopPayoutRate * 100:0}% payout = {shopCompensation:N0} VND"
+                                        Reason = $"Shop compensation for partial cancel order #{order.Id}: penalty {customerPenaltyAmount:N0} VND × {_orderSettings.ShopPayoutRate * 100:0}% = {shopCompensation:N0} VND"
                                     }
                                 );
 
                                 if (platformPenaltyShare > 0)
                                     await _walletService.CreditPlatformFeeAsync(
                                         platformPenaltyShare,
-                                        $"Platform penalty share for cancelled order #{order.Id}: {customerPenaltyAmount:N0} VND × {(1 - _orderSettings.ShopPayoutRate) * 100:0}% = {platformPenaltyShare:N0} VND"
+                                        $"Platform penalty share for partial cancel order #{order.Id}: {customerPenaltyAmount:N0} VND × {(1 - _orderSettings.ShopPayoutRate) * 100:0}% = {platformPenaltyShare:N0} VND"
                                     );
                             }
 
-                            // BƯỚC 3.2.3: Phân định lỗi & Xử phạt
-                            if (isShopFault)
+                            // Phạt shop & hoàn voucher chỉ khi auto-cancel VÀ hủy toàn bộ đơn
+                            if (isShopFault && allItemsCancelled)
                             {
-                                // Tính tiền phạt Shop dựa trên giá trị gốc hàng hóa (SubTotal) thay vì tiền mặt khách trả
-                                decimal penaltyRate = _orderSettings.ShopCancellationPenaltyRate;
-                                decimal penaltyAmount = order.SubTotal * penaltyRate;
-
+                                decimal penaltyAmount = order.SubTotal * _orderSettings.ShopCancellationPenaltyRate;
                                 if (penaltyAmount > 0)
                                 {
-                                    // A. Trừ tiền phạt vào Ví của Shop
                                     await _walletService.AdjustBalanceAsync(
                                         realActionUserId,
-                                         new AdjustBalanceRequest
-                                         {
-                                             UserId = realActionUserId,
-                                             Amount = -penaltyAmount,
-                                             Reason = $"Penalty fee for 24h timeout auto-cancel Order #{order.Id}"
-                                         }
+                                        new AdjustBalanceRequest
+                                        {
+                                            UserId = realActionUserId,
+                                            Amount = -penaltyAmount,
+                                            Reason = $"Penalty fee for 24h timeout auto-cancel Order #{order.Id}"
+                                        }
                                     );
 
-                                    // B. Tặng Voucher Đền bù cho khách (Do System Bot tạo)
-                                    Guid systemBotId = _systemSettings.SystemBotId;
-
                                     await _voucherService.CreateCompensationVoucherAsync(
-                                        systemBotId,
+                                        _systemSettings.SystemBotId,
                                         issue.UserId,
-                                        penaltyAmount // Mệnh giá đúng bằng tiền phạt của Shop
+                                        penaltyAmount
                                     );
                                 }
 
-                                // C. Trả lại lượt sử dụng Voucher cho khách nếu đây là Voucher đang dùng
                                 var usedVouchers = await _unitOfWork.VoucherUsageLogs.GetByOrderIdAsync(order.Id);
                                 foreach (var uv in usedVouchers)
                                 {
                                     var v = await _unitOfWork.Vouchers.GetByIdAsync(uv.VoucherId);
-                                    if (v != null && v.UsedCount > 0)
-                                    {
-                                        v.UsedCount -= 1;
-                                    }
+                                    if (v != null && v.UsedCount > 0) v.UsedCount -= 1;
                                 }
                                 await _unitOfWork.VoucherUsageLogs.DeleteAllByOrderIdAsync(order.Id);
                             }
 
-                            order.PaymentStatus = PaymentStatus.Refunded;
+                            if (allItemsCancelled)
+                                order.PaymentStatus = PaymentStatus.Refunded;
                         }
 
-                        if (isShopFault)
+                        // --- 3.3 RECALCULATE ORDER TOTALS ---
+                        var activeItems = order.OrderItems.Where(i => i.ItemStatus == OrderItemStatus.Active).ToList();
+                        order.SubTotal = activeItems.Sum(i => i.TotalPrice);
+                        order.DiscountAmount = activeItems.Sum(i => i.AllocatedDiscount);
+                        order.SystemDiscountAmount = activeItems.Sum(i => i.SystemAllocatedDiscount);
+                        order.TotalAmount = allItemsCancelled
+                            ? 0
+                            : activeItems.Sum(i => i.FinalPrice) + order.ShippingFee;
+
+                        // --- 3.4 REPUTATION (chỉ khi hủy toàn bộ do lỗi shop) ---
+                        if (isShopFault && allItemsCancelled)
                         {
                             if (order.ShopId.HasValue)
                             {
@@ -1568,7 +1617,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     shopOwnerId = shopInfo != null ? shopInfo.UserId : Guid.Empty;
                 }
 
-                // Xử lý mã của Shop
+                var orderItems = order.OrderItems.ToList();
+
+                // Xử lý mã của Shop — phân bổ xuống từng item (item-level allocation)
                 var matchedShopVoucher = shopVouchers.FirstOrDefault(v => v.CreatorId == shopOwnerId);
                 if (matchedShopVoucher != null)
                 {
@@ -1578,6 +1629,23 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     decimal shopDiscount = _voucherService.CalculateVoucherDiscount(matchedShopVoucher, order.SubTotal);
                     if (shopDiscount > currentOrderRemain) shopDiscount = currentOrderRemain;
 
+                    decimal shopAllocatedSoFar = 0;
+                    for (int i = 0; i < orderItems.Count; i++)
+                    {
+                        var item = orderItems[i];
+                        bool isLast = (i == orderItems.Count - 1);
+
+                        decimal itemShopDiscount = isLast
+                            ? shopDiscount - shopAllocatedSoFar
+                            : order.SubTotal > 0
+                                ? Math.Floor(shopDiscount * (item.TotalPrice / order.SubTotal))
+                                : 0;
+
+                        itemShopDiscount = Math.Min(itemShopDiscount, item.TotalPrice);
+                        item.ShopAllocatedDiscount += itemShopDiscount;
+                        shopAllocatedSoFar += itemShopDiscount;
+                    }
+
                     await _unitOfWork.VoucherUsageLogs.AddAsync(new VoucherUsageLog
                     {
                         UserId = userId,
@@ -1585,24 +1653,40 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         VoucherId = matchedShopVoucher.Id,
                         Code = matchedShopVoucher.Code,
                         VoucherType = matchedShopVoucher.Type,
-                        DiscountApplied = shopDiscount,
+                        DiscountApplied = shopAllocatedSoFar,
                         ApplyOrder = 1
                     });
 
-                    orderDiscountAmount += shopDiscount;
-                    currentOrderRemain -= shopDiscount;
+                    orderDiscountAmount += shopAllocatedSoFar;
+                    currentOrderRemain -= shopAllocatedSoFar;
                     appliedVoucherIdsToIncrement.Add(matchedShopVoucher.Id);
                 }
 
-                // Xử lý mã của Sàn (Proration)
+                // Xử lý mã của Sàn — phân bổ xuống từng item (item-level allocation)
                 decimal weight = totalCheckoutSubTotal > 0 ? (order.SubTotal / totalCheckoutSubTotal) : 0;
 
                 foreach (var sysVoucher in systemVouchers)
                 {
                     decimal totalSysDiscount = _voucherService.CalculateVoucherDiscount(sysVoucher, totalCheckoutSubTotal);
-                    decimal proratedDiscount = totalSysDiscount * weight;
+                    decimal orderSysDiscount = totalSysDiscount * weight;
+                    if (orderSysDiscount > currentOrderRemain) orderSysDiscount = currentOrderRemain;
 
-                    if (proratedDiscount > currentOrderRemain) proratedDiscount = currentOrderRemain;
+                    decimal sysAllocatedSoFar = 0;
+                    for (int i = 0; i < orderItems.Count; i++)
+                    {
+                        var item = orderItems[i];
+                        bool isLast = (i == orderItems.Count - 1);
+
+                        decimal itemSysDiscount = isLast
+                            ? orderSysDiscount - sysAllocatedSoFar
+                            : order.SubTotal > 0
+                                ? Math.Floor(orderSysDiscount * (item.TotalPrice / order.SubTotal))
+                                : 0;
+
+                        itemSysDiscount = Math.Min(itemSysDiscount, item.TotalPrice);
+                        item.SystemAllocatedDiscount += itemSysDiscount;
+                        sysAllocatedSoFar += itemSysDiscount;
+                    }
 
                     await _unitOfWork.VoucherUsageLogs.AddAsync(new VoucherUsageLog
                     {
@@ -1611,14 +1695,21 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         VoucherId = sysVoucher.Id,
                         Code = sysVoucher.Code,
                         VoucherType = sysVoucher.Type,
-                        DiscountApplied = proratedDiscount,
+                        DiscountApplied = sysAllocatedSoFar,
                         ApplyOrder = 2
                     });
 
-                    orderDiscountAmount += proratedDiscount;
-                    systemDiscountForThisOrder += proratedDiscount;
-                    currentOrderRemain -= proratedDiscount;
+                    orderDiscountAmount += sysAllocatedSoFar;
+                    systemDiscountForThisOrder += sysAllocatedSoFar;
+                    currentOrderRemain -= sysAllocatedSoFar;
                     appliedVoucherIdsToIncrement.Add(sysVoucher.Id);
+                }
+
+                // Tổng hợp AllocatedDiscount và FinalPrice sau khi xử lý tất cả voucher
+                foreach (var item in orderItems)
+                {
+                    item.AllocatedDiscount = item.ShopAllocatedDiscount + item.SystemAllocatedDiscount;
+                    item.FinalPrice = item.TotalPrice - item.AllocatedDiscount;
                 }
 
                 // Chốt tiền cho Order
@@ -1933,11 +2024,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     product.StockQuantity += item.Quantity;
                     await _unitOfWork.Models.UpdateAsync(product);
                 }
+                // 2. Hoàn kho cho từng component (bị trừ lúc checkout)
+                if (item.OrderItemComponents != null)
+                {
+                    foreach (var comp in item.OrderItemComponents)
+                    {
+                        int totalPartNeeded = comp.Quantity * item.Quantity;
+                        await _unitOfWork.Models.UpdateStockAsync(comp.PartId, totalPartNeeded);
+                    }
+                }
             }
             else
             {
                 if (!item.AssembledProductId.HasValue) return;
-                // 2. Hoàn kho cho Assembled Product
+                // 3. Hoàn kho cho Assembled Product
                 var assembledProduct = await _unitOfWork.AssembledProducts.GetByIdWithDetailsAsync(item.AssembledProductId.Value);
                 if (assembledProduct != null)
                 {
@@ -2248,8 +2348,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (order.OrderStatus == OrderStatus.Cancelled || order.OrderStatus == OrderStatus.Refunded)
                 return;
 
-            foreach (var item in order.OrderItems)
+            var activeItems = order.OrderItems.Where(i => i.ItemStatus == OrderItemStatus.Active).ToList();
+            foreach (var item in activeItems)
             {
+                item.ItemStatus = OrderItemStatus.Cancelled;
                 await RefundItemStockAsync(item);
             }
 
@@ -2627,10 +2729,55 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
             }
 
-            // 3. Tính toán Tổng Tiền Group
+            // 3. Phân bổ discount xuống item-level và tính FinalPrice
             decimal totalGroupAmount = 0;
             foreach (var order in group.Orders)
             {
+                var orderItems = order.OrderItems.ToList();
+                decimal orderShopDiscount = order.DiscountAmount;
+                decimal orderSysDiscount = order.SystemDiscountAmount;
+
+                // Shop voucher phân bổ xuống từng item
+                if (orderShopDiscount > 0)
+                {
+                    decimal shopAllocatedSoFar = 0;
+                    for (int i = 0; i < orderItems.Count; i++)
+                    {
+                        var item = orderItems[i];
+                        bool isLast = (i == orderItems.Count - 1);
+                        decimal itemShopDiscount = isLast
+                            ? orderShopDiscount - shopAllocatedSoFar
+                            : order.SubTotal > 0 ? Math.Floor(orderShopDiscount * (item.TotalPrice / order.SubTotal)) : 0;
+                        itemShopDiscount = Math.Min(itemShopDiscount, item.TotalPrice);
+                        item.ShopAllocatedDiscount = itemShopDiscount;
+                        shopAllocatedSoFar += itemShopDiscount;
+                    }
+                }
+
+                // System voucher phân bổ xuống từng item
+                if (orderSysDiscount > 0)
+                {
+                    decimal sysAllocatedSoFar = 0;
+                    for (int i = 0; i < orderItems.Count; i++)
+                    {
+                        var item = orderItems[i];
+                        bool isLast = (i == orderItems.Count - 1);
+                        decimal itemSysDiscount = isLast
+                            ? orderSysDiscount - sysAllocatedSoFar
+                            : order.SubTotal > 0 ? Math.Floor(orderSysDiscount * (item.TotalPrice / order.SubTotal)) : 0;
+                        itemSysDiscount = Math.Min(itemSysDiscount, item.TotalPrice);
+                        item.SystemAllocatedDiscount = itemSysDiscount;
+                        sysAllocatedSoFar += itemSysDiscount;
+                    }
+                }
+
+                // Tổng hợp AllocatedDiscount và FinalPrice
+                foreach (var item in orderItems)
+                {
+                    item.AllocatedDiscount = item.ShopAllocatedDiscount + item.SystemAllocatedDiscount;
+                    item.FinalPrice = item.TotalPrice - item.AllocatedDiscount;
+                }
+
                 order.TotalAmount = Math.Max(0, order.SubTotal + order.ShippingFee - order.DiscountAmount - order.SystemDiscountAmount);
                 totalGroupAmount += order.TotalAmount;
             }

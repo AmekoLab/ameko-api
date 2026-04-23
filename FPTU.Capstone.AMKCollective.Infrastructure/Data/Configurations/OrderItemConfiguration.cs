@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
+using FPTU.Capstone.AMKCollective.Domain.Enums;
 
 namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
 {
@@ -17,6 +18,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(oi => oi.UnitPrice).HasPrecision(18, 2);
             builder.Property(oi => oi.TotalPrice).HasPrecision(18, 2);
             builder.Property(oi => oi.DiscountAmount).HasPrecision(18, 2);
+            builder.Property(oi => oi.SystemAllocatedDiscount).HasPrecision(18, 2).HasDefaultValue(0).ValueGeneratedNever();
+            builder.Property(oi => oi.ShopAllocatedDiscount).HasPrecision(18, 2).HasDefaultValue(0).ValueGeneratedNever();
+            builder.Property(oi => oi.AllocatedDiscount).HasPrecision(18, 2).HasDefaultValue(0).ValueGeneratedNever();
+            builder.Property(oi => oi.FinalPrice).HasPrecision(18, 2).HasDefaultValue(0).ValueGeneratedNever();
+            builder.Property(oi => oi.ItemStatus).HasDefaultValue(OrderItemStatus.Active).ValueGeneratedNever();
 
             builder.Property(oi => oi.DesignConfig).HasColumnType("json"); 
 
