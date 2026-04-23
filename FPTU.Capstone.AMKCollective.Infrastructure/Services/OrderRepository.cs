@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Application.DTOs.AdminDashboard;
+using FPTU.Capstone.AMKCollective.Application.DTOs.AdminDashboard;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
@@ -60,6 +60,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return await _context.Orders
                 .AsNoTracking()
                 .Include(o => o.Customer)
+                .Include(o => o.OrderIssues)
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
                 .Where(o => o.ShopId == shopId && !o.IsDeleted)
@@ -135,6 +136,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<Order?> GetOrderByStatusAsync(Guid userId, OrderStatus status)
         {
             return await _context.Orders
+                .Include(o => o.OrderIssues)
                 .Include(o => o.OrderItems.Where(oi => !oi.IsDeleted))
                     .ThenInclude(oi => oi.OrderItemComponents)
                 .Include(o => o.Shop)
@@ -279,6 +281,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<IEnumerable<Order>> GetOrdersByGroupIdAsync(Guid orderGroupId, CancellationToken token = default)
         {
             return await _context.Orders
+                .Include(o => o.OrderIssues)
                 .Include(o => o.OrderItems) // Load items để đảm bảo tính toàn vẹn dữ liệu
                 .Where(o => o.OrderGroupId == orderGroupId && !o.IsDeleted)
                 .AsSplitQuery() // Tối ưu hiệu năng khi có Include

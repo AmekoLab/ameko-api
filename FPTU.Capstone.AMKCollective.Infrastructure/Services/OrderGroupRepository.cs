@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
+using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
@@ -25,6 +25,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return await _context.OrderGroups
                 .Include(og => og.Orders)
                     .ThenInclude(o => o.OrderItems) 
+                .Include(og => og.Orders)
+                    .ThenInclude(o => o.OrderIssues) 
                 .FirstOrDefaultAsync(og => og.Id == id && !og.IsDeleted, token);
         }
 
@@ -46,6 +48,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .AsNoTracking()
                 .Include(og => og.Orders)
                     .ThenInclude(o => o.Shop)
+                .Include(og => og.Orders)
+                    .ThenInclude(o => o.OrderIssues)
                 .Include(og => og.Orders)
                     .ThenInclude(o => o.OrderItems)
                         .ThenInclude(oi => oi.Product)
