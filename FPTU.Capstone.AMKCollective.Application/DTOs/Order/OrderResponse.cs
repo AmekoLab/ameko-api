@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -32,6 +32,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
         public DateTime? ExpectedDeliveryDate { get; set; }
         public string? Note { get; set; }
         public bool HasCancelRequest { get; set; }
+        public bool HasWarrantyRequest { get; set; }
         // 4. Thời gian
         public DateTime CreatedAt { get; set; } 
 

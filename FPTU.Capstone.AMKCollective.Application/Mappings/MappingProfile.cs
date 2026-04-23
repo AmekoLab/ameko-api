@@ -234,11 +234,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.OrderItems, opt => opt.MapFrom(src => src.OrderItems))
 
                 .ForMember(dest => dest.HasCancelRequest, opt => opt.MapFrom(src =>
-                    src.OrderIssues != null && src.OrderIssues.Any(oi =>
-                    oi.IsDeleted == false &&
+                    src.OrderIssues != null && src.OrderIssues.Any(oi => !oi.IsDeleted && 
                     oi.Type == OrderIssueType.CancelRequest &&
-                    (oi.Status == OrderIssueStatus.Pending || oi.Status == OrderIssueStatus.InProgress)
-                    )
+                    (oi.Status == OrderIssueStatus.Pending || oi.Status == OrderIssueStatus.InProgress))
+                ))
+                .ForMember(dest => dest.HasWarrantyRequest, opt => opt.MapFrom(src =>
+                    src.OrderIssues != null && src.OrderIssues.Any(oi => !oi.IsDeleted && 
+                    (oi.Type == OrderIssueType.ReturnRequest || oi.Type == OrderIssueType.WarrantyClaim))
                 ))
                 .ReverseMap();
 
