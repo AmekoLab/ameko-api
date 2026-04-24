@@ -153,7 +153,25 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 return (false, null, "You do not have permission to update this product");
             }
 
-            _mapper.Map(request, assembledProduct);
+            // Manually map only the fields that are explicitly provided in the request.
+            // Do NOT use _mapper.Map(request, assembledProduct) here — AutoMapper may overwrite
+            // EF-tracked fields (Id, CreatedBy, Embedding, CreatedAt) with null/default values,
+            // causing DbUpdateConcurrencyException (0 rows affected).
+            assembledProduct.Name = request.Name;
+            assembledProduct.Price = request.Price;
+            assembledProduct.View3DUrl = request.View3DUrl;
+            assembledProduct.Image1 = request.Image1;
+            assembledProduct.Image2 = request.Image2;
+            assembledProduct.Image3 = request.Image3;
+            assembledProduct.Description = request.Description;
+            assembledProduct.Quantity = request.Quantity;
+            assembledProduct.Layout = request.Layout;
+            assembledProduct.Mounting = request.Mounting;
+            assembledProduct.PCB = request.PCB;
+            assembledProduct.Connection = request.Connection;
+            assembledProduct.Battery = request.Battery;
+            assembledProduct.UpdatedAt = DateTime.UtcNow;
+
            
             if (request.Details != null && request.Details.Count > 0)
             {
