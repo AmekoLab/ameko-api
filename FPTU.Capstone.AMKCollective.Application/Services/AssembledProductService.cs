@@ -207,17 +207,40 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     }
                 }
 
-                // Clear existing details and re-add. This is simpler than tracking individual add/update/delete operations.
-                assembledProduct.ProductAssembledDetails.Clear();
+                // Surgical update for details: match existing ones by (BaseKitId, ComponentId) to avoid deleting and re-inserting everything.
+                var existingDetails = assembledProduct.ProductAssembledDetails.ToList();
+
+                // 1. Remove details that are no longer in the request
+                foreach (var existing in existingDetails)
+                {
+                    if (!request.Details.Any(d => d.BaseKitId == existing.BaseKitId && d.ComponentId == existing.ComponentId))
+                    {
+                        assembledProduct.ProductAssembledDetails.Remove(existing);
+                    }
+                }
+
+                // 2. Update existing or add new
                 foreach (var detailReq in request.Details)
                 {
-                    var detail = _mapper.Map<ProductAssembledDetail>(detailReq);
-                    // Fix: BaseEntity constructor already generates a new Guid for Id.
-                    // Do NOT override with Guid.Empty — that causes EF Core to fail on PK/FK constraint.
-                    // Explicitly assign AssembledProductId so the FK is always correct.
-                    detail.AssembledProductId = assembledProduct.Id;
-                    detail.SoundUrl = detailReq.SoundUrl;
-                    assembledProduct.ProductAssembledDetails.Add(detail);
+                    var existing = assembledProduct.ProductAssembledDetails
+                        .FirstOrDefault(d => d.BaseKitId == detailReq.BaseKitId && d.ComponentId == detailReq.ComponentId);
+
+                    if (existing != null)
+                    {
+                        // Update existing detail's properties
+                        existing.Quantity = detailReq.Quantity;
+                        existing.SoundUrl = detailReq.SoundUrl;
+                        existing.UpdatedAt = DateTime.UtcNow;
+                    }
+                    else
+                    {
+                        // Add new detail
+                        var detail = _mapper.Map<ProductAssembledDetail>(detailReq);
+                        // Fix: Ensure PK is valid and FK is correctly assigned
+                        detail.AssembledProductId = assembledProduct.Id;
+                        detail.SoundUrl = detailReq.SoundUrl;
+                        assembledProduct.ProductAssembledDetails.Add(detail);
+                    }
                 }
             }
 
