@@ -8,6 +8,7 @@ using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using System;
@@ -140,6 +141,60 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 await _unitOfWork.KitDesignOptions.CreateBatchAsync(entitiesToInsert);
                 await _unitOfWork.CommitAsync();
             }
+        }
+
+        public async Task BatchSaveOptionsAsync(List<BatchKitOptionItem> items)
+        {
+            if (items == null || items.Count == 0)
+                throw new ArgumentException("Batch list cannot be empty.");
+
+            foreach (var item in items)
+            {
+                if (string.IsNullOrWhiteSpace(item.StepName))
+                    throw new ArgumentException($"StepName is required for ComponentId {item.ComponentId}.");
+            }
+
+            // Duplicate = cùng ComponentId + StepName + Tags trong 1 batch
+            var duplicates = items
+                .GroupBy(o => (o.ComponentId, o.StepName.Trim(), o.Tags?.Trim()))
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+
+            if (duplicates.Any())
+            {
+                var first = duplicates.First();
+                throw new ArgumentException(
+                    $"Duplicate rule detected: ComponentId={first.ComponentId}, StepName={first.Item2}, Tags={first.Item3 ?? "null"}");
+            }
+
+            var baseKitId = items.First().BaseKitId;
+
+            var newOptions = items.Select(o => new KitDesignOption
+            {
+                Id = Guid.NewGuid(),
+                BaseKitId = o.BaseKitId,
+                ComponentId = o.ComponentId,
+                StepName = o.StepName.Trim(),
+                StepOrder = o.StepOrder,
+                IsDefault = o.IsDefault,
+                LayerImageUrl = string.IsNullOrWhiteSpace(o.ExistingLayerUrl) ? null : o.ExistingLayerUrl,
+                Tags = string.IsNullOrWhiteSpace(o.Tags) ? null : o.Tags,
+                NextStepFilterRule = string.IsNullOrWhiteSpace(o.NextStepFilterRule) ? null : o.NextStepFilterRule,
+            }).ToList();
+
+            await _unitOfWork.ExecuteTransactionAsync(async () =>
+            {
+                await _unitOfWork.KitDesignOptions.DeleteByBaseKitAsync(baseKitId);
+                await _unitOfWork.KitDesignOptions.CreateBatchAsync(newOptions);
+                await _unitOfWork.CommitAsync();
+            });
+        }
+
+        public async Task<string> UploadLayerImageAsync(IFormFile file)
+        {
+            using var stream = file.OpenReadStream();
+            return await _storageService.UploadAsync(stream, file.FileName, "builder-layers");
         }
 
         public async Task ResetBuilderConfigAsync(Guid baseKitId)
