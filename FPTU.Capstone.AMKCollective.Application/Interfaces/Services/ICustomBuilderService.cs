@@ -1,5 +1,7 @@
 using FPTU.Capstone.AMKCollective.Application.DTOs;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Builder;
+using Microsoft.AspNetCore.Http;
+using System.Collections.Generic;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,6 +18,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task CreateOptionAsync(CreateKitOptionRequest request);
         Task DeleteOptionAsync(Guid id);
         Task BulkCreateOptionsAsync(List<CreateKitOptionRequest> requests);
+        Task BatchSaveOptionsAsync(List<BatchKitOptionItem> items);
+        Task<string> UploadLayerImageAsync(IFormFile file);
 
         Task ResetBuilderConfigAsync(Guid baseKitId);
         Task<bool> IsMatchAsync(Guid baseKitId, Guid componentId);

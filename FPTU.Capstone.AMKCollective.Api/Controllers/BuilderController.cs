@@ -350,6 +350,83 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
+        /// Batch save options for a Kit (replace-all strategy).
+        /// </summary>
+        /// <remarks>
+        /// Replaces ALL existing rules of the kit with the new list in a single transaction.
+        /// <br/>
+        /// <b>Logic:</b>
+        /// 1. Validate all items — StepName must not be empty.
+        /// 2. Extract BaseKitId from the first item.
+        /// 3. Inside a transaction: delete old rules → insert new rules.
+        /// <br/>
+        /// <b>Note:</b> This endpoint accepts JSON only. Use <c>ExistingLayerUrl</c> to pass image URLs.
+        /// File uploads are not supported here — use <c>POST /options</c> for individual options with images.
+        /// </remarks>
+        [HttpPost("options/batch")]
+        [Authorize]
+        // TODO: [Authorize(Roles = "Admin,Shop")]
+        [SwaggerOperation(
+            Summary = "Batch Save Kit Options",
+            Description = "Atomically replaces all existing options of a Base Kit with the provided list. Runs inside a transaction.")]
+        [SwaggerResponse(200, "Batch save successful")]
+        [SwaggerResponse(400, "Payload is empty or contains invalid StepName")]
+        [SwaggerResponse(500, "Transaction failed")]
+        public async Task<IActionResult> BatchSaveOptions([FromBody] List<BatchKitOptionItem> items)
+        {
+            try
+            {
+                if (items == null || items.Count == 0)
+                    return ErrorResponse<string>("Payload is empty.");
+
+                await _service.BatchSaveOptionsAsync(items);
+                return SuccessResponse($"Batch save successful: {items.Count} options.");
+            }
+            catch (ArgumentException ex)
+            {
+                return ErrorResponse<string>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error batch saving options for BaseKitId {BaseKitId}", items?.FirstOrDefault()?.BaseKitId);
+                return ServerErrorResponse<string>("An error occurred while saving options.");
+            }
+        }
+
+        /// <summary>
+        /// Upload a layer image for a builder option. Returns the URL to use in batch save.
+        /// </summary>
+        /// <remarks>
+        /// Dùng trước khi gọi <c>POST /options/batch</c>.
+        /// FE upload từng ảnh song song → nhận URL → đưa vào <c>ExistingLayerUrl</c> khi batch save.
+        /// </remarks>
+        [HttpPost("options/upload-layer")]
+        [Authorize]
+        [SwaggerOperation(
+            Summary = "Upload Layer Image",
+            Description = "Uploads a layer image to storage and returns the URL. Use this before calling batch save.")]
+        [SwaggerResponse(200, "Upload successful", typeof(ApiResponse<object>))]
+        [SwaggerResponse(400, "No file provided")]
+        public async Task<IActionResult> UploadLayerImage([FromForm] UploadLayerImageRequest request)
+        {
+            try
+            {
+                var file = request.File;
+                if (file == null || file.Length == 0)
+                    return ErrorResponse<string>("No file provided.");
+
+                var url = await _service.UploadLayerImageAsync(file);
+
+                return SuccessResponse(new { url }, "Upload successful.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error uploading layer image");
+                return ServerErrorResponse<string>("An error occurred while uploading the image.");
+            }
+        }
+
+        /// <summary>
         ///  Reset the entire configuration of a Kit.
         /// </summary>
         /// <remarks>
