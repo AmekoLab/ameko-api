@@ -55,6 +55,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data
         public DbSet<QualityScoreSnapshot> QualityScoreSnapshots { get; set; }
         public DbSet<ReputationLog> ReputationLogs { get; set; } = null!;
         public DbSet<UserSearchHistory> UserSearchHistories { get; set; }
+        public DbSet<AIChatConversation> AIChatConversations { get; set; }
+        public DbSet<AIChatMessage> AIChatMessages { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

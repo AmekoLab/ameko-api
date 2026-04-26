@@ -18,8 +18,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.AI
         /// <param name="vector">The query vector.</param>
         /// <param name="limit">Max results.</param>
         /// <param name="shopId">Optional filter by ShopId.</param>
-        /// <returns>A list of IDs (Guids) of the matching points.</returns>
-        Task<List<Guid>> SearchAsync(string collectionName, float[] vector, int limit = 5, Guid? shopId = null);
+        /// <param name="scoreThreshold">
+        /// Cosine similarity threshold (0–1). Results below this score are excluded.
+        /// null = return all top-k results regardless of score.
+        /// </param>
+        /// <returns>A list of IDs (Guids) of matching points that pass the score threshold.</returns>
+        Task<List<Guid>> SearchAsync(string collectionName, float[] vector, int limit = 5, Guid? shopId = null, float? scoreThreshold = null);
 
         /// <summary>
         /// Deletes a point from a collection.
