@@ -64,7 +64,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty.AI
             await _client.UpsertAsync(collectionName, new[] { point });
         }
 
-        public async Task<List<Guid>> SearchAsync(string collectionName, float[] vector, int limit = 5, Guid? shopId = null)
+        public async Task<List<Guid>> SearchAsync(string collectionName, float[] vector, int limit = 5, Guid? shopId = null, float? scoreThreshold = null)
         {
             Filter? filter = null;
             if (shopId.HasValue)
@@ -80,7 +80,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty.AI
                 collectionName: collectionName,
                 vector: vector,
                 filter: filter,
-                limit: (ulong)limit
+                limit: (ulong)limit,
+                scoreThreshold: scoreThreshold
             );
 
             // Qdrant.Client 1.17: PointId uses .Uuid (string) property

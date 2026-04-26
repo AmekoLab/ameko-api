@@ -41,6 +41,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         IQualityScoreSnapshotRepository QualityScoreSnapshots { get; }
         IReputationLogRepository ReputationLogs { get; }
         IUserSearchHistoryRepository UserSearchHistories { get; }
+        IAIChatRepository AIChat { get; }
         Task CommitAsync();
         void Rollback();
         /// <summary>

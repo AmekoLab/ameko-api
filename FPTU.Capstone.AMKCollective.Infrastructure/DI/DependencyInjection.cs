@@ -19,6 +19,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
             // AI Services
             services.AddScoped<IEmbeddingService, GoogleEmbeddingService>();
             services.AddScoped<IQdrantService, QdrantService>();
+            services.AddHttpClient<IWebSearchService, TavilySearchService>();
 
             return services;
         }

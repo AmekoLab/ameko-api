@@ -48,6 +48,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         private IQualityScoreSnapshotRepository? _qualityScoreSnapshots;
         private IReputationLogRepository? _reputationLogs;
         private IUserSearchHistoryRepository _userSearchHistories;
+        private IAIChatRepository? _aiChat;
 
         public UnitOfWork(ApplicationDbContext context)
         {
@@ -99,6 +100,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public IQualityScoreSnapshotRepository QualityScoreSnapshots => _qualityScoreSnapshots ??= new QualityScoreSnapshotRepository(_context);
         public IReputationLogRepository ReputationLogs => _reputationLogs ??= new ReputationLogRepository(_context);
         public IUserSearchHistoryRepository UserSearchHistories => _userSearchHistories ??= new UserSearchHistoryRepository(_context);
+        public IAIChatRepository AIChat => _aiChat ??= new AIChatRepository(_context);
         public async Task CommitAsync()
         {
             await _context.SaveChangesAsync();
