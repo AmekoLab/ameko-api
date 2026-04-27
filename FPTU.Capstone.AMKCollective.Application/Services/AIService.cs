@@ -911,7 +911,14 @@ Description: {issue.Description}
             // 2. Load lịch sử N tin gần nhất TRƯỚC khi lưu tin mới (để không tính tin hiện tại vào history)
             var recentHistory = isNew
                 ? new List<AIChatMessage>()
-                : await _unitOfWork.AIChat.GetRecentMessagesAsync(conversation.Id, limit: 10);
+                : (await _unitOfWork.AIChat.GetRecentMessagesAsync(conversation.Id, limit: 10)).ToList();
+
+            // Extract IDs sản phẩm đã hiển thị trong các assistant messages trước.
+            // Khi user hỏi alternatives, ta sẽ exclude những ID này khỏi candidates → AI không repeat.
+            var shownProductIds = ExtractShownProductIds(recentHistory);
+            bool wantsAlternatives = !isNew
+                && IsAskingForAlternatives(request.Message)
+                && recentHistory.Any(m => m.Role == "assistant");
 
             // 3. Lưu user message
             var userMsg = new AIChatMessage
@@ -983,10 +990,10 @@ Description: {issue.Description}
                         }
 
                         // Re-rank: composite score = 60% Qdrant position + 40% shop reputation
-                        // Hard filter: loại shop có quality score < 50
+                        // KHÔNG hard-filter shop quality — new shops cũng cần được tiếp cận user.
+                        // Soft signal: shop quality thấp → rank thấp, nhưng vẫn xuất hiện.
                         var ranked = assembledCandidates
                             .Select((p, idx) => new { Product = p, Shop = assembledShops[p.Id], Position = idx })
-                            .Where(x => x.Shop == null || x.Shop.CurrentQualityScore >= MinShopQualityScore)
                             .OrderByDescending(x => ComputeRankScore(x.Position, assembledCandidates.Count, x.Shop))
                             .Take(5)
                             .Select(x => x.Product)
@@ -995,13 +1002,34 @@ Description: {issue.Description}
                     }
 
                     // PRE-VALIDATION: lọc bỏ candidates rõ ràng không phù hợp TRƯỚC khi gửi LLM.
+                    // Ý đồ kiến trúc: KHÔNG bao giờ gửi sản phẩm out-of-budget/wrong-layout cho LLM,
+                    // vì LLM sẽ bịa lý do reject hoặc spin context để fit. Filter ở code mới deterministic.
                     if (qdrantFoundResults && assembledCandidates.Any())
                     {
+                        var constraints = ExtractUserConstraints(request.Message);
                         var validCandidates = assembledCandidates
                             .Where(p => !IsLayoutMismatch(request.Message, p.Layout))
                             .Where(p => p.Price >= 200_000) // dưới 200k = test data
+                            .Where(p => !constraints.BudgetMin.HasValue || p.Price >= constraints.BudgetMin.Value)
+                            .Where(p => !constraints.BudgetMax.HasValue || p.Price <= constraints.BudgetMax.Value)
                             .Where(p => !HasSwitchTypeRequirement(request.Message) || ProductHasSwitchInfo(p.Description))
+                            .Where(p => !wantsAlternatives || !shownProductIds.Contains(p.Id)) // exclude đã shown khi user xin khác
                             .ToList();
+
+                        if (wantsAlternatives && shownProductIds.Count > 0)
+                        {
+                            _logger.LogInformation(
+                                "User asked alternatives. Excluded {Count} previously-shown product IDs.",
+                                shownProductIds.Count);
+                        }
+
+                        if (constraints.HasBudget)
+                        {
+                            _logger.LogInformation(
+                                "User budget detected: {Min} - {Max} VND. Filtered {Before} → {After} candidates.",
+                                constraints.BudgetMin, constraints.BudgetMax,
+                                assembledCandidates.Count, validCandidates.Count);
+                        }
 
                         if (validCandidates.Any())
                         {
@@ -1017,8 +1045,56 @@ Description: {issue.Description}
                         }
                     }
 
-                    if (!assembledCandidates.Any())
-                        assembledCandidates = await LoadFallbackAssembledCandidatesAsync(limit: 5);
+                    // Pool expansion: nếu Qdrant + filter trả về ÍT HƠN 3 candidates,
+                    // expand pool bằng broad DB scan để user luôn có ≥3 lựa chọn (nếu DB còn).
+                    // Lý do: Qdrant similarity threshold có thể loại bỏ products tương đối phù hợp
+                    // chỉ vì description không khớp ngữ nghĩa cao — nhưng user vẫn cần variety.
+                    const int targetPoolSize = 3;
+                    if (assembledCandidates.Count < targetPoolSize)
+                    {
+                        var existingIds = assembledCandidates.Select(c => c.Id).ToHashSet();
+                        var broadBatch = await LoadFallbackAssembledCandidatesAsync(limit: 30);
+                        var expandConstraints = ExtractUserConstraints(request.Message);
+                        var additional = broadBatch
+                            .Where(p => !existingIds.Contains(p.Id))
+                            .Where(p => p.Price >= 200_000)
+                            .Where(p => !IsLayoutMismatch(request.Message, p.Layout))
+                            .Where(p => !expandConstraints.BudgetMin.HasValue || p.Price >= expandConstraints.BudgetMin.Value)
+                            .Where(p => !expandConstraints.BudgetMax.HasValue || p.Price <= expandConstraints.BudgetMax.Value)
+                            .Where(p => !HasSwitchTypeRequirement(request.Message) || ProductHasSwitchInfo(p.Description))
+                            .Where(p => !wantsAlternatives || !shownProductIds.Contains(p.Id))
+                            .Take(5 - assembledCandidates.Count)
+                            .ToList();
+
+                        if (additional.Any())
+                        {
+                            foreach (var ap in additional)
+                            {
+                                if (!assembledShops.ContainsKey(ap.Id))
+                                {
+                                    ShopProfile? shop = null;
+                                    if (ap.CreatedBy.HasValue)
+                                    {
+                                        try { shop = await _unitOfWork.Shops.GetByUserIdAsync(ap.CreatedBy.Value); }
+                                        catch { shop = null; }
+                                    }
+                                    assembledShops[ap.Id] = shop;
+                                }
+                            }
+                            assembledCandidates.AddRange(additional);
+                            // Pool đã có ít nhất 1 sản phẩm hợp lệ → treat as Qdrant hit để LLM recommend
+                            if (assembledCandidates.Any()) qdrantFoundResults = true;
+                            _logger.LogInformation(
+                                "Pool expansion: {Before} (Qdrant) + {Add} (DB scan) = {After} candidates. (alternatives={Alts}, shown={ShownCount})",
+                                existingIds.Count, additional.Count, assembledCandidates.Count, wantsAlternatives, shownProductIds.Count);
+                        }
+                        else if (!assembledCandidates.Any())
+                        {
+                            _logger.LogInformation(
+                                "Pool exhausted: 0 candidates from Qdrant + 0 from broad DB scan ({Total} broad). POOL EXHAUSTED path.",
+                                broadBatch.Count);
+                        }
+                    }
 
                     var header = qdrantFoundResults
                         ? "--- CANDIDATE ASSEMBLED KEYBOARDS (semantically close, ranked by shop reputation — you must verify they actually fit the user's requirements) ---"
@@ -1047,6 +1123,44 @@ Description: {issue.Description}
                         if (typeFiltered.Any()) partCandidates = typeFiltered;
                     }
 
+                    // Exclude IDs đã shown nếu user xin alternatives
+                    if (wantsAlternatives && shownProductIds.Count > 0 && partCandidates.Any())
+                    {
+                        var beforeExclude = partCandidates.Count;
+                        partCandidates = partCandidates.Where(p => !shownProductIds.Contains(p.Id)).ToList();
+                        _logger.LogInformation(
+                            "Part alternatives request: {Before} → {After} after excluding shown IDs.",
+                            beforeExclude, partCandidates.Count);
+                        if (!partCandidates.Any()) qdrantFoundResults = false;
+                    }
+
+                    // Hard filter theo budget — chỉ áp dụng khi user hỏi về 1 part type cụ thể
+                    // (nếu user hỏi chung chung "bàn phím 1 triệu" thì budget áp cho assembled, không cho parts)
+                    if (preferredType != null && partCandidates.Any())
+                    {
+                        var partConstraints = ExtractUserConstraints(request.Message);
+                        if (partConstraints.HasBudget)
+                        {
+                            var budgetFiltered = partCandidates
+                                .Where(p => !partConstraints.BudgetMin.HasValue || p.Price >= partConstraints.BudgetMin.Value)
+                                .Where(p => !partConstraints.BudgetMax.HasValue || p.Price <= partConstraints.BudgetMax.Value)
+                                .ToList();
+                            _logger.LogInformation(
+                                "Part budget filter ({Type}): {Min} - {Max} VND. {Before} → {After}.",
+                                preferredType, partConstraints.BudgetMin, partConstraints.BudgetMax,
+                                partCandidates.Count, budgetFiltered.Count);
+                            if (budgetFiltered.Any())
+                            {
+                                partCandidates = budgetFiltered;
+                            }
+                            else
+                            {
+                                qdrantFoundResults = false;
+                                partCandidates.Clear();
+                            }
+                        }
+                    }
+
                     // Re-rank theo shop reputation
                     Dictionary<Guid, ShopProfile?> partShops = new();
                     if (partCandidates.Any())
@@ -1060,15 +1174,38 @@ Description: {issue.Description}
                         partCandidates = partCandidates
                             .OrderBy(p => orderMap.TryGetValue(p.Id, out var i) ? i : int.MaxValue)
                             .Select((p, idx) => new { Part = p, Position = idx, Shop = partShops[p.Id] })
-                            .Where(x => x.Shop == null || x.Shop.CurrentQualityScore >= MinShopQualityScore)
                             .OrderByDescending(x => ComputeRankScore(x.Position, partCandidates.Count, x.Shop))
                             .Take(5)
                             .Select(x => x.Part)
                             .ToList();
                     }
 
-                    if (!partCandidates.Any())
-                        partCandidates = await LoadFallbackPartCandidatesAsync(null, limit: 5);
+                    // Pool expansion cho parts: tương tự assembled, đảm bảo ≥3 candidates nếu DB còn.
+                    if (partCandidates.Count < 3)
+                    {
+                        var existingPartIds = partCandidates.Select(c => c.Id).ToHashSet();
+                        var fallbackParts = await LoadFallbackPartCandidatesAsync(null, limit: 30);
+                        var partExpandConstraints = ExtractUserConstraints(request.Message);
+                        var additionalParts = fallbackParts
+                            .Where(p => !existingPartIds.Contains(p.Id))
+                            .Where(p => preferredType == null || string.Equals(p.PartType, preferredType, StringComparison.OrdinalIgnoreCase))
+                            .Where(p => preferredType == null
+                                        || !partExpandConstraints.HasBudget
+                                        || (!partExpandConstraints.BudgetMin.HasValue || p.Price >= partExpandConstraints.BudgetMin.Value)
+                                          && (!partExpandConstraints.BudgetMax.HasValue || p.Price <= partExpandConstraints.BudgetMax.Value))
+                            .Where(p => !wantsAlternatives || !shownProductIds.Contains(p.Id))
+                            .Take(5 - partCandidates.Count)
+                            .ToList();
+
+                        if (additionalParts.Any())
+                        {
+                            partCandidates.AddRange(additionalParts);
+                            if (partCandidates.Any()) qdrantFoundResults = true;
+                            _logger.LogInformation(
+                                "Parts pool expansion: {Before} + {Add} = {After}.",
+                                existingPartIds.Count, additionalParts.Count, partCandidates.Count);
+                        }
+                    }
 
                     var typeHint = preferredType != null ? $" (filtered to {preferredType})" : "";
                     var header = qdrantFoundResults
@@ -1182,35 +1319,20 @@ Description: {issue.Description}
             if (messageIntent == MessageIntent.Greeting)
             {
                 runtimeNote =
-                    "\n\n[RUNTIME — GREETING]: The user sent a greeting or social message. " +
-                    "Respond warmly and briefly. Introduce yourself as AMK Advisor. " +
-                    "Ask how you can help with their keyboard needs. Set all IDs to null, TotalEstimatedPrice to 0.";
+                    "\n\n[RUNTIME — GREETING OR OFF-TOPIC]: The user sent a greeting, social message, or a question unrelated to keyboards. " +
+                    "If it is a greeting → respond warmly and briefly, introduce yourself as AMK Advisor, ask how you can help with keyboards. " +
+                    "If it is clearly off-topic (weather, date, food, sports, etc.) → politely say in ONE sentence that you can only help with mechanical keyboards and AMK Collective, then ask if they have a keyboard question. " +
+                    "In both cases: set all IDs to null, TotalEstimatedPrice to 0.";
             }
             else if (usedWebSearch && autoWebSearch)
             {
                 // Auto-triggered: user không hỏi "tìm mẫu" — AI tự tìm vì Qdrant không có gì phù hợp
-                runtimeNote =
-                    "\n\n[RUNTIME — AUTO WEB SEARCH]: Platform không có sản phẩm khớp với yêu cầu này. " +
-                    "AI đã tự tìm kiếm trên internet và tìm được một số mẫu tham khảo phù hợp. " +
-                    "All ID fields MUST be null. " +
-                    "In Reasoning: " +
-                    "(1) Thông báo ngắn rằng platform chưa có sản phẩm khớp, nhưng đã tìm được mẫu tham khảo bên ngoài. " +
-                    "(2) Mô tả 2-3 mẫu cụ thể từ kết quả web (tên build, layout, switch type, aesthetic, tầm giá VND). " +
-                    "(3) Gợi ý user dùng một trong các mẫu này làm reference khi tạo Commission Request. " +
-                    "Estimate TotalEstimatedPrice in VND. " +
-                    "NEVER mention Canva, Freepik, Google Images, or any design tool.";
+                runtimeNote = BuildWebSearchInspirationRuntimeNote(isAuto: true);
             }
             else if (usedWebSearch)
             {
                 // Explicit: user chủ động hỏi "tìm mẫu" / "tham khảo"
-                runtimeNote =
-                    "\n\n[RUNTIME — WEB SEARCH ACTIVE]: User yêu cầu tìm mẫu tham khảo bên ngoài platform. " +
-                    "Context below is internet search results about keyboards. " +
-                    "All ID fields MUST be null. " +
-                    "In Reasoning: describe 2-3 specific keyboard builds or models found in the results (name, layout, switch type, aesthetic, approx VND price). " +
-                    "Tell the user to use one as reference when creating a Commission Request on AMK Collective. " +
-                    "Estimate TotalEstimatedPrice in VND. " +
-                    "NEVER mention Canva, Freepik, Google Images, or any design tool.";
+                runtimeNote = BuildWebSearchInspirationRuntimeNote(isAuto: false);
             }
             else if (customBuildContext != null)
             {
@@ -1235,48 +1357,62 @@ Description: {issue.Description}
             else if (qdrantFoundResults)
             {
                 runtimeNote = preferAssembled
-                    ? "\n\n[RUNTIME — EVALUATE CANDIDATES]: Context has assembled keyboards that were semantically close to the query and ranked by shop reputation. " +
-                      "These are CANDIDATES — you must decide if any genuinely fits. Do NOT assume they fit just because they appeared. " +
-                      "SET AssembledProductId to null if ANY of these apply: " +
-                      "(A) User asked for a specific switch type (silent, clicky, tactile, linear) but product Description/specs does not mention switch info — no switch info means you cannot confirm it meets the requirement. " +
-                      "(B) Product Layout does not match what user asked for (e.g. user wants full-size but product is 85%). " +
-                      "(C) Product price is unrealistically low (under 200,000 VND for a complete keyboard = test data, not a real product). " +
-                      "When you set ID to null: act as an expert consultant — recommend 2-3 specific real-world keyboard models from your knowledge that DO fit, then suggest a Commission Request. " +
-                      "When product genuinely fits: REQUIRED to mention the SHOP NAME from context (e.g. 'Bàn phím X từ shop Y'). " +
-                      "If shop has badge Premium or Verified, mention it briefly to build user trust. " +
-                      "Describe ONLY specs listed in context, NEVER invent specs."
-                    : "\n\n[RUNTIME — EVALUATE CANDIDATES]: Context has parts that were semantically close to the query. " +
-                      "These are CANDIDATES — you must decide if any genuinely fits. " +
-                      "SET ID to null if the part does not match the user's specific requirement. " +
-                      "ACCURACY: Describe each part using ONLY specs listed in context — NEVER invent specs not in the data. " +
-                      "SHOP & NEXT STEPS (required): Always mention the shop name. " +
-                      "If recommending a Kit: explain it = vo + PCB + plate (chua co switch va keycap), user needs to buy switch and keycap separately, suggest Builder Tool on AMK Collective.";
+                    ? "\n\n[RUNTIME — RECOMMEND FROM CONTEXT]: Context contains 2-5 platform candidates that already passed code-side filtering. " +
+                      "Hệ thống sẽ HIỂN THỊ TẤT CẢ candidates lên FE dưới dạng product cards — Reasoning của bạn KHÔNG cần và KHÔNG được list lại tên / giá / shop của từng sản phẩm (sẽ duplicate với cards). " +
+                      "PRINCIPLES: " +
+                      "(1) Reasoning là 1 đoạn văn NGẮN (2-3 câu, không quá 60 từ), KHÔNG xuống dòng, KHÔNG dùng bullet hay đánh số. " +
+                      "(2) Câu mở: tổng hợp / nhận xét chung về các option phía dưới (vd: 'Mình gợi ý {N} mẫu phía dưới, có cả option giá tốt và cao cấp tùy ngân sách.'). " +
+                      "(3) Câu giữa (optional): 1 lưu ý hữu ích — vd các mẫu khác nhau ở layout/switch/budget tier để user dễ chọn. " +
+                      "(4) Câu kết: mời user chọn hoặc thu hẹp tiêu chí (vd: 'Bạn thích mẫu nào? Hoặc nói rõ ngân sách/layout để mình lọc kỹ hơn.'). " +
+                      "(5) TUYỆT ĐỐI KHÔNG: list tên sản phẩm, không mention giá cụ thể, không mention tên shop trong Reasoning. " +
+                      "(6) Set AssembledProductId = null. TotalEstimatedPrice = 0 (system tự tính)."
+                    : "\n\n[RUNTIME — RECOMMEND FROM CONTEXT (parts)]: Context contains parts already filtered. " +
+                      "PRINCIPLES: " +
+                      "(1) Nếu user hỏi 1 part type cụ thể → cards hiện ở dưới, Reasoning chỉ cần 2-3 câu nhận xét chung không xuống dòng, KHÔNG list lại tên/giá. " +
+                      "(2) Nếu user hỏi build / combo → pick 1 ID phù hợp nhất (KitId/SwitchId/KeycapId). Mention name + shop ngắn gọn. " +
+                      "(3) Khi recommend Kit: nhắc Kit = vỏ + PCB + plate, cần thêm switch + keycap, suggest Builder Tool.";
             }
             else
             {
                 runtimeNote =
-                    "\n\n[RUNTIME — NO MATCH]: Qdrant found no relevant products in the platform. Set all ID fields to null. " +
-                    "STEP 1 — Check topic: if the question is NOT about keyboards at all (holidays, food, weather, etc.), " +
-                    "politely decline in one sentence and ask if they have a keyboard question. Stop there. " +
-                    "STEP 2 — If it IS a keyboard question: answer it fully as an expert FIRST. " +
-                    "Recommend 2-3 specific real-world keyboard models or builds that fit the user's need " +
-                    "(mention model name, key specs like layout, switch type, price range in VND). " +
-                    "Use your training knowledge — you don't need platform data to give good keyboard advice. " +
-                    "STEP 3 — Then briefly mention the platform: " +
-                    "'AMK Collective hiện chưa có sản phẩm khớp chính xác — bạn có thể tạo Commission Request " +
-                    "và mô tả yêu cầu (layout, switch type, ngân sách) để các shop báo giá.' " +
-                    "Keep STEP 3 to 1-2 sentences max — the expert advice in STEP 2 is the main value. " +
-                    "NEVER suggest Canva, Freepik, Google Images, TikTok, Facebook, or non-keyboard sites.";
+                    "\n\n[PRINCIPLES WHEN NOTHING FITS]: Platform has no eligible product after filtering. Set all ID fields to null. " +
+                    "(1) If the question is off-topic (not about keyboards), politely decline in one sentence. Stop. " +
+                    "(2) Otherwise give GENERIC keyboard guidance: discuss layout tradeoffs (60% / 65% / 75% / TKL / full-size), " +
+                    "switch feel (linear / tactile / clicky / silent), pre-built vs kit-based, and a realistic VND budget tier for what they want. " +
+                    "(3) Do NOT name specific external brands or model numbers — naming brands without web search context is a hallucination. " +
+                    "(4) Offer two next steps: " +
+                    "  • say 'tìm mẫu trên web' to get real product references via web search, OR " +
+                    "  • create a Commission Request describing layout/switch/budget so shops can quote. " +
+                    "(5) Be honest about WHY platform has no match (price tier, niche layout, etc.) — use the actual reason from the user's request, never invent constraints they did not mention.";
             }
 
             // Detect follow-up "alternatives" pattern — yêu cầu LLM đa dạng hóa, không lặp lại.
-            if (IsAskingForAlternatives(request.Message) && recentHistory.Any(m => m.Role == "assistant"))
+            if (wantsAlternatives)
             {
-                runtimeNote +=
-                    "\n\n[FOLLOW-UP — DIFFERENT OPTIONS]: User is asking for alternatives to your previous suggestions. " +
-                    "MUST recommend DIFFERENT keyboard models/builds than what you said before in this conversation. " +
-                    "Look at your previous assistant messages and avoid repeating those exact models. " +
-                    "If you already mentioned Keychron K6, suggest something else this time (e.g. Akko 5075B, Leobog Hi75, Womier S-K71, etc.).";
+                bool poolExhausted = !qdrantFoundResults || (preferAssembled
+                    ? !assembledCandidates.Any()
+                    : !partCandidates.Any());
+
+                if (poolExhausted)
+                {
+                    // DB đã hết sản phẩm khác trong tầm yêu cầu → surface commission/custom path mạnh.
+                    runtimeNote +=
+                        "\n\n[FOLLOW-UP — POOL EXHAUSTED]: User asked for alternatives but the platform has no more products matching their requirements (after excluding what was already shown). " +
+                        "Acknowledge honestly that AMK Collective hiện không còn sản phẩm khác khớp yêu cầu. " +
+                        "Then offer THREE paths clearly: " +
+                        "(1) **Commission Request** — mô tả layout, switch, keycap theme, ngân sách → các shop sẽ build riêng. " +
+                        "(2) **Builder Tool** — tự lắp ráp custom build từ kit + switch + keycap có sẵn trên platform. " +
+                        "(3) **Tìm mẫu trên web** — nói câu này để xem các build từ cộng đồng làm cảm hứng thiết kế cho Commission. " +
+                        "All ID fields MUST be null. DO NOT repeat any product previously shown. DO NOT name external brands.";
+                }
+                else
+                {
+                    runtimeNote +=
+                        "\n\n[FOLLOW-UP — DIFFERENT OPTIONS]: User asked for an alternative. Context has been pre-filtered to EXCLUDE products you already showed in this conversation. " +
+                        "Pick a DIFFERENT product from the current context — never repeat. " +
+                        "If user expressed dissatisfaction (chán/xấu/không thích), acknowledge briefly before recommending. " +
+                        "Mention name + shop. DO NOT name external brands without web search.";
+                }
             }
 
             var systemPrompt = _settings.ChatbotPrompt + runtimeNote;
@@ -1298,6 +1434,14 @@ Description: {issue.Description}
 
             // 8. Parse + build items
             var recommendation = ParseRecommendationResponse(aiJson);
+
+            // Track AI's original picks — nếu validation clear hết, ta phải override Reasoning
+            // vì LLM đã đề cập tên sản phẩm trong text (mà sản phẩm đó vừa bị reject).
+            var originalAssembledId = recommendation.AssembledProductId;
+            bool aiPickedAssembled = originalAssembledId.HasValue;
+            bool aiPickedCustomBuild = recommendation.KitId.HasValue
+                                       && recommendation.SwitchId.HasValue
+                                       && recommendation.KeycapId.HasValue;
 
             // Server-side validation — đây là lớp bảo vệ cuối cùng, không phụ thuộc vào LLM.
             // Check 3 điều kiện: layout mismatch, price sanity, switch requirement mismatch.
@@ -1400,13 +1544,114 @@ Description: {issue.Description}
             }
             else if (qdrantFoundResults)
             {
-                // Qdrant matched: show only the AI-selected products
-                recommendation.Items = await BuildRecommendationItemsAsync(recommendation, partCandidates);
+                // RECOMMEND FROM CONTEXT: present 2-5 candidates đã pre-filtered.
+                // Bypass việc LLM pick 1 ID — code trực tiếp present candidates đã lọc sạch.
+                // Lý do: (1) user thường muốn so sánh nhiều option, (2) LLM hay bỏ sót hoặc chỉ chọn 1.
+                if (preferAssembled)
+                {
+                    recommendation.Items = await BuildFallbackItemsAsync(null, assembledCandidates.Take(5).ToList());
+                    // Compute estimated price từ trung bình range candidates → giúp user nắm tầm giá.
+                    if (recommendation.Items.Count > 0)
+                    {
+                        var prices = recommendation.Items.Select(i => i.Price).Where(p => p > 0).ToList();
+                        if (prices.Any())
+                            recommendation.TotalEstimatedPrice = (decimal)prices.Average();
+                    }
+                }
+                else
+                {
+                    // Parts: nếu user hỏi 1 part type cụ thể → list 2-5 parts; nếu không → giữ logic AI pick (combo)
+                    var preferredType = DetectPreferredPartType(request.Message);
+                    if (preferredType != null && partCandidates.Any())
+                    {
+                        recommendation.Items = await BuildFallbackItemsAsync(partCandidates.Take(5).ToList(), null);
+                        if (recommendation.Items.Count > 0)
+                        {
+                            var prices = recommendation.Items.Select(i => i.Price).Where(p => p > 0).ToList();
+                            if (prices.Any())
+                                recommendation.TotalEstimatedPrice = (decimal)prices.Average();
+                        }
+                    }
+                    else
+                    {
+                        recommendation.Items = await BuildRecommendationItemsAsync(recommendation, partCandidates);
+                    }
+                }
             }
             else
             {
                 // No match (off-topic decline or commission guidance): no random products
                 recommendation.Items = new List<AIRecommendationItemDTO>();
+            }
+
+            // Anti-hallucination guard: nếu AI đã pick sản phẩm nhưng validation reject hết
+            // và items cuối cùng rỗng → Reasoning đang đề cập sản phẩm KHÔNG tồn tại trong response.
+            // Override bằng fallback message để FE không hiển thị text mâu thuẫn với items=[].
+            bool aiPickedSomething = aiPickedAssembled || aiPickedCustomBuild;
+            bool allCleared = !recommendation.AssembledProductId.HasValue && !customBuildValid;
+            bool reasoningOverridden = false;
+            if (aiPickedSomething
+                && allCleared
+                && recommendation.Items.Count == 0
+                && messageIntent != MessageIntent.Greeting
+                && !usedWebSearch)
+            {
+                _logger.LogWarning(
+                    "AI Reasoning override: validation cleared all IDs (assembled={A}, customBuild={C}). Replacing Reasoning to avoid product hallucination.",
+                    aiPickedAssembled, aiPickedCustomBuild);
+
+                recommendation.Reasoning = BuildNoMatchFallbackMessage();
+                recommendation.TotalEstimatedPrice = 0;
+                reasoningOverridden = true;
+            }
+
+            // Safety net: scan Reasoning for external brand hallucinations when no web search was used.
+            // Last line of defense — nếu LLM bypass prompt instructions, ta vẫn catch được.
+            if (!reasoningOverridden
+                && !usedWebSearch
+                && messageIntent != MessageIntent.Greeting
+                && ContainsExternalBrandMention(recommendation.Reasoning))
+            {
+                _logger.LogWarning(
+                    "AI Reasoning override: detected external brand mention without web search context. Original: {Original}",
+                    recommendation.Reasoning);
+                recommendation.Reasoning = BuildNoMatchFallbackMessage();
+                recommendation.TotalEstimatedPrice = 0;
+                recommendation.AssembledProductId = null;
+                recommendation.KitId = null;
+                recommendation.SwitchId = null;
+                recommendation.KeycapId = null;
+                recommendation.Items = new List<AIRecommendationItemDTO>();
+                reasoningOverridden = true;
+            }
+
+            // Safety net 2: items rỗng + Reasoning chứa product claim (giá VND, shop name) + không web search
+            // → LLM đang mention sản phẩm cụ thể nhưng items không có → mismatch chắc chắn.
+            // Đây là case như "Bàn phím test create1 từ shop SwitchLab VN giá 333,333 VND" với items=[].
+            if (!reasoningOverridden
+                && !usedWebSearch
+                && messageIntent != MessageIntent.Greeting
+                && recommendation.Items.Count == 0
+                && ContainsProductClaim(recommendation.Reasoning))
+            {
+                _logger.LogWarning(
+                    "AI Reasoning override: items empty but Reasoning mentions product/price/shop — hallucination mismatch. Original: {Original}",
+                    recommendation.Reasoning);
+                recommendation.Reasoning = BuildNoMatchFallbackMessage();
+                recommendation.TotalEstimatedPrice = 0;
+                recommendation.AssembledProductId = null;
+                recommendation.KitId = null;
+                recommendation.SwitchId = null;
+                recommendation.KeycapId = null;
+                recommendation.Items = new List<AIRecommendationItemDTO>();
+            }
+
+            // Post-process Reasoning: nếu items >= 2 (list mode) và không phải web search,
+            // strip newlines + bullet/number markers để text thành 1 đoạn gọn.
+            // Lý do: items đã hiển thị làm cards → list trong text bị duplicate và ký tự "\n1." xấu.
+            if (recommendation.Items.Count >= 2 && !usedWebSearch)
+            {
+                recommendation.Reasoning = CleanListFormatting(recommendation.Reasoning);
             }
 
             // 9. Lưu assistant message — payload dạng wrapper để giữ cả Items lẫn SourceLinks
@@ -1445,6 +1690,93 @@ Description: {issue.Description}
                 UsedWebSearch = usedWebSearch,
                 EstimatedPrice = recommendation.TotalEstimatedPrice
             };
+        }
+
+        // ════════════════════════════════════════════════════════════════
+        // AI CHATBOT — STREAMING variant (Server-Sent Events)
+        // ════════════════════════════════════════════════════════════════
+        //
+        // Phase 1 implementation: heartbeat-based streaming.
+        // Wrap ChatAsync với heartbeats định kỳ → giữ TCP connection alive → FE không timeout.
+        // Logic AI giữ NGUYÊN 100% — không động vào ChatAsync → zero risk to existing functionality.
+        //
+        // Tradeoff: chưa có "text typing out" như ChatGPT, nhưng:
+        //   ✓ Fix triệt để timeout issue (FE thấy heartbeat mỗi 2s)
+        //   ✓ Connection không bao giờ idle → không bị middleware/proxy cắt
+        //   ✓ Cancel khi FE close tab (CancellationToken propagate)
+        //   ✓ Có thể upgrade lên token-by-token streaming sau (Phase 2)
+        //
+        public async IAsyncEnumerable<ChatChunk> ChatStreamAsync(
+            Guid userId,
+            AIChatRequestDTO request,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            // 1. Heartbeat đầu tiên — báo FE đã connect ok
+            yield return new ChatChunk { Type = "start" };
+
+            // 2. Chạy ChatAsync trong background; heartbeat mỗi 2s nếu chưa xong
+            var chatTask = Task.Run(() => ChatAsync(userId, request), cancellationToken);
+
+            const int heartbeatMs = 2000;
+            while (!chatTask.IsCompleted)
+            {
+                var delayTask = Task.Delay(heartbeatMs, cancellationToken);
+                var completed = await Task.WhenAny(chatTask, delayTask);
+                if (completed != chatTask)
+                {
+                    yield return new ChatChunk { Type = "heartbeat" };
+                }
+                if (cancellationToken.IsCancellationRequested) break;
+            }
+
+            // 3. Lấy kết quả (hoặc bắt error)
+            AIChatResponseDTO? result = null;
+            string? errorMessage = null;
+            try
+            {
+                result = await chatTask;
+            }
+            catch (KeyNotFoundException ex)
+            {
+                errorMessage = ex.Message;
+                _logger.LogWarning(ex, "ChatStreamAsync: conversation not found");
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogInformation("ChatStreamAsync: cancelled by client");
+                yield break;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = "AI service unavailable. Please try again.";
+                _logger.LogError(ex, "ChatStreamAsync: unexpected error");
+            }
+
+            // 4. Trả result hoặc error
+            if (result != null)
+            {
+                yield return new ChatChunk
+                {
+                    Type = "result",
+                    ConversationId = result.ConversationId,
+                    Reply = result.Reply,
+                    Items = result.Items,
+                    SourceLinks = result.SourceLinks,
+                    UsedWebSearch = result.UsedWebSearch,
+                    EstimatedPrice = result.EstimatedPrice
+                };
+            }
+            else
+            {
+                yield return new ChatChunk
+                {
+                    Type = "error",
+                    ErrorMessage = errorMessage ?? "Unknown error"
+                };
+            }
+
+            // 5. Done signal — FE close connection
+            yield return new ChatChunk { Type = "done" };
         }
 
         public async Task<List<AIChatConversationSummaryDTO>> GetChatConversationsAsync(Guid userId, int limit = 20)
@@ -1607,8 +1939,8 @@ Description: {issue.Description}
             return 0.6 * positionScore + 0.4 * shopScore;
         }
 
-        // Hard filter: loại shop có CurrentQualityScore < threshold (mặc định 50).
-        private const int MinShopQualityScore = 50;
+        // Shop quality không còn dùng làm hard filter — đã chuyển thành soft signal trong ComputeRankScore.
+        // Lý do: hard filter làm new shops không bao giờ xuất hiện → death spiral, user thấy lặp lại 1 sản phẩm.
 
         // Format shop info ngắn cho LLM context.
         private static string FormatShopInfo(ShopProfile? shop)
@@ -1650,7 +1982,6 @@ Description: {issue.Description}
                     Shop = kitShops.TryGetValue(k.ShopId, out var s) ? s : null,
                     Position = idx
                 })
-                .Where(x => x.Shop == null || x.Shop.CurrentQualityScore >= MinShopQualityScore)
                 .OrderByDescending(x => ComputeRankScore(x.Position, allKits.Count, x.Shop))
                 .Take(2)
                 .Select(x => new { x.Kit, x.Shop })
@@ -1827,30 +2158,69 @@ Description: {issue.Description}
         }
 
         // Classify message into one of three intents to decide RAG + web search strategy.
+        // CHIẾN LƯỢC: Default về KeyboardQuery (chạy RAG). Chỉ route Greeting khi:
+        //   (a) câu chào thuần túy không có keyword keyboard, HOẶC
+        //   (b) câu CÓ off-topic signal rõ ràng (date, weather, math, food, jokes, politics).
+        // RULE 0 trong system prompt là safety net cuối: nếu LLM thấy off-topic → trả JSON decline.
         private static MessageIntent ClassifyMessageIntent(string? message)
         {
             if (string.IsNullOrWhiteSpace(message)) return MessageIntent.Greeting;
 
             var m = message.Trim().ToLowerInvariant();
 
-            // Pure greeting: short message containing greeting words, no keyboard context
+            // Pure greeting: chào hỏi không kèm câu hỏi
             string[] greetingPatterns = { "chào", "xin chào", "hello", "hi ", "hey ", "good morning", "good evening", "good afternoon", "buổi sáng", "buổi tối", "buổi chiều", "alo", "yo " };
             bool hasGreeting = greetingPatterns.Any(g => m.Contains(g));
-            string[] keyboardSignals = { "bàn phím", "ban phim", "keyboard", "switch", "keycap", "kit", "phím", "mua", "đặt", "tư vấn", "recommend", "build", "layout", "linh kiện", "mẫu" };
-            bool hasKeyboard = keyboardSignals.Any(k => m.Contains(k));
 
-            if (hasGreeting && !hasKeyboard)
-                return MessageIntent.Greeting;
-
-            // Web search request: user wants external reference/build inspiration
+            // Web search request: user explicit muốn tham khảo từ ngoài
             string[] webSearchSignals = {
-                "tìm mẫu", "mẫu tham khảo", "tham khảo", "reference", "inspiration", "showcase",
+                "tìm mẫu", "tìm các mẫu", "mẫu tham khảo", "tham khảo", "reference", "inspiration", "showcase",
                 "đặt làm riêng", "làm riêng", "commission", "mẫu để đặt", "mẫu ngoài",
-                "tìm trên mạng", "tìm trên web", "bên ngoài", "ngoài hệ thống"
+                "tìm trên mạng", "tìm trên web", "tìm ngoài web", "trên mạng", "trên web",
+                "ngoài web", "ngoài trang", "bên ngoài", "ngoài hệ thống"
             };
             if (webSearchSignals.Any(k => m.Contains(k)))
                 return MessageIntent.WebSearchRequest;
 
+            // Off-topic signals — câu RÕ RÀNG về chủ đề khác (date/weather/math/food/personal/politics).
+            // Nếu match → Greeting path (decline lịch sự). Nếu không match → default KeyboardQuery.
+            string[] offTopicSignals = {
+                // Date/time
+                "ngày mấy", "ngay may", "thứ mấy", "thu may", "mấy giờ", "may gio",
+                "what day", "what time", "today's date", "tomorrow",
+                // Weather
+                "thời tiết", "thoi tiet", "weather", "trời nắng", "troi nang", "trời mưa", "troi mua",
+                // Food / cooking
+                "ăn gì", "an gi", "nấu", "nau ", "cooking", "recipe", "công thức nấu", "phở", "pho ",
+                "bún", "bun ", "cơm", "com ", "đồ ăn", "do an",
+                // Math / calculation off-topic
+                "bằng mấy", "bang may", "tính giùm", "tinh gium", "đáp án", "dap an",
+                // Politics / public figures
+                "tổng thống", "tong thong", "president", "thủ tướng", "thu tuong", "chính trị", "chinh tri",
+                "bầu cử", "bau cu", "election",
+                // Jokes / stories
+                "kể chuyện cười", "ke chuyen cuoi", "tell a joke", "joke", "chuyện hài", "chuyen hai",
+                // Personal / philosophical
+                "tôi là ai", "toi la ai", "you are who", "ý nghĩa cuộc sống", "y nghia cuoc song",
+                // Random topic markers
+                "covid", "vaccine", "vắc xin", "vac xin", "bóng đá", "bong da", "football", "soccer",
+                "phim hay", "phim moi", "âm nhạc", "am nhac", "music recommend",
+            };
+            bool hasOffTopic = offTopicSignals.Any(k => m.Contains(k));
+
+            // Greeting thuần (chỉ chào, không kèm câu hỏi keyboard) → decline ngắn gọn
+            if (hasGreeting && m.Length < 40 && !hasOffTopic)
+            {
+                // Check thêm: nếu message dài hoặc có dấu ? thì có thể vừa chào vừa hỏi → để KeyboardQuery
+                if (!m.Contains('?') && m.Split(' ').Length <= 5)
+                    return MessageIntent.Greeting;
+            }
+
+            // Off-topic rõ ràng → Greeting path (decline)
+            if (hasOffTopic)
+                return MessageIntent.Greeting;
+
+            // Default: KeyboardQuery — chạy RAG. RULE 0 trong system prompt sẽ catch nếu vẫn off-topic.
             return MessageIntent.KeyboardQuery;
         }
 
@@ -2003,6 +2373,220 @@ Description: {issue.Description}
                 : ResponseLanguage.English;
         }
 
+        // Extract IDs sản phẩm đã được hiển thị trong assistant messages trước.
+        // Dùng cho alternatives: nếu user nói "phím khác đi", "chán quá" → exclude các ID này
+        // khỏi candidates để AI không lặp lại đề xuất cũ.
+        private static HashSet<Guid> ExtractShownProductIds(IEnumerable<AIChatMessage> history)
+        {
+            var ids = new HashSet<Guid>();
+            foreach (var msg in history)
+            {
+                if (msg.Role != "assistant" || string.IsNullOrEmpty(msg.RecommendationPayload))
+                    continue;
+                try
+                {
+                    var payload = JsonSerializer.Deserialize<ChatMessagePayload>(msg.RecommendationPayload);
+                    if (payload?.Items != null)
+                    {
+                        foreach (var item in payload.Items)
+                        {
+                            if (item.Id != Guid.Empty) ids.Add(item.Id);
+                        }
+                    }
+                }
+                catch
+                {
+                    // Try legacy format: payload was raw items list
+                    try
+                    {
+                        var legacyItems = JsonSerializer.Deserialize<List<AIRecommendationItemDTO>>(msg.RecommendationPayload);
+                        if (legacyItems != null)
+                        {
+                            foreach (var item in legacyItems)
+                            {
+                                if (item.Id != Guid.Empty) ids.Add(item.Id);
+                            }
+                        }
+                    }
+                    catch { /* ignore */ }
+                }
+            }
+            return ids;
+        }
+
+        // Web search runtime note: framing là DESIGN INSPIRATION cho Commission Request,
+        // KHÔNG phải product alternative ở shop khác. Web search results dùng để extract
+        // design elements (layout, theme, switch sound, color scheme) → mô tả cho shop khi commission.
+        private static string BuildWebSearchInspirationRuntimeNote(bool isAuto)
+        {
+            var prefix = isAuto
+                ? "\n\n[RUNTIME — DESIGN INSPIRATION (auto)]: Platform không có sản phẩm khớp yêu cầu này. AI đã tự tìm các build keyboard từ cộng đồng (Reddit, GeekHack...) làm cảm hứng thiết kế. "
+                : "\n\n[RUNTIME — DESIGN INSPIRATION]: User muốn tham khảo các mẫu bên ngoài để lấy ý tưởng thiết kế. Context bên dưới là các custom build từ cộng đồng keyboard. ";
+
+            return prefix +
+                "MỤC ĐÍCH: web search results = NGUỒN CẢM HỨNG THIẾT KẾ để user mô tả khi tạo Commission Request trên AMK Collective. " +
+                "KHÔNG PHẢI product alternative để user đi mua ở shop khác. " +
+                "All ID fields MUST be null. TotalEstimatedPrice là estimate cho mức giá build tương tự khi commission, không phải giá ở shop ngoài. " +
+                "In Reasoning: " +
+                "(1) Mô tả 2-3 build từ kết quả web về CÁC YẾU TỐ THIẾT KẾ: layout (60%/65%/75%/alice...), case material/color, mounting style, switch sound profile, keycap theme. " +
+                "(2) Highlight design elements user có thể NÓI VỚI SHOP để recreate: 'kiểu Alice gasket', 'theme dark cyberpunk', 'switch tactile silent', 'keycap PBT pastel'... " +
+                "(3) HƯỚNG DẪN: vào Commission Request trên AMK Collective, mô tả các yếu tố thiết kế trên + ngân sách → shop sẽ build cho. " +
+                "TUYỆT ĐỐI KHÔNG: " +
+                "  • Không gợi ý user đi mua ở shop khác (nShop, GEARVN, Phong Cách Xanh, Tinh Tế, Shopee, Lazada, etc.) " +
+                "  • Không paste link ngoài hoặc tên website mua hàng " +
+                "  • Không nói 'có thể mua tại...', chỉ nói 'tham khảo thiết kế' " +
+                "  • Không mention Canva, Freepik, Google Images, hay design tool nào.";
+        }
+
+        // Strip newlines + list markers (1., 2., -, •, *) khỏi Reasoning để text gọn 1 đoạn.
+        // Áp dụng khi items đã hiển thị làm cards — list trong text bị duplicate và xấu.
+        private static readonly Regex ListMarkerRegex = new(
+            @"(?:^|\s)(?:\d+[\.\)]|[-•*])\s+",
+            RegexOptions.Multiline | RegexOptions.Compiled);
+
+        private static string CleanListFormatting(string? reasoning)
+        {
+            if (string.IsNullOrWhiteSpace(reasoning)) return reasoning ?? string.Empty;
+            // Replace newlines + list markers với space, collapse multiple spaces.
+            var noMarkers = ListMarkerRegex.Replace(reasoning, " ");
+            var noNewlines = noMarkers.Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ");
+            // Collapse multiple spaces
+            var collapsed = Regex.Replace(noNewlines, @"\s{2,}", " ");
+            return collapsed.Trim();
+        }
+
+        // Generic fallback message khi không có sản phẩm fit hoặc Reasoning bị reject.
+        // Đặt ở 1 chỗ để consistent giữa các code path khác nhau.
+        private static string BuildNoMatchFallbackMessage() =>
+            "Hiện tại AMK Collective chưa có sản phẩm khớp chính xác với yêu cầu của bạn. " +
+            "Bạn có thể: (1) nói \"tìm mẫu trên web\" để tôi tìm các build tham khảo từ internet, " +
+            "hoặc (2) tạo Commission Request mô tả layout, loại switch, ngân sách mong muốn — các shop sẽ báo giá riêng theo yêu cầu.";
+
+        // Detect tên brand bàn phím external phổ biến. Dùng làm safety net khi LLM hallucinate
+        // tên sản phẩm không có trong context (Keychron K6, Akko 3068, etc.).
+        // Word-boundary regex để tránh false positive (ví dụ "akko" không match trong "akkord").
+        private static readonly Regex ExternalBrandRegex = new(
+            @"\b(keychron|akko|gmmk|ducky|leopold|varmilo|womier|leobog|filco|royal\s*kludge|rk\s*royal|drop\s+alt|drop\s+ctrl|nuphy|epomaker|ajazz|monsgeek|mode\s+sonnet|mode\s+envoy|qk65|qk75|tofu|bakeneko|krush|luminkey|wuque|class65|owlab|matrix\s+8xv|cstc40|m0lly|zoom65|zoom75|lily58|sofle|corne|nshop|gearvn|phong\s*cách\s*xanh|tinh\s*tế|shopee|lazada|tiki|sendo)\b",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static bool ContainsExternalBrandMention(string? reasoning)
+        {
+            if (string.IsNullOrWhiteSpace(reasoning)) return false;
+            return ExternalBrandRegex.IsMatch(reasoning);
+        }
+
+        // Detect product-claim patterns: VND prices hoặc "shop X" mentions trong Reasoning.
+        // Khi items rỗng + có pattern này → AI đang mention sản phẩm cụ thể mà không pick được ID.
+        // Đây là hallucination mismatch (text nói có product, payload không có).
+        private static readonly Regex VndPriceRegex = new(
+            @"\b\d{1,3}([.,]\d{3}){1,3}\s*(vnd|đồng|đ\b|d\b)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex ShopMentionRegex = new(
+            @"(?:từ|của|tại|từ\s*shop|của\s*shop)\s+shop\s+\w+|shop\s+[A-Z][\wÀ-ỹ]+",
+            RegexOptions.Compiled);
+
+        private static bool ContainsProductClaim(string? reasoning)
+        {
+            if (string.IsNullOrWhiteSpace(reasoning)) return false;
+            return VndPriceRegex.IsMatch(reasoning) || ShopMentionRegex.IsMatch(reasoning);
+        }
+
+        // Hard constraints parsed deterministically from user message.
+        // Code-side filtering — KHÔNG để LLM tự đánh giá, vì LLM bịa lý do reject khi context không fit.
+        private sealed class UserConstraints
+        {
+            public decimal? BudgetMin { get; set; }
+            public decimal? BudgetMax { get; set; }
+            public bool HasBudget => BudgetMin.HasValue || BudgetMax.HasValue;
+        }
+
+        // Parse budget từ message. Hỗ trợ:
+        //   "1 triệu", "1tr", "500k", "1-2 triệu", "1 đến 2 triệu", "1 tới 2 triệu", "từ 1 đến 2 triệu"
+        //   "tầm 1 triệu" / "khoảng 1 triệu" → range ±30%
+        //   "dưới 2 triệu" → max only; "trên 1 triệu" → min only
+        private static UserConstraints ExtractUserConstraints(string? message)
+        {
+            var c = new UserConstraints();
+            if (string.IsNullOrWhiteSpace(message)) return c;
+            var m = message.ToLowerInvariant();
+
+            // Range pattern trước: "X-Y triệu", "X đến Y triệu", "X tới Y triệu"
+            var rangeRe = new Regex(
+                @"(\d+(?:[\.,]\d+)?)\s*(?:-|–|—|đến|den|tới|toi|to)\s*(\d+(?:[\.,]\d+)?)\s*(triệu|trieu|tr|m|k|nghìn|nghin|ngàn|ngan)\b",
+                RegexOptions.IgnoreCase);
+            var rangeMatch = rangeRe.Match(m);
+            if (rangeMatch.Success)
+            {
+                var a = ParseAmount(rangeMatch.Groups[1].Value, rangeMatch.Groups[3].Value);
+                var b = ParseAmount(rangeMatch.Groups[2].Value, rangeMatch.Groups[3].Value);
+                if (a.HasValue && b.HasValue)
+                {
+                    c.BudgetMin = Math.Min(a.Value, b.Value);
+                    c.BudgetMax = Math.Max(a.Value, b.Value);
+                    return c;
+                }
+            }
+
+            // Single amount: "X triệu" / "Xtr" / "Xk" / "Xm"
+            var singleRe = new Regex(
+                @"(\d+(?:[\.,]\d+)?)\s*(triệu|trieu|tr|m|k|nghìn|nghin|ngàn|ngan)\b",
+                RegexOptions.IgnoreCase);
+            var matches = singleRe.Matches(m);
+            if (matches.Count == 0) return c;
+
+            // 2+ amounts không có "đến/tới" → coi như range theo thứ tự
+            if (matches.Count >= 2)
+            {
+                var amounts = matches.Cast<Match>()
+                    .Select(x => ParseAmount(x.Groups[1].Value, x.Groups[2].Value))
+                    .Where(x => x.HasValue).Select(x => x!.Value).ToList();
+                if (amounts.Count >= 2)
+                {
+                    c.BudgetMin = amounts.Min();
+                    c.BudgetMax = amounts.Max();
+                    return c;
+                }
+            }
+
+            var only = ParseAmount(matches[0].Groups[1].Value, matches[0].Groups[2].Value);
+            if (!only.HasValue) return c;
+
+            bool hasUnder = m.Contains("dưới") || m.Contains("duoi") || m.Contains("không quá") || m.Contains("khong qua") || m.Contains("under") || m.Contains("max");
+            bool hasOver = m.Contains("trên") || m.Contains("tren") || m.Contains("ít nhất") || m.Contains("it nhat") || m.Contains("over") || m.Contains("min") || m.Contains("từ ");
+            bool hasApprox = m.Contains("tầm") || m.Contains("tam") || m.Contains("khoảng") || m.Contains("khoang") || m.Contains("around") || m.Contains("about");
+
+            if (hasUnder)
+                c.BudgetMax = only.Value;
+            else if (hasOver)
+                c.BudgetMin = only.Value;
+            else if (hasApprox)
+            {
+                c.BudgetMin = only.Value * 0.7m;
+                c.BudgetMax = only.Value * 1.3m;
+            }
+            else
+            {
+                // Single number không qualifier → assume "max around this"
+                c.BudgetMin = only.Value * 0.5m;
+                c.BudgetMax = only.Value * 1.2m;
+            }
+            return c;
+        }
+
+        private static decimal? ParseAmount(string numStr, string unit)
+        {
+            numStr = numStr.Replace(",", ".");
+            if (!decimal.TryParse(numStr, NumberStyles.Float, CultureInfo.InvariantCulture, out var num))
+                return null;
+            return unit.ToLowerInvariant() switch
+            {
+                "triệu" or "trieu" or "tr" or "m" => num * 1_000_000m,
+                "k" or "nghìn" or "nghin" or "ngàn" or "ngan" => num * 1_000m,
+                _ => num
+            };
+        }
+
         // Returns true nếu query mang tính style/aesthetic mà platform khó có sẵn → auto web search hợp lý.
         // Chỉ dùng khi Qdrant đã miss để tránh trigger web search không cần thiết.
         private static bool HasAestheticStyleQuery(string message)
@@ -2026,26 +2610,55 @@ Description: {issue.Description}
             return styleKeywords.Any(k => m.Contains(k));
         }
 
-        // Returns true nếu user đang hỏi alternatives ("không có loại khác", "còn gì nữa", etc.)
-        // Dùng để force LLM đa dạng hóa recommendation thay vì lặp lại câu trước.
+        // Returns true nếu user đang hỏi alternatives hoặc bày tỏ không hài lòng về đề xuất trước.
+        // Dùng để (1) force LLM đa dạng hóa recommendation, (2) exclude products đã shown trước đó.
         private static bool IsAskingForAlternatives(string message)
         {
             var m = message.ToLowerInvariant();
-            string[] alternativePhrases =
+
+            string[] explicitAlternativePhrases =
             {
+                // Yêu cầu rõ ràng "cái khác" / "loại khác" / "mẫu khác" / "phím khác" / "sản phẩm khác"
+                "cái khác", "cai khac", "loại khác", "loai khac",
+                "mẫu khác", "mau khac", "phím khác", "phim khac",
+                "sản phẩm khác", "san pham khac", "đề xuất khác", "de xuat khac",
+                "gợi ý khác", "goi y khac", "lựa chọn khác", "lua chon khac",
+                "khác đi", "khac di", "khác không", "khac khong",
+                "khác đê", "khac de", "khác đêi",
+                // Còn lại nào / có gì nữa
+                "còn loại", "con loai", "còn mẫu", "con mau",
+                "còn cái", "con cai", "còn phím", "con phim",
+                "còn gì", "con gi", "còn lại", "con lai",
+                "không còn", "khong con", "hết rồi", "het roi",
+                "không có nào nữa", "khong co nao nua",
                 "không có loại khác", "khong co loai khac",
-                "còn loại nào", "con loai nao",
-                "còn mẫu nào", "con mau nao",
-                "có cái khác", "co cai khac",
-                "khác đi", "khac di",
-                "khác không", "khac khong",
                 "thay thế", "thay the",
+                // Tiếng Anh
                 "alternative", "different", "another",
-                "something else", "what else", "more options",
-                "đề xuất khác", "de xuat khac",
-                "gợi ý khác", "goi y khac",
+                "something else", "what else", "more options", "any other",
             };
-            return alternativePhrases.Any(k => m.Contains(k));
+            if (explicitAlternativePhrases.Any(k => m.Contains(k)))
+                return true;
+
+            // Emotional dissatisfaction về đề xuất trước (chán/xấu/không thích) thường đi kèm yêu cầu đổi.
+            // Chỉ trigger khi message ngắn (<60 char) để tránh false positive trong câu dài có nhiều ngữ cảnh.
+            string[] dissatisfactionSignals = {
+                "chán", "chan", "ngán", "ngan",
+                "xấu", "xau", "không đẹp", "khong dep", "tệ", "te",
+                "không thích", "khong thich", "ghét", "ghet",
+                "không ổn", "khong on", "không được", "khong duoc",
+                "không hay", "khong hay",
+                "boring", "ugly", "bad", "not good"
+            };
+            if (m.Length < 60 && dissatisfactionSignals.Any(k => m.Contains(k)))
+                return true;
+
+            // Pattern hỏi tu từ kiểu "đâu phím nào ổn đâu?", "có phím nào ổn không?"
+            // — tín hiệu user không hài lòng và muốn xem cái khác
+            if (m.Contains("đâu") && (m.Contains("ổn") || m.Contains("on") || m.Contains("hay") || m.Contains("đẹp")))
+                return true;
+
+            return false;
         }
 
         // Returns true nếu user yêu cầu loại switch cụ thể.
