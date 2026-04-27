@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using FPTU.Capstone.AMKCollective.Application.Contracts.AI;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.AI;
+using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace FPTU.Capstone.AMKCollective.Api.Controllers
@@ -88,6 +90,58 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             {
                 return ServerErrorResponse<object>(ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Streaming variant của /chat — trả response qua Server-Sent Events.
+        /// Logic AI giống /chat 100%, chỉ khác cách giao response: chunk-by-chunk thay vì 1 cục.
+        /// FE giữ connection alive nhờ heartbeats → không bị timeout dù LLM xử lý lâu.
+        ///
+        /// Format response (Content-Type: text/event-stream):
+        ///   data: {"type":"start"}
+        ///
+        ///   data: {"type":"heartbeat"}
+        ///
+        ///   data: {"type":"result","conversationId":7,"reply":"...","items":[...],...}
+        ///
+        ///   data: {"type":"done"}
+        ///
+        /// </summary>
+        [Authorize]
+        [HttpPost("chat/stream")]
+        public async Task ChatStream([FromBody] AIChatRequestDTO request, CancellationToken cancellationToken)
+        {
+            // Set SSE headers
+            Response.Headers["Content-Type"] = "text/event-stream";
+            Response.Headers["Cache-Control"] = "no-cache";
+            Response.Headers["Connection"] = "keep-alive";
+            Response.Headers["X-Accel-Buffering"] = "no"; // disable buffering on nginx/proxy
+
+            if (string.IsNullOrWhiteSpace(request.Message))
+            {
+                await WriteSseEventAsync(new ChatChunk { Type = "error", ErrorMessage = "Message is required." }, cancellationToken);
+                await WriteSseEventAsync(new ChatChunk { Type = "done" }, cancellationToken);
+                return;
+            }
+
+            var userId = GetCurrentUserId();
+            await foreach (var chunk in _aiService.ChatStreamAsync(userId, request, cancellationToken))
+            {
+                await WriteSseEventAsync(chunk, cancellationToken);
+            }
+        }
+
+        private async Task WriteSseEventAsync(ChatChunk chunk, CancellationToken ct)
+        {
+            // SSE format: "data: {json}\n\n"
+            var json = JsonSerializer.Serialize(chunk, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+            });
+            var line = $"data: {json}\n\n";
+            await Response.WriteAsync(line, ct);
+            await Response.Body.FlushAsync(ct);
         }
 
         /// <summary>

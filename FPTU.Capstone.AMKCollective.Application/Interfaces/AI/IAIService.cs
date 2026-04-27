@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using FPTU.Capstone.AMKCollective.Application.Contracts.AI;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
@@ -21,6 +22,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.AI
         /// LLM nhận toàn bộ lịch sử hội thoại làm context.
         /// </summary>
         Task<AIChatResponseDTO> ChatAsync(Guid userId, AIChatRequestDTO request);
+
+        /// <summary>
+        /// Streaming variant: yield chunks qua Server-Sent Events.
+        /// Logic AI giống ChatAsync 100%, chỉ khác cách trả response (chunked thay vì 1 cục).
+        /// FE giữ connection alive nhờ heartbeats → không bị timeout dù xử lý lâu.
+        /// </summary>
+        IAsyncEnumerable<ChatChunk> ChatStreamAsync(Guid userId, AIChatRequestDTO request, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Danh sách các phiên hội thoại AI của user, mới nhất trước.

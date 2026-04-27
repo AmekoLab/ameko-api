@@ -118,4 +118,36 @@ namespace FPTU.Capstone.AMKCollective.Application.Contracts.AI
 
         public DateTime CreatedAt { get; set; }
     }
+
+    // ──────────────────────────────────────────────
+    // STREAMING CHUNK (cho /chat/stream endpoint)
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Chunk trả về qua Server-Sent Events.
+    /// FE parse từng chunk theo Type để render progressive.
+    /// </summary>
+    public class ChatChunk
+    {
+        /// <summary>
+        /// Loại chunk:
+        ///   "start"     — heartbeat đầu tiên, FE biết server đã nhận request
+        ///   "heartbeat" — server đang xử lý, giữ connection alive
+        ///   "result"    — kết quả cuối cùng (có Reply, Items, SourceLinks...)
+        ///   "error"     — lỗi xử lý, FE hiển thị fallback
+        ///   "done"      — kết thúc stream, FE close connection
+        /// </summary>
+        public string Type { get; set; } = string.Empty;
+
+        // Các field dưới chỉ có khi Type = "result"
+        public int? ConversationId { get; set; }
+        public string? Reply { get; set; }
+        public List<AIRecommendationItemDTO>? Items { get; set; }
+        public List<WebSearchSourceLink>? SourceLinks { get; set; }
+        public bool? UsedWebSearch { get; set; }
+        public decimal? EstimatedPrice { get; set; }
+
+        // Chỉ có khi Type = "error"
+        public string? ErrorMessage { get; set; }
+    }
 }
