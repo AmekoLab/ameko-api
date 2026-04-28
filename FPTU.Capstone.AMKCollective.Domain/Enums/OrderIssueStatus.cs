@@ -29,6 +29,8 @@ namespace FPTU.Capstone.AMKCollective.Domain.Enums
 
         CancelledByUser = 9, // Khách hàng tự rút lại/hủy yêu cầu
 
-        ShopRejected = 10 // Shop từ chối, chờ Admin quyết định cuối cùng
+        ShopRejected = 10, // Shop từ chối, chờ Admin quyết định cuối cùng
+
+        Disputed = 11 // Shop khiếu nại hàng trả về, chờ Admin phân xử
     }
 }

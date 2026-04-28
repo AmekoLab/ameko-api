@@ -89,7 +89,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                                (x.Status == OrderIssueStatus.InProgress || 
                                 x.Status == OrderIssueStatus.Pending ||
                                 x.Status == OrderIssueStatus.ShopAccepted ||
-                                x.Status == OrderIssueStatus.ShopRejected) &&
+                                x.Status == OrderIssueStatus.ShopRejected ||
+                                x.Status == OrderIssueStatus.Disputed) &&
                                !x.IsDeleted);
         }
 
@@ -221,6 +222,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 OrderIssueStatus.InProgress,
                 OrderIssueStatus.ShopAccepted,
                 OrderIssueStatus.ShopRejected,
+                OrderIssueStatus.Disputed,
                 OrderIssueStatus.AwaitingReturn,
                 OrderIssueStatus.Returning,
             };

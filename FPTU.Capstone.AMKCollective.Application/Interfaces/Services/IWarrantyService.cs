@@ -45,6 +45,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         /// Phase 4b: Shop confirms receipt of returned product.
         /// </summary>
         Task ShopConfirmReceiveAsync(Guid shopOwnerId, Guid issueId, CancellationToken ct = default);
+        
+        /// <summary>
+        /// Phase 4c: Shop disputes the returned item (e.g., fake item).
+        /// </summary>
+        Task ShopDisputeReturnAsync(Guid shopOwnerId, ShopWarrantyResponseDto dto, CancellationToken ct = default);
 
         /// <summary>
         /// Background job: auto-cancel issues in AwaitingReturn for more than 3 days.

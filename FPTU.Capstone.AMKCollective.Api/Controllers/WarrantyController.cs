@@ -314,7 +314,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         [SwaggerOperation(
             Summary = "Shop: Confirm receipt of returned product",
             Description = "Shop confirms physical receipt of the returned product. " +
-                          "Issue must be in Returning status. Transitions to Completed (status change only)."
+                          "Issue must be in Returning status. Transitions to Completed and processes refund."
         )]
         [SwaggerResponse(200, "Receipt confirmed successfully")]
         [SwaggerResponse(400, "Invalid state transition")]
@@ -327,7 +327,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             {
                 var userId = GetCurrentUserId();
                 await _warrantyService.ShopConfirmReceiveAsync(userId, issueId);
-                return SuccessResponse("Return receipt confirmed. Issue completed.");
+                return SuccessResponse("Return receipt confirmed. Refund processed and issue completed.");
             }
             catch (KeyNotFoundException ex)
             {
@@ -345,6 +345,31 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
             {
                 return ServerErrorResponse<object>(ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Shop owner disputes the returned product (e.g. fake, damaged).
+        /// </summary>
+        [Authorize(Roles = "Shop")]
+        [HttpPost("shop-dispute")]
+        [SwaggerOperation(
+            Summary = "Shop: Dispute returned product",
+            Description = "Shop owner reports an issue with the returned product (e.g., fake item). " +
+                          "Issue must be in Returning status. Transitions to Disputed for Admin review."
+        )]
+        [SwaggerResponse(200, "Dispute submitted successfully")]
+        public async Task<IActionResult> ShopDisputeReturn([FromBody] ShopWarrantyResponseDto dto)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                await _warrantyService.ShopDisputeReturnAsync(userId, dto);
+                return SuccessResponse("Dispute submitted successfully. Waiting for Admin review.");
+            }
+            catch (KeyNotFoundException ex) { return NotFoundResponse<object>(ex.Message); }
+            catch (UnauthorizedAccessException ex) { return UnauthorizedResponse<object>(ex.Message); }
+            catch (InvalidOperationException ex) { return ErrorResponse<object>(ex.Message); }
+            catch (Exception ex) { return ServerErrorResponse<object>(ex.Message); }
         }
 
         #endregion
