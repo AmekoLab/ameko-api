@@ -343,7 +343,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             else
             {
                 // ── Shop Rejects ──
-                issue.Status = OrderIssueStatus.Rejected;
+                issue.Status = OrderIssueStatus.ShopRejected;
                 issue.ShopResponse = dto.ShopResponse;
                 issue.UpdatedAt = DateTime.UtcNow;
 
@@ -374,9 +374,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (issue == null)
                 throw new KeyNotFoundException("Warranty issue not found.");
 
-            // ── Guard: State must be ShopAccepted ──
-            if (issue.Status != OrderIssueStatus.ShopAccepted)
-                throw new InvalidOperationException("Invalid state transition. Issue must be ShopAccepted for admin decision.");
+            // ── Guard: State must be ShopAccepted or ShopRejected ──
+            if (issue.Status != OrderIssueStatus.ShopAccepted && issue.Status != OrderIssueStatus.ShopRejected)
+                throw new InvalidOperationException("Invalid state transition. Issue must be reviewed by shop before admin decision.");
 
             // ── Load Order ──
             var order = await _unitOfWork.Orders.GetByIdAsync(issue.OrderId, ct);
