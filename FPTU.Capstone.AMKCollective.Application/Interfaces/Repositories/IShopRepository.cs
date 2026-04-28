@@ -30,12 +30,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
             int pageSize,
             CancellationToken token = default);
 
-        Task<(IEnumerable<ShopProfile> Items, int TotalCount)> GetActiveShopsForUserAsync(
-            string? searchTerm,
-            int pageNumber,
-            int pageSize,
-            CancellationToken token = default);
-
         Task<(IEnumerable<ShopProfile> Items, int TotalCount)> GetFilteredShopsAsync(
             ShopFilterRequest filter,
             CancellationToken token = default);

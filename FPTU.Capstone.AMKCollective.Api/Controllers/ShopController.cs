@@ -28,44 +28,16 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         [HttpGet]
         [AllowAnonymous]
         [SwaggerOperation(
-    Summary = "List Marketplace Shops",
-    Description = "Retrieves a paginated list of active shops in the marketplace."
-)]
-        [SwaggerResponse(200, "Shops retrieved successfully", typeof(ApiResponse<object>))]
-        public async Task<IActionResult> GetMarketplaceShops([FromQuery] string? searchTerm, [FromQuery] int page = 1, [FromQuery] int size = 10)
-        {
-            try
-            {
-                var userId = GetCurrentUserId();
-                var (items, total) = await _shopService.GetMarketplaceShopAsync(userId, searchTerm, page, size);
-                var response = new
-                {
-                    items,
-                    pagination = new { page, size, totalCount = total }
-                };
-                return SuccessResponse(response);
-
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting marketplace shops");
-                return ServerErrorResponse<string>("Error getting shops");
-            }
-        }
-
-        [HttpGet("filter")]
-        [AllowAnonymous]
-        [SwaggerOperation(
-            Summary = "Filter Marketplace Shops",
-            Description = "Filter active shops by rating, review count, badge, and sort order."
+            Summary = "List / Filter Marketplace Shops",
+            Description = "Paginated list of active shops. Supports optional filtering by rating, reviews, badge and sorting."
         )]
         [SwaggerResponse(200, "Shops retrieved successfully", typeof(ApiResponse<object>))]
-        public async Task<IActionResult> GetFilteredShops([FromQuery] ShopFilterRequest filter)
+        public async Task<IActionResult> GetMarketplaceShops([FromQuery] ShopFilterRequest filter)
         {
             try
             {
-                var userId = GetCurrentUserId();
-                var (items, total) = await _shopService.GetFilteredMarketplaceShopsAsync(userId, filter);
+                var userId = TryGetCurrentUserId();
+                var (items, total) = await _shopService.GetMarketplaceShopAsync(userId, filter);
                 var response = new
                 {
                     items,
@@ -75,8 +47,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error filtering marketplace shops");
-                return ServerErrorResponse<string>("Error filtering shops");
+                _logger.LogError(ex, "Error getting marketplace shops");
+                return ServerErrorResponse<string>("Error getting shops");
             }
         }
 
