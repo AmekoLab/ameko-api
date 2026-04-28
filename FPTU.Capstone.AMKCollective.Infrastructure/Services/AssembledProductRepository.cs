@@ -1,3 +1,4 @@
+using FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
@@ -17,6 +18,59 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public AssembledProductRepository(ApplicationDbContext context)
         {
             _context = context;
+        }
+
+        public async Task<(IEnumerable<AssembledProduct> Items, int TotalCount)> SearchPagedAsync(SearchAssembledProductRequest request, CancellationToken ct = default)
+        {
+            var query = _context.AssembledProducts
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .Include(ap => ap.ProductAssembledDetails)
+                    .ThenInclude(pad => pad.BaseKit)
+                        .ThenInclude(m => m.Shop)
+                .Include(ap => ap.ProductAssembledDetails)
+                    .ThenInclude(pad => pad.Component)
+                        .ThenInclude(m => m.Shop)
+                .Where(ap => !ap.IsDeleted);
+
+            if (!string.IsNullOrWhiteSpace(request.SearchTerm))
+                query = query.Where(ap => ap.Name.ToLower().Contains(request.SearchTerm.ToLower()));
+
+            if (request.MinPrice.HasValue)
+                query = query.Where(ap => ap.Price >= request.MinPrice.Value);
+
+            if (request.MaxPrice.HasValue)
+                query = query.Where(ap => ap.Price <= request.MaxPrice.Value);
+
+            if (!string.IsNullOrWhiteSpace(request.Layout))
+                query = query.Where(ap => ap.Layout != null && ap.Layout.ToLower().Contains(request.Layout.ToLower()));
+
+            if (!string.IsNullOrWhiteSpace(request.Mounting))
+                query = query.Where(ap => ap.Mounting != null && ap.Mounting.ToLower().Contains(request.Mounting.ToLower()));
+
+            if (!string.IsNullOrWhiteSpace(request.PCB))
+                query = query.Where(ap => ap.PCB != null && ap.PCB.ToLower().Contains(request.PCB.ToLower()));
+
+            if (!string.IsNullOrWhiteSpace(request.Connection))
+                query = query.Where(ap => ap.Connection != null && ap.Connection.ToLower().Contains(request.Connection.ToLower()));
+
+            if (!string.IsNullOrWhiteSpace(request.Battery))
+                query = query.Where(ap => ap.Battery != null && ap.Battery.ToLower().Contains(request.Battery.ToLower()));
+
+            if (request.MinRating.HasValue)
+                query = query.Where(ap => ap.Rating >= request.MinRating.Value);
+
+            if (request.ShopId.HasValue)
+                query = query.Where(ap => ap.CreatedBy == request.ShopId.Value);
+
+            var totalCount = await query.CountAsync(ct);
+            var items = await query
+                .OrderByDescending(ap => ap.CreatedAt)
+                .Skip((request.PageNumber - 1) * request.PageSize)
+                .Take(request.PageSize)
+                .ToListAsync(ct);
+
+            return (items, totalCount);
         }
 
         public async Task<(IEnumerable<AssembledProduct> Items, int TotalCount)> GetAllPagedAsync(int pageNumber, int pageSize)

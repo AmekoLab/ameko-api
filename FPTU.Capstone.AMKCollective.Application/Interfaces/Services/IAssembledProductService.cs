@@ -9,6 +9,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 {
     public interface IAssembledProductService
     {
+        Task<PaginatedResult<AssembledProductResponse>> SearchAsync(SearchAssembledProductRequest request, CancellationToken ct = default);
         Task<PaginatedResult<AssembledProductResponse>> GetAllAsync(int pageNumber, int pageSize);
         Task<IEnumerable<AssembledProductResponse>> GetByShopIdAsync(Guid shopId);
         Task<IEnumerable<AssembledProductResponse>> GetMyAssembledProductsAsync(Guid userId);

@@ -1,3 +1,4 @@
+using FPTU.Capstone.AMKCollective.Application.DTOs.Shop;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
@@ -192,6 +193,51 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Skip((page - 1) * size)
                 .Take(size)
                 .ToListAsync();
+
+            return (items, totalCount);
+        }
+
+        public async Task<(IEnumerable<ShopProfile> Items, int TotalCount)> GetFilteredShopsAsync(
+            ShopFilterRequest filter,
+            CancellationToken token = default)
+        {
+            var query = _context.ShopProfiles
+                .AsNoTracking()
+                .Where(s => !s.IsDeleted &&
+                            s.Status == ShopStatus.Active &&
+                            s.IsActive == true)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(filter.SearchTerm))
+            {
+                var lower = filter.SearchTerm.ToLower();
+                query = query.Where(s => s.ShopName.ToLower().Contains(lower));
+            }
+
+            if (filter.MinRating.HasValue)
+                query = query.Where(s => s.Rating >= filter.MinRating.Value);
+
+            if (filter.MinReviews.HasValue)
+                query = query.Where(s => s.TotalReviews >= filter.MinReviews.Value);
+
+            if (filter.Badge.HasValue)
+                query = query.Where(s => s.Badge == filter.Badge.Value);
+
+            var totalCount = await query.CountAsync(token);
+
+            query = filter.SortBy switch
+            {
+                ShopSortBy.TotalReviews  => query.OrderByDescending(s => s.TotalReviews).ThenByDescending(s => s.Rating),
+                ShopSortBy.TotalSales    => query.OrderByDescending(s => s.TotalSales).ThenByDescending(s => s.Rating),
+                ShopSortBy.Newest        => query.OrderByDescending(s => s.CreatedAt),
+                ShopSortBy.QualityScore  => query.OrderByDescending(s => s.CurrentQualityScore).ThenByDescending(s => s.Rating),
+                _                        => query.OrderByDescending(s => s.Rating).ThenByDescending(s => s.TotalSales),
+            };
+
+            var items = await query
+                .Skip((filter.Page - 1) * filter.Size)
+                .Take(filter.Size)
+                .ToListAsync(token);
 
             return (items, totalCount);
         }
