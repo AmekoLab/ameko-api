@@ -343,7 +343,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             else
             {
                 // ── Shop Rejects ──
-                issue.Status = OrderIssueStatus.Rejected;
+                issue.Status = OrderIssueStatus.ShopRejected;
                 issue.ShopResponse = dto.ShopResponse;
                 issue.UpdatedAt = DateTime.UtcNow;
 
@@ -374,9 +374,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (issue == null)
                 throw new KeyNotFoundException("Warranty issue not found.");
 
-            // ── Guard: State must be ShopAccepted ──
-            if (issue.Status != OrderIssueStatus.ShopAccepted)
-                throw new InvalidOperationException("Invalid state transition. Issue must be ShopAccepted for admin decision.");
+            // ── Guard: State must be ShopAccepted, ShopRejected or Disputed ──
+            if (issue.Status != OrderIssueStatus.ShopAccepted && 
+                issue.Status != OrderIssueStatus.ShopRejected &&
+                issue.Status != OrderIssueStatus.Disputed)
+            {
+                throw new InvalidOperationException("Invalid state transition. Issue must be reviewed or disputed by shop before admin decision.");
+            }
 
             // ── Load Order ──
             var order = await _unitOfWork.Orders.GetByIdAsync(issue.OrderId, ct);
@@ -433,8 +437,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // Yêu cầu của User: Type 1 (Return) mới cần hoàn hàng, Type 2 (Warranty) không cần hoàn hàng
             bool requiresReturn = issue.Type == OrderIssueType.ReturnRequest && 
                                  (order.OrderStatus == OrderStatus.Completed || order.OrderStatus == OrderStatus.Shipped);
+            bool isDisputedApproval = issue.Status == OrderIssueStatus.Disputed;
 
-            if (requiresReturn)
+            if (requiresReturn && !isDisputedApproval)
             {
                 // ══════════════════════════════════════════════════════════
                 // CASE 2: ITEM SHIPPED/DELIVERED → Return required before refund
@@ -481,8 +486,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         redirectUrl: $"/warranty-requests/{issue.Id}",
                         actorId: adminId);
 
-                    // ── Removed duplicate transaction logging; WalletService already handles it ──
-
                     // ── Stock Reintegration (No Return Case) ──
                     await ReintegrateStockForIssueAsync(issue);
 
@@ -497,6 +500,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         await _unitOfWork.Orders.UpdateOrderAsync(order, ct);
                     }
 
+                    string logComment = dto.AdminNote ?? (isDisputedApproval 
+                        ? "Admin resolved dispute in favor of customer. Refund processed." 
+                        : "Approved: refund only (item not shipped or cancellation) + stock reintegrated.");
+
                     await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
                     {
                         OrderIssueId = issue.Id,
@@ -504,7 +511,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         ActionByRole = RoleType.Admin,
                         Action = OrderIssueAction.AdminDecision,
                         AdminDecision = true,
-                        Comment = dto.AdminNote ?? "Approved: refund only (item not shipped or cancellation) + stock reintegrated.",
+                        Comment = logComment,
                         CreatedAt = DateTime.UtcNow
                     });
 
@@ -585,10 +592,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (shop == null || shop.Id != order.ShopId)
                 throw new UnauthorizedAccessException("This issue does not belong to your shop.");
 
-            // ── Transition: Returning → Returned → Completed ──
-            // ── Transition: Returning → Returned → Completed ──
+            // ── Transition: Returning → Completed ──
             issue.Status = OrderIssueStatus.Completed;
             issue.UpdatedAt = DateTime.UtcNow;
+
+            await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
+            {
+                OrderIssueId = issue.Id,
+                ActionById = shopOwnerId,
+                ActionByRole = RoleType.Shop,
+                Action = OrderIssueAction.ShopReceivedReturn,
+                Comment = "Shop confirmed receipt of returned product. Completing issue and processing refund.",
+                CreatedAt = DateTime.UtcNow
+            });
 
             // Update OrderStatus to Refunded if it's a full order refund
             if (issue.Description != null && issue.Description.StartsWith("[OrderLevel]"))
@@ -597,46 +613,59 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 await _unitOfWork.Orders.UpdateOrderAsync(order, ct);
             }
 
-            // ── Stock Reintegration (Returned Case) ──
+            // ── Stock Reintegration ──
             await ReintegrateStockForIssueAsync(issue);
 
-            // Calculate Pro-rated Refund
+            // ── Process Refund ──
             decimal refundAmount = await CalculateRefundAmountAsync(issue, order);
-
-            // ── Internal Refund to Wallet ──
             var shopEntity = await _unitOfWork.Shops.GetByIdAsync(order.ShopId!.Value);
-            if (shopEntity == null) throw new KeyNotFoundException("Shop not found.");
-
+            
             await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
                 await _walletService.RefundToWalletAsync(issue.UserId, refundAmount, $"Refund for warranty/return (Order #{order.Id}, Issue #{issue.Id})");
-                bool isReleasedNow = order.PaymentStatus == PaymentStatus.Released;
-                await _walletService.DeductFundsForRefundAsync(shopEntity.UserId, order.Id, refundAmount, isReleasedNow);
+                bool isReleased = order.PaymentStatus == PaymentStatus.Released;
+                await _walletService.DeductFundsForRefundAsync(shopEntity!.UserId, order.Id, refundAmount, isReleased);
 
-                // ── Notification ──
                 await _notificationService.SendNotificationAsync(issue.UserId, 
                     "Refund Successful", 
-                    $"Your refund of {refundAmount:N0} for order #{order.Id} has been processed to your wallet after successful return and stock reintegration.", 
+                    $"Your refund of {refundAmount:N0} for order #{order.Id} has been processed.", 
                     "Warranty",
                     referenceId: issue.Id.ToString(),
                     referenceType: "OrderIssue",
-                    redirectUrl: $"/warranty-requests/{issue.Id}",
                     actorId: shopOwnerId);
-
-                // ── Removed duplicate transaction logging; WalletService already handles it ──
-
-                await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
-                {
-                    OrderIssueId = issue.Id,
-                    ActionById = shopOwnerId,
-                    ActionByRole = RoleType.Shop,
-                    Action = OrderIssueAction.ShopReceivedReturn,
-                    Comment = "Shop confirmed receipt of returned product. Stock reintegrated. Issue completed.",
-                    CreatedAt = DateTime.UtcNow
-                });
 
                 _unitOfWork.OrderIssues.Update(issue);
                 await _unitOfWork.CommitAsync();
+            });
+        }
+
+        public async Task ShopDisputeReturnAsync(
+            Guid shopOwnerId, ShopWarrantyResponseDto dto, CancellationToken ct = default)
+        {
+            var issue = await _unitOfWork.OrderIssues.GetByIdAsync(dto.IssueId, ct);
+            if (issue == null) throw new KeyNotFoundException("Warranty issue not found.");
+
+            if (issue.Status != OrderIssueStatus.Returning)
+                throw new InvalidOperationException("Invalid state transition. Issue must be Returning to dispute it.");
+
+            var order = await _unitOfWork.Orders.GetByIdAsync(issue.OrderId, ct);
+            var shop = await _unitOfWork.Shops.GetByUserIdAsync(shopOwnerId, ct);
+            if (shop == null || shop.Id != order!.ShopId)
+                throw new UnauthorizedAccessException("Access denied.");
+
+            // ── Transition: Returning → Disputed ──
+            issue.Status = OrderIssueStatus.Disputed;
+            issue.ShopResponse = dto.ShopResponse;
+            issue.UpdatedAt = DateTime.UtcNow;
+
+            await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
+            {
+                OrderIssueId = issue.Id,
+                ActionById = shopOwnerId,
+                ActionByRole = RoleType.Shop,
+                Action = OrderIssueAction.ShopReject,
+                Comment = $"Shop DISPUTED the return: {dto.ShopResponse}",
+                CreatedAt = DateTime.UtcNow
             });
 
             _unitOfWork.OrderIssues.Update(issue);

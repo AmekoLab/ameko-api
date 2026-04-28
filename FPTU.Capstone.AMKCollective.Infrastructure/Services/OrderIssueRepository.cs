@@ -86,7 +86,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             return await _context.OrderIssues
                 .AnyAsync(x => x.OrderId == orderId &&
-                               (x.Status == OrderIssueStatus.InProgress || x.Status == OrderIssueStatus.Pending) &&
+                               (x.Status == OrderIssueStatus.InProgress || 
+                                x.Status == OrderIssueStatus.Pending ||
+                                x.Status == OrderIssueStatus.ShopAccepted ||
+                                x.Status == OrderIssueStatus.ShopRejected ||
+                                x.Status == OrderIssueStatus.Disputed) &&
                                !x.IsDeleted);
         }
 
@@ -217,6 +221,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 OrderIssueStatus.Pending,
                 OrderIssueStatus.InProgress,
                 OrderIssueStatus.ShopAccepted,
+                OrderIssueStatus.ShopRejected,
+                OrderIssueStatus.Disputed,
                 OrderIssueStatus.AwaitingReturn,
                 OrderIssueStatus.Returning,
             };

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -27,6 +27,10 @@ namespace FPTU.Capstone.AMKCollective.Domain.Enums
 
         Completed = 8, //Hoàn tất (Đã hoàn tiền/Voucher/Đổi hàng)
 
-        CancelledByUser = 9 // Khách hàng tự rút lại/hủy yêu cầu
+        CancelledByUser = 9, // Khách hàng tự rút lại/hủy yêu cầu
+
+        ShopRejected = 10, // Shop từ chối, chờ Admin quyết định cuối cùng
+
+        Disputed = 11 // Shop khiếu nại hàng trả về, chờ Admin phân xử
     }
 }
