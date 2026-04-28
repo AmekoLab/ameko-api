@@ -29,6 +29,18 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         /// <param name="pageSize">The number of items per page.</param>
         /// <returns>A paginated result containing assembled products.</returns>
        
+        [HttpGet("search")]
+        [SwaggerOperation(
+            Summary = "Search assembled products",
+            Description = "Returns a paginated list of assembled products filtered by name, price range, specs (layout, mounting, PCB, connection, battery), shop, and minimum rating."
+        )]
+        [SwaggerResponse(200, "Successfully retrieved list", typeof(PaginatedResult<AssembledProductResponse>))]
+        public async Task<IActionResult> Search([FromQuery] SearchAssembledProductRequest request, CancellationToken ct = default)
+        {
+            var result = await _service.SearchAsync(request, ct);
+            return SuccessResponse(result);
+        }
+
         [HttpGet]
         [SwaggerOperation(
             Summary = "Get all assembled products",

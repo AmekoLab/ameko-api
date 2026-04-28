@@ -1,3 +1,4 @@
+using FPTU.Capstone.AMKCollective.Application.DTOs.Shop;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
@@ -33,6 +34,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
             string? searchTerm,
             int pageNumber,
             int pageSize,
+            CancellationToken token = default);
+
+        Task<(IEnumerable<ShopProfile> Items, int TotalCount)> GetFilteredShopsAsync(
+            ShopFilterRequest filter,
             CancellationToken token = default);
         Task<(IEnumerable<ShopProfile> Items, int TotalCount)> GetAllPendingApprovalShopAsync(int page, int size);
 

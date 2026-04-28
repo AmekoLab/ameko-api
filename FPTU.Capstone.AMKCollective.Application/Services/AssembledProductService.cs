@@ -40,6 +40,29 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             };
         }
 
+        public async Task<PaginatedResult<AssembledProductResponse>> SearchAsync(SearchAssembledProductRequest request, CancellationToken ct = default)
+        {
+            // If ShopId is a ShopProfile.Id, resolve to the actual UserId for CreatedBy filtering
+            if (request.ShopId.HasValue)
+            {
+                var shopByProfileId = await _unitOfWork.Shops.GetByIdAsync(request.ShopId.Value);
+                if (shopByProfileId != null)
+                    request.ShopId = shopByProfileId.UserId;
+            }
+
+            var (items, totalCount) = await _unitOfWork.AssembledProducts.SearchPagedAsync(request, ct);
+            var dtos = _mapper.Map<IEnumerable<AssembledProductResponse>>(items);
+            await PopulateShopInfoAsync(dtos);
+
+            return new PaginatedResult<AssembledProductResponse>
+            {
+                TotalCount = totalCount,
+                Items = dtos,
+                CurrentPage = request.PageNumber,
+                PageSize = request.PageSize
+            };
+        }
+
         public async Task<IEnumerable<AssembledProductResponse>> GetByShopIdAsync(Guid shopId)
         {
             // Tuan Note: shopId can be UserId or ShopProfile.Id. 

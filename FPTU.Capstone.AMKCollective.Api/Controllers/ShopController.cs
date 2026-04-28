@@ -53,6 +53,33 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
+        [HttpGet("filter")]
+        [AllowAnonymous]
+        [SwaggerOperation(
+            Summary = "Filter Marketplace Shops",
+            Description = "Filter active shops by rating, review count, badge, and sort order."
+        )]
+        [SwaggerResponse(200, "Shops retrieved successfully", typeof(ApiResponse<object>))]
+        public async Task<IActionResult> GetFilteredShops([FromQuery] ShopFilterRequest filter)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var (items, total) = await _shopService.GetFilteredMarketplaceShopsAsync(userId, filter);
+                var response = new
+                {
+                    items,
+                    pagination = new { filter.Page, filter.Size, totalCount = total }
+                };
+                return SuccessResponse(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error filtering marketplace shops");
+                return ServerErrorResponse<string>("Error filtering shops");
+            }
+        }
+
         [HttpGet("{id:guid}")]
         [AllowAnonymous]
         [SwaggerOperation(

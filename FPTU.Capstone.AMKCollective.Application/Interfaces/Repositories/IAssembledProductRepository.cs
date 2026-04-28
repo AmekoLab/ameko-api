@@ -1,3 +1,4 @@
+using FPTU.Capstone.AMKCollective.Application.DTOs.AssembledProduct;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using System;
 using System.Collections.Generic;
@@ -7,6 +8,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
 {
     public interface IAssembledProductRepository
     {
+        Task<(IEnumerable<AssembledProduct> Items, int TotalCount)> SearchPagedAsync(SearchAssembledProductRequest request, CancellationToken ct = default);
         Task<(IEnumerable<AssembledProduct> Items, int TotalCount)> GetAllPagedAsync(int pageNumber, int pageSize);
         Task<IEnumerable<AssembledProduct>> GetByShopIdAsync(Guid shopId);
         Task<AssembledProduct?> GetByIdWithDetailsAsync(Guid id); // Tracked — use for Update/Delete

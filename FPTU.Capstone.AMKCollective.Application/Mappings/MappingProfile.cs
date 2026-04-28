@@ -159,7 +159,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
 
 
             //==================ShopProfile=====================//
-            CreateMap<ShopProfile, ShopResponse>();
+            CreateMap<ShopProfile, ShopResponse>()
+                .ForMember(dest => dest.QualityScore, opt => opt.MapFrom(src => src.CurrentQualityScore));
 
             CreateMap<ShopProfile, ShopDetailResponse>()
                 .ForMember(dest => dest.RemainingResubmits, opt => opt.MapFrom(src =>

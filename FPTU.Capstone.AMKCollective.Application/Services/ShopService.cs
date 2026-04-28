@@ -81,6 +81,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return (_mapper.Map<IEnumerable<ShopResponse>>(items).ConvertDatesToLocal(), total);
         }
 
+        public async Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetFilteredMarketplaceShopsAsync(Guid? currentUserId, ShopFilterRequest filter)
+        {
+            var (items, total) = await _unitOfWork.Shops.GetFilteredShopsAsync(filter);
+            if (currentUserId.HasValue && !string.IsNullOrWhiteSpace(filter.SearchTerm))
+            {
+                _searchQueue.TryQueueSearch(new SearchLogEvent(currentUserId.Value, filter.SearchTerm, "Shop"));
+            }
+            return (_mapper.Map<IEnumerable<ShopResponse>>(items).ConvertDatesToLocal(), total);
+        }
+
         public async Task<ShopDetailResponse> GetMyShopAsync(Guid userId)
         {
             var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
