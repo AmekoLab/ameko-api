@@ -500,6 +500,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         await _unitOfWork.Orders.UpdateOrderAsync(order, ct);
                     }
 
+                    string logComment = dto.AdminNote ?? (isDisputedApproval 
+                        ? "Admin resolved dispute in favor of customer. Refund processed." 
+                        : "Approved: refund only (item not shipped or cancellation) + stock reintegrated.");
+
                     await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
                     {
                         OrderIssueId = issue.Id,
@@ -507,7 +511,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         ActionByRole = RoleType.Admin,
                         Action = OrderIssueAction.AdminDecision,
                         AdminDecision = true,
-                        Comment = dto.AdminNote ?? "Approved: refund only (item not shipped or cancellation) + stock reintegrated.",
+                        Comment = logComment,
                         CreatedAt = DateTime.UtcNow
                     });
 
