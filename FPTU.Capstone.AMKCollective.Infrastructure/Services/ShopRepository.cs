@@ -134,37 +134,6 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .AnyAsync(s => s.Id == shopId && s.UserId == userId && !s.IsDeleted, token);
         }
 
-        public async Task<(IEnumerable<ShopProfile> Items, int TotalCount)> GetActiveShopsForUserAsync(
-            string? searchTerm,
-            int pageNumber,
-            int pageSize,
-            CancellationToken token = default)
-        {
-            var query = _context.ShopProfiles
-                .AsNoTracking()
-                .Where(s => !s.IsDeleted &&
-                            s.Status == ShopStatus.Active &&
-                            s.IsActive == true)
-                .AsQueryable();
-
-            if (!string.IsNullOrWhiteSpace(searchTerm))
-            {
-                var lowerTerm = searchTerm.ToLower();
-                query = query.Where(s => s.ShopName.ToLower().Contains(lowerTerm));
-            }
-
-            var totalCount = await query.CountAsync(token);
-
-            var items = await query
-                .OrderByDescending(s => s.Rating) // rating first
-                .ThenByDescending(s => s.TotalSales) // next is total sale
-                .Skip((pageNumber - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync(token);
-
-            return (items, totalCount);
-        }
-
         public async Task UpdateShopMetricsAsync(Guid shopId, int quantitySold, decimal revenueAmount, bool includeDeleted = false, CancellationToken token = default)
         {
             var query = _context.ShopProfiles.AsQueryable();

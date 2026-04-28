@@ -70,18 +70,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return response;
         }
 
-        public async Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetMarketplaceShopAsync(Guid? currentUserId,string? searchTerm, int page, int size)
-        {
-            var (items, total) = await _unitOfWork.Shops.GetActiveShopsForUserAsync(searchTerm, page, size);
-            if (currentUserId.HasValue && !string.IsNullOrWhiteSpace(searchTerm))
-            {
-                // Bắn vào Queue (RAM) ngay lập tức, không dùng await, không làm chậm request
-                _searchQueue.TryQueueSearch(new SearchLogEvent(currentUserId.Value, searchTerm, "Shop"));
-            }
-            return (_mapper.Map<IEnumerable<ShopResponse>>(items).ConvertDatesToLocal(), total);
-        }
-
-        public async Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetFilteredMarketplaceShopsAsync(Guid? currentUserId, ShopFilterRequest filter)
+        public async Task<(IEnumerable<ShopResponse> Items, int TotalCount)> GetMarketplaceShopAsync(Guid? currentUserId, ShopFilterRequest filter)
         {
             var (items, total) = await _unitOfWork.Shops.GetFilteredShopsAsync(filter);
             if (currentUserId.HasValue && !string.IsNullOrWhiteSpace(filter.SearchTerm))

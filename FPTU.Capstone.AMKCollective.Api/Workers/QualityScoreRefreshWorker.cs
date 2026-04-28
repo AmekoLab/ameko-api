@@ -63,10 +63,12 @@ namespace FPTU.Capstone.AMKCollective.API.Workers
                 _logger.LogInformation($"Processing batch {pageNumber} of active shops...");
 
                 // DÙNG _settings.BatchSize TẠI ĐÂY
-                var (activeShops, totalCount) = await unitOfWork.Shops.GetActiveShopsForUserAsync(
-                    searchTerm: null,
-                    pageNumber: pageNumber,
-                    pageSize: _settings.BatchSize);
+                var (activeShops, totalCount) = await unitOfWork.Shops.GetFilteredShopsAsync(
+                    new FPTU.Capstone.AMKCollective.Application.DTOs.Shop.ShopFilterRequest
+                    {
+                        Page = pageNumber,
+                        Size = _settings.BatchSize
+                    });
 
                 if (activeShops == null || !activeShops.Any())
                 {
