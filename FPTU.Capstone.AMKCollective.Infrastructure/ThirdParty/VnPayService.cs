@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Application.DTOs.Payment;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Payment;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Helpers;
@@ -58,6 +58,37 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
             pay.AddRequestData("vnp_OrderInfo", $"AMK Collective - Payment for OrderGroup {orderGroup.Id}");
             pay.AddRequestData("vnp_OrderType", "other");
             pay.AddRequestData("vnp_ReturnUrl", _vnpaySettings.ReturnUrl);
+            pay.AddRequestData("vnp_TxnRef", txnRef);
+
+            var paymentUrl = pay.CreateRequestUrl(_vnpaySettings.BaseUrl, _vnpaySettings.HashSecret);
+
+            return paymentUrl;
+        }
+
+        public async Task<string> CreatePaymentUrlMobileAsync(CreateCheckoutSessionRequest request, Guid requestingUserId, HttpContext context, string returnUrl)
+        {
+            var orderGroup = await _unitOfWork.OrderGroups.GetByIdAsync(request.OrderGroupId);
+            if (orderGroup == null) throw new KeyNotFoundException("Order Group not found");
+
+            if (orderGroup.CustomerId != requestingUserId)
+                throw new UnauthorizedAccessException("You are not authorized to pay for this order.");
+
+            var tick = DateTime.Now.Ticks.ToString();
+            var txnRef = $"{orderGroup.Id}_{tick}";
+
+            var pay = new VnPayLibrary();
+            pay.AddRequestData("vnp_Version", _vnpaySettings.Version);
+            pay.AddRequestData("vnp_Command", _vnpaySettings.Command);
+            pay.AddRequestData("vnp_TmnCode", _vnpaySettings.TmnCode);
+            pay.AddRequestData("vnp_Amount", ((long)(orderGroup.TotalGroupAmount * 100)).ToString());
+            pay.AddRequestData("vnp_CreateDate", DateTime.Now.ToString("yyyyMMddHHmmss"));
+            pay.AddRequestData("vnp_CurrCode", _vnpaySettings.CurrCode);
+            pay.AddRequestData("vnp_IpAddr", pay.GetIpAddress(context));
+            pay.AddRequestData("vnp_Locale", _vnpaySettings.Locale);
+
+            pay.AddRequestData("vnp_OrderInfo", $"AMK Collective - Payment for OrderGroup {orderGroup.Id}");
+            pay.AddRequestData("vnp_OrderType", "other");
+            pay.AddRequestData("vnp_ReturnUrl", returnUrl); // Sử dụng returnUrl truyền vào
             pay.AddRequestData("vnp_TxnRef", txnRef);
 
             var paymentUrl = pay.CreateRequestUrl(_vnpaySettings.BaseUrl, _vnpaySettings.HashSecret);
