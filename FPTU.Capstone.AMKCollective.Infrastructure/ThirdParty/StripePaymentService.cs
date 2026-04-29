@@ -304,7 +304,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
             {
                 PaymentMethodTypes = new List<string> { "card" },
                 Mode = "payment",
-                SuccessUrl = successUrl,
+                // Đính session_id vào SuccessUrl để FE có thể gọi verify-session sau redirect
+                SuccessUrl = successUrl + "?session_id={CHECKOUT_SESSION_ID}",
                 CancelUrl = cancelUrl,
                 CustomerEmail = userEmail,
 
@@ -330,7 +331,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                         },
                         Quantity = 1
                     }
-                }
+                },
             };
 
             var service = new SessionService();
@@ -341,6 +342,19 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                 SessionId = session.Id,
                 PaymentUrl = session.Url, 
                 PaymentIntentId = session.PaymentIntentId
+            };
+        }
+
+        public async Task<VerifySessionResponse> VerifySessionAsync(string sessionId)
+        {
+            var service = new SessionService();
+            var session = await service.GetAsync(sessionId);
+
+            return new VerifySessionResponse
+            {
+                SessionId = session.Id,
+                PaymentStatus = session.PaymentStatus,
+                IsPaid = session.PaymentStatus == "paid"
             };
         }
 

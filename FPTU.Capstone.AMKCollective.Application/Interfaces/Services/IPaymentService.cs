@@ -1,4 +1,5 @@
 using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Payment;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,5 +17,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 
         Task RefundPaymentAsync(Guid orderGroupId);
         Task<CheckoutSessionResponse> CreateDepositSessionAsync(decimal amount, string userEmail, string userIdString, string successUrl, string cancelUrl);
+
+        Task<VerifySessionResponse> VerifySessionAsync(string sessionId);
     }
 }
