@@ -97,6 +97,27 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
+        /// Verifies a Stripe checkout session status by calling Stripe API directly.
+        /// Call this from the SuccessUrl page to confirm payment before showing success UI.
+        /// </summary>
+        [HttpGet("verify-session")]
+        [Authorize]
+        [SwaggerOperation(
+            Summary = "Verify Stripe Session",
+            Description = "Verifies payment status of a Stripe checkout session. FE must call this after Stripe redirects to SuccessUrl to confirm the payment actually succeeded before displaying success UI."
+        )]
+        [SwaggerResponse(200, "Session status returned")]
+        [SwaggerResponse(400, "Missing or invalid sessionId")]
+        public async Task<IActionResult> VerifySession([FromQuery] string sessionId)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId))
+                return ErrorResponse<object>("Missing sessionId");
+
+            var result = await _paymentService.VerifySessionAsync(sessionId);
+            return SuccessResponse(result, "Session verified");
+        }
+
+        /// <summary>
         /// Creates a VNPay payment URL for the current user.
         /// </summary>
         [HttpPost("create-vnpay-session")]
