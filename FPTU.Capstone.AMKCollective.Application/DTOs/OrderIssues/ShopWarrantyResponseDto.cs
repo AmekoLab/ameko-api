@@ -11,5 +11,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues
         public bool Approve { get; set; }
 
         public string? ShopResponse { get; set; }
+        public string? EvidenceUrl { get; set; }
     }
 }
