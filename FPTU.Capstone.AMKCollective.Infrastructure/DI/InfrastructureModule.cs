@@ -66,9 +66,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.DI
                .AsImplementedInterfaces()
                .InstancePerLifetimeScope();
             builder.RegisterAssemblyTypes(typeof(StripePaymentService).Assembly)
-       .Where(t => t.Name.EndsWith("Service"))
-       .AsImplementedInterfaces()
-       .InstancePerLifetimeScope();
+               .Where(t => t.Name.EndsWith("Service") || t.Name.EndsWith("Publisher"))
+               .AsImplementedInterfaces()
+               .InstancePerLifetimeScope();
             // Register application services (concrete implementation type is in App project)
             // builder.RegisterAssemblyTypes(typeof(FPTU.Capstone.AMKCollective.Application.Services.UserService).Assembly)
             //     .Where(t => t.Name.EndsWith("Service"))
