@@ -212,6 +212,59 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
         /// <summary>
+        /// Creates a VNPay payment URL specifically for Flutter app.
+        /// </summary>
+        [HttpPost("create-vnpay-session-mobile")]
+        [Authorize]
+        public async Task<IActionResult> CreateVnPaySessionMobile([FromBody] CreateCheckoutSessionRequest request)
+        {
+            if (!ModelState.IsValid) return ErrorResponse<object>("Invalid request data");
+
+            var userId = GetCurrentUserId();
+
+            // Tạo absolute URL trỏ về endpoint callback mobile
+            var returnUrl = $"{Request.Scheme}://{Request.Host}/api/v1/Payment/vnpay-return-mobile";
+
+            var paymentUrl = await _vnPayService.CreatePaymentUrlMobileAsync(request, userId, HttpContext, returnUrl);
+
+            return SuccessResponse(new { PaymentUrl = paymentUrl }, "VNPay mobile session created successfully");
+        }
+
+        /// <summary>
+        /// Handles VNPay callback for Mobile and redirects to deep link.
+        /// </summary>
+        [HttpGet("vnpay-return-mobile")]
+        [AllowAnonymous]
+        public async Task<IActionResult> VnPayReturnMobile()
+        {
+            try
+            {
+                // Tận dụng ProcessIpnAsync để kiểm tra chữ ký và fulfill đơn hàng (logic này dùng chung)
+                var response = await _vnPayService.ProcessIpnAsync(Request.Query);
+
+                var queryParams = new Dictionary<string, string>
+                {
+                    ["paid"] = response.IsPaid ? "1" : "0",
+                    ["orderId"] = response.OrderId,
+                    ["transactionId"] = response.TransactionId,
+                    ["responseCode"] = response.VnPayResponseCode,
+                    ["message"] = response.IsPaid ? "Success" : "Failed"
+                };
+
+                // Chuyển hướng về Deep Link của Flutter
+                // Format: ameko://payment/callback?paid=1&orderId=...
+                var deepLink = PaymentUrlHelper.AttachQuery("ameko://payment/callback", queryParams);
+
+                return Redirect(deepLink);
+            }
+            catch (Exception ex)
+            {
+                // Nếu có lỗi, vẫn trả về Deep Link với trạng thái lỗi để App xử lý
+                return Redirect($"ameko://payment/callback?paid=0&message={Uri.EscapeDataString(ex.Message)}");
+            }
+        }
+
+        /// <summary>
         /// Verifies VNPay return payload from frontend and confirms payment status.
         /// </summary>
         [HttpPost("vnpay-confirm")]
@@ -235,6 +288,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                         : "Invalid signature"
             });
         }
+
+        // ... existing methods ...
 
         //private static string AttachQuery(string baseUrl, IDictionary<string, string> query)
         //{
