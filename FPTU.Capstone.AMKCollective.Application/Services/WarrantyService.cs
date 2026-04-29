@@ -337,6 +337,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     ActionByRole = RoleType.Shop,
                     Action = OrderIssueAction.ShopApprove,
                     Comment = dto.ShopResponse ?? "Shop approved the request.",
+                    EvidenceUrl = dto.EvidenceUrl,
                     CreatedAt = DateTime.UtcNow
                 });
             }
@@ -354,6 +355,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     ActionByRole = RoleType.Shop,
                     Action = OrderIssueAction.ShopReject,
                     Comment = dto.ShopResponse ?? "Shop rejected the request.",
+                    EvidenceUrl = dto.EvidenceUrl,
                     CreatedAt = DateTime.UtcNow
                 });
             }
@@ -675,6 +677,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 ActionByRole = RoleType.Shop,
                 Action = OrderIssueAction.ShopReject,
                 Comment = $"Shop DISPUTED the return: {dto.ShopResponse}",
+                EvidenceUrl = dto.EvidenceUrl,
                 CreatedAt = DateTime.UtcNow
             });
 
