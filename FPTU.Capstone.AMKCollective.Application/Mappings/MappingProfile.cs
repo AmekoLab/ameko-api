@@ -28,7 +28,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
             // User mappings
             CreateMap<User, UserProfileResponse>();
             CreateMap<User, UserResponse>()
-                .ForMember(dest => dest.RoleName, opt => opt.MapFrom(src => src.Role != null ? src.Role.Name.ToString() : null));
+                .ForMember(dest => dest.RoleName, opt => opt.MapFrom(src => src.Role != null ? src.Role.Name.ToString() : null))
+                .ForMember(dest => dest.ShopName, opt => opt.MapFrom(src => src.ShopProfile != null ? src.ShopProfile.ShopName : null));
             CreateMap<User, LoginResponse>()
                 .ForMember(dest => dest.Role, opt => opt.MapFrom(src => src.Role.Name.ToString()));
             

@@ -21,6 +21,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.User
         public bool EmailConfirmed { get; set; }
         public AccountStatus Status { get; set; }
         public string? RoleName { get; set; }
+        public string? ShopName { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 }
