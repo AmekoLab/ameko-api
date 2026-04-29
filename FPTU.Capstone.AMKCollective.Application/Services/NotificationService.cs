@@ -14,10 +14,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
     public class NotificationService : INotificationService
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly INotificationPublisher _publisher;
 
-        public NotificationService(IUnitOfWork unitOfWork)
+        public NotificationService(IUnitOfWork unitOfWork, INotificationPublisher publisher)
         {
             _unitOfWork = unitOfWork;
+            _publisher = publisher;
         }
 
         public async Task SendNotificationAsync(Guid userId, string title, string message, string type, string? referenceId = null, string? referenceType = null, string? redirectUrl = null, Guid? actorId = null)
@@ -43,6 +45,22 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.Notifications.AddAsync(notification);
             await _unitOfWork.CommitAsync();
+
+            // ── Real-time Push ──
+            var dto = new NotificationDto
+            {
+                Id = notification.Id,
+                Title = notification.Title,
+                Message = notification.Message,
+                ActorId = notification.ActorId ?? Guid.Empty,
+                Type = notification.Type.ToString(),
+                ReferenceId = notification.ReferenceId,
+                ReferenceType = notification.ReferenceType,
+                RedirectUrl = notification.RedirectUrl,
+                IsRead = notification.IsRead,
+                CreatedAt = notification.CreatedAt
+            };
+            await _publisher.PublishNotificationAsync(userId, dto);
         }
 
         public async Task MarkAsReadAsync(int notificationId)
@@ -84,6 +102,22 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.Notifications.AddAsync(notification, cancellationToken);
             await _unitOfWork.CommitAsync();
+
+            // ── Real-time Push ──
+            var dto = new NotificationDto
+            {
+                Id = notification.Id,
+                Title = notification.Title,
+                Message = notification.Message,
+                ActorId = notification.ActorId ?? Guid.Empty,
+                Type = notification.Type.ToString(),
+                ReferenceId = notification.ReferenceId,
+                ReferenceType = notification.ReferenceType,
+                RedirectUrl = notification.RedirectUrl,
+                IsRead = notification.IsRead,
+                CreatedAt = notification.CreatedAt
+            };
+            await _publisher.PublishNotificationAsync(receiverId, dto, cancellationToken);
         }
 
         public async Task CreateBulkNotificationsAsync(IEnumerable<Guid> receiverIds, Guid actorId, FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType type, string referenceId, string referenceType, string? redirectUrl, CancellationToken cancellationToken = default)

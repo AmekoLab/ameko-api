@@ -410,12 +410,22 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 return;
             }
 
-            // ── Admin Rejects ──
-            if (!dto.Approve)
+            // ── Determine Decision Outcome ──
+            // If status is Disputed: 
+            // Approve = true means "Agree with Shop's Dispute" -> Reject Customer's Warranty.
+            // Approve = false means "Reject Shop's Dispute" -> Approve Customer's Warranty (Refund).
+            bool shouldRejectWarranty = issue.Status == OrderIssueStatus.Disputed ? dto.Approve : !dto.Approve;
+
+            // ── Admin Rejects Warranty ──
+            if (shouldRejectWarranty)
             {
                 issue.Status = OrderIssueStatus.Rejected;
                 issue.AdminNote = dto.AdminNote;
                 issue.UpdatedAt = DateTime.UtcNow;
+
+                string logComment = dto.AdminNote ?? (issue.Status == OrderIssueStatus.Disputed 
+                    ? "Admin agreed with shop's dispute. Warranty request rejected." 
+                    : "Admin rejected the request.");
 
                 await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
                 {
@@ -423,8 +433,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     ActionById = adminId,
                     ActionByRole = RoleType.Admin,
                     Action = OrderIssueAction.AdminDecision,
-                    AdminDecision = false,
-                    Comment = dto.AdminNote ?? "Admin rejected the request.",
+                    AdminDecision = false, // Customer loses
+                    Comment = logComment,
                     CreatedAt = DateTime.UtcNow
                 });
 
@@ -433,7 +443,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 return;
             }
 
-            // ── Admin Approves — system determines path based on Type and Status ──
+            // ── Admin Approves Warranty ──
             // Yêu cầu của User: Type 1 (Return) mới cần hoàn hàng, Type 2 (Warranty) không cần hoàn hàng
             bool requiresReturn = issue.Type == OrderIssueType.ReturnRequest && 
                                  (order.OrderStatus == OrderStatus.Completed || order.OrderStatus == OrderStatus.Shipped);
