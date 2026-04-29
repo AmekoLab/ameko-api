@@ -751,7 +751,66 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 _unitOfWork.OrderIssues.Update(issue);
             }
 
-            if (shopExpiredIssues.Any() || customerExpiredIssues.Any())
+            // --- 3. Handle Shop No-Response to Return (Returning) ---
+            var shopReturnThreshold = DateTime.UtcNow.AddDays(-shopTimeoutDays);
+            var shopSilentReturns = await _unitOfWork.OrderIssues.GetExpiredIssuesByStatusAsync(OrderIssueStatus.Returning, shopReturnThreshold);
+
+            foreach (var issue in shopSilentReturns)
+            {
+                var order = await _unitOfWork.Orders.GetByIdAsync(issue.OrderId, ct);
+                if (order == null) continue;
+
+                issue.Status = OrderIssueStatus.Completed;
+                issue.UpdatedAt = DateTime.UtcNow;
+
+                await _unitOfWork.OrderIssueLogs.AddAsync(new OrderIssueLog
+                {
+                    OrderIssueId = issue.Id,
+                    ActionById = Guid.Empty, // System
+                    ActionByRole = RoleType.Admin,
+                    Action = OrderIssueAction.SystemCancel,
+                    Comment = $"Auto-completed and refunded: Shop did not confirm receipt within {shopTimeoutDays} days of return shipment.",
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                // Penalty for Shop
+                if (order.ShopId.HasValue)
+                {
+                    await _reputationService.AdjustShopScoreAsync(
+                        order.ShopId.Value,
+                        -shopPenaltyPoints,
+                        $"Penalty: Shop ignored returned item for request #{issue.Id} for {shopTimeoutDays} days.",
+                        "OrderIssue",
+                        issue.Id.ToString());
+
+                    // Process Auto-Refund
+                    decimal refundAmount = await CalculateRefundAmountAsync(issue, order);
+                    var shopEntity = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+                    
+                    if (shopEntity != null)
+                    {
+                        await _unitOfWork.ExecuteTransactionAsync(async () =>
+                        {
+                            await _walletService.RefundToWalletAsync(issue.UserId, refundAmount, $"Auto-refund: Shop timeout after return (Order #{order.Id}, Issue #{issue.Id})");
+                            bool isReleased = order.PaymentStatus == PaymentStatus.Released;
+                            await _walletService.DeductFundsForRefundAsync(shopEntity.UserId, order.Id, refundAmount, isReleased);
+
+                            await _notificationService.SendNotificationAsync(issue.UserId, 
+                                "Auto-Refund Successful", 
+                                $"Shop did not respond to your return for order #{order.Id}. System has automatically processed your refund.", 
+                                "Warranty",
+                                referenceId: issue.Id.ToString(),
+                                referenceType: "OrderIssue",
+                                actorId: Guid.Empty);
+
+                            _unitOfWork.OrderIssues.Update(issue);
+                            await _unitOfWork.CommitAsync();
+                        });
+                    }
+                }
+            }
+
+            if (shopExpiredIssues.Any() || customerExpiredIssues.Any() || shopSilentReturns.Any())
             {
                 await _unitOfWork.CommitAsync();
             }
