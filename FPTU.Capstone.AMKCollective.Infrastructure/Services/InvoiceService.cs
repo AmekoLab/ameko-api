@@ -55,9 +55,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             {
                 row.RelativeItem().Column(col =>
                 {
-                    col.Item().Text("AMK COLLECTIVE")
+                    col.Item().Text("AMKEKOLAB")
                         .Bold().FontSize(20).FontColor("#1a1a1a");
-                    col.Item().Text("artisan keyboard marketplace")
+                    col.Item().Text("Artisan Mechanical Keyboard Collective")
                         .FontSize(9).FontColor("#888888");
                 });
 
@@ -216,7 +216,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             container.BorderTop(0.5f).BorderColor("#dddddd").PaddingTop(8)
                 .Row(row =>
                 {
-                    row.RelativeItem().Text("Thank you for shopping at AMK Collective.")
+                    row.RelativeItem().Text("Thank you for shopping at AMEKOLAB.")
                         .FontSize(8).FontColor("#888888").Italic();
                     row.ConstantItem(80).AlignRight()
                         .Text(x =>
