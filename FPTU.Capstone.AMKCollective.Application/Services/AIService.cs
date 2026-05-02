@@ -393,12 +393,94 @@ Description: {issue.Description}
 ";
 
             var systemPrompt = _settings.OrderIssuePrompt;
-            if (!systemPrompt.Contains("json", StringComparison.OrdinalIgnoreCase))
+            var rawResponse = await CallLLMAsync(systemPrompt, $"Analyze this support request:\n{context}");
+            
+            if (string.IsNullOrEmpty(rawResponse))
             {
-                systemPrompt += " IMPORTANT OUTPUT RULES: Return ONLY valid JSON.";
+                _logger.LogWarning("AI service returned empty response for order issue analysis.");
+                return null;
             }
 
-            return await CallLLMAsync(systemPrompt, $"Identify if this request is valid:\n{context}");
+            // Validate and normalize the response to ensure correct field names
+            var normalizedResponse = NormalizeOrderIssueAnalysisResponse(rawResponse);
+            return normalizedResponse;
+        }
+
+        private string? NormalizeOrderIssueAnalysisResponse(string rawResponse)
+        {
+            try
+            {
+                // Try to parse the response
+                using var doc = JsonDocument.Parse(rawResponse);
+                var root = doc.RootElement;
+
+                // Extract fields with case-insensitive key matching
+                var category = ReadStringCaseInsensitive(root, "Category") ?? "Unknown";
+                var sentiment = ReadStringCaseInsensitive(root, "Sentiment") ?? "Neutral";
+                var summary = ReadStringCaseInsensitive(root, "Summary") ?? "No summary provided";
+                var recommendation = ReadStringCaseInsensitive(root, "Recommendation") ?? "Escalate";
+                var confidenceScore = ReadDecimalCaseInsensitive(root, "ConfidenceScore") ?? 0.5m;
+
+                // Normalize field names to match FE expectations (PascalCase)
+                var normalized = new
+                {
+                    Category = category,
+                    Sentiment = sentiment,
+                    Summary = summary,
+                    Recommendation = recommendation,
+                    ConfidenceScore = Math.Round(confidenceScore, 2)
+                };
+
+                return JsonSerializer.Serialize(normalized);
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse AI response as JSON. Raw response: {Response}", rawResponse);
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error normalizing AI response: {Response}", rawResponse);
+                return null;
+            }
+        }
+
+        private static string? ReadStringCaseInsensitive(JsonElement element, string fieldName)
+        {
+            if (element.TryGetProperty(fieldName, out var prop)) 
+                return prop.GetString();
+            
+            // Try lowercase
+            var lowerFieldName = fieldName.ToLower();
+            foreach (var field in element.EnumerateObject())
+            {
+                if (field.Name.Equals(lowerFieldName, StringComparison.OrdinalIgnoreCase))
+                    return field.Value.GetString();
+            }
+            
+            return null;
+        }
+
+        private static decimal? ReadDecimalCaseInsensitive(JsonElement element, string fieldName)
+        {
+            if (element.TryGetProperty(fieldName, out var prop))
+            {
+                if (prop.TryGetDecimal(out var value)) return value;
+                if (prop.TryGetDouble(out var doubleValue)) return (decimal)doubleValue;
+            }
+            
+            // Try lowercase
+            var lowerFieldName = fieldName.ToLower();
+            foreach (var field in element.EnumerateObject())
+            {
+                if (field.Name.Equals(lowerFieldName, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (field.Value.TryGetDecimal(out var value)) return value;
+                    if (field.Value.TryGetDouble(out var doubleValue)) return (decimal)doubleValue;
+                }
+            }
+            
+            return null;
         }
 
         private async Task<string?> CallLLMAsync(string systemPrompt, string userMessage)
