@@ -519,6 +519,58 @@ namespace FPTU.Capstone.AMKCollective.Tests
             Assert.Contains("Keycap C x1", capturedContent);
         }
 
+        [Fact]
+        public async Task AnalyzeOrderIssueAsync_NormalizesLowercaseFieldNames()
+        {
+            // Test that AI response with lowercase field names is normalized to PascalCase
+            var lowercaseAiResponse = JsonSerializer.Serialize(new
+            {
+                category = "ReturnRequest",
+                sentiment = "Negative",
+                summary = "Customer not satisfied with product.",
+                recommendation = "Approve",
+                confidenceScore = 0.92
+            });
+
+            var handler = FakeHttpMessageHandler.WithFixedResponse(MakeLLMResponse(lowercaseAiResponse));
+            var service = CreateService(handler);
+
+            var order = new Order
+            {
+                Id = Guid.NewGuid(),
+                OrderStatus = OrderStatus.Completed,
+                TotalAmount = 5000000m,
+                OrderItems = new List<OrderItem>
+                {
+                    new() { ProductName = "Keyboard", Quantity = 1 }
+                }
+            };
+            var issue = new OrderIssue
+            {
+                Type = OrderIssueType.ReturnRequest,
+                Reason = "Not satisfied",
+                Description = "Product quality issue"
+            };
+
+            var result = await service.AnalyzeOrderIssueAsync(issue, order);
+
+            Assert.NotNull(result);
+            var parsed = JsonSerializer.Deserialize<JsonElement>(result!);
+            
+            // Verify that the response now has PascalCase field names as FE expects
+            Assert.True(parsed.TryGetProperty("Category", out var category));
+            Assert.Equal("ReturnRequest", category.GetString());
+            
+            Assert.True(parsed.TryGetProperty("Sentiment", out var sentiment));
+            Assert.Equal("Negative", sentiment.GetString());
+            
+            Assert.True(parsed.TryGetProperty("Recommendation", out var recommendation));
+            Assert.Equal("Approve", recommendation.GetString());
+            
+            Assert.True(parsed.TryGetProperty("ConfidenceScore", out var score));
+            Assert.Equal(0.92, score.GetDouble(), 0.01);
+        }
+
         // ----- GetRecommendationAsync -----
 
         [Fact]

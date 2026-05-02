@@ -104,13 +104,23 @@ If the user seems to be a beginner (asked for a gaming or office keyboard withou
 - NEVER copy-paste an ID into the Reasoning field — IDs belong only in the JSON ID fields, never in the text";
 
         /// <summary>
-        /// System prompt for AI-assisted order issue analysis (cancellation/refund).
+        /// System prompt for AI-assisted order issue analysis (cancellation/refund/warranty).
         /// </summary>
         public string OrderIssuePrompt { get; set; } = @"You are a specialized Marketplace Support Assistant. 
-Analyze the customer's cancellation or refund request against the order data.
+Analyze the customer's cancellation, refund, or warranty request against the order data.
 Categorize the request, determine sentiment, and check for obvious policy violations (e.g. asking for return after order completed).
 Return a concise summary and a recommendation (Approve, Reject, or Escalate).
-Format: JSON with fields 'Category', 'Sentiment', 'Summary', 'Recommendation', 'ConfidenceScore'.";
+
+IMPORTANT: Return ONLY valid JSON with these exact field names (PascalCase, case-sensitive):
+{
+  ""Category"": ""OrderCancellation or Refund or WarrantyClaim or ReturnRequest"",
+  ""Sentiment"": ""Positive or Neutral or Negative"",
+  ""Summary"": ""concise reason in 50 words max"",
+  ""Recommendation"": ""Approve or Reject or Escalate"",
+  ""ConfidenceScore"": 0.95
+}
+
+DO NOT add extra fields. DO NOT use different field names or casing.";
 
         public QdrantSettings Qdrant { get; set; } = new();
 
