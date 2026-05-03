@@ -51,20 +51,24 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         private static void ComposeHeader(IContainer container)
         {
-            container.PaddingBottom(16).Row(row =>
+            container.PaddingBottom(20).Row(row =>
             {
                 row.RelativeItem().Column(col =>
                 {
                     col.Item().Text("AMKEKOLAB")
-                        .Bold().FontSize(20).FontColor("#1a1a1a");
+                        .Bold().FontSize(22).FontColor("#1a1a1a");
+                    col.Item().PaddingTop(2).Text("Nền tảng bàn phím cơ thủ công")
+                        .FontSize(8).FontColor("#666666");
                     col.Item().Text("Artisan Mechanical Keyboard Collective")
-                        .FontSize(9).FontColor("#888888");
+                        .FontSize(8).FontColor("#888888");
                 });
 
-                row.ConstantItem(120).AlignRight().Column(col =>
+                row.ConstantItem(180).AlignCenter().Column(col =>
                 {
-                    col.Item().Text("INVOICE")
-                        .Bold().FontSize(16).FontColor("#333333");
+                    col.Item().Text("PHIẾU MUA HÀNG")
+                        .Bold().FontSize(16).FontColor("#1a1a1a");
+                    col.Item().PaddingTop(4).Text("INVOICE")
+                        .FontSize(9).FontColor("#666666");
                 });
             });
         }
@@ -74,138 +78,156 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             container.Column(col =>
             {
                 // Divider
-                col.Item().LineHorizontal(1).LineColor("#dddddd");
-                col.Item().PaddingVertical(12).Row(row =>
+                col.Item().LineHorizontal(1).LineColor("#cccccc");
+                
+                col.Item().PaddingVertical(14).Row(row =>
                 {
                     // Left: bill to
-                    row.RelativeItem().Column(c =>
+                    row.RelativeItem(3).Column(c =>
                     {
-                        c.Item().Text("BILL TO").Bold().FontSize(8).FontColor("#888888");
-                        c.Item().PaddingTop(4).Text(order.ReceiverName).Bold().FontSize(11);
-                        c.Item().Text(order.ReceiverPhone).FontColor("#555555");
-                        c.Item().Text(order.ShippingAddress).FontColor("#555555");
+                        c.Item().Text("THÔNG TIN NHẬN HÀNG").Bold().FontSize(8).FontColor("#999999");
+                        c.Item().PaddingTop(6).Text(order.ReceiverName).Bold().FontSize(12).FontColor("#1a1a1a");
+                        c.Item().PaddingTop(2).Text(order.ReceiverPhone).FontSize(9).FontColor("#555555");
+                        c.Item().PaddingTop(2).Text(order.ShippingAddress).FontSize(9).FontColor("#555555");
                     });
 
                     // Right: invoice meta
-                    row.ConstantItem(200).Column(c =>
+                    row.RelativeItem(2).Column(c =>
                     {
                         c.Item().Row(r =>
                         {
-                            r.RelativeItem().Text("Invoice #").FontColor("#888888");
-                            r.RelativeItem().AlignRight().Text(order.Id.ToString()[..8].ToUpper()).Bold();
+                            r.RelativeItem().Text("Mã phiếu / Invoice #").FontSize(8).FontColor("#999999");
+                            r.ConstantItem(110).AlignRight().Text(order.Id.ToString().Substring(0, 8).ToUpper()).Bold().FontSize(11);
                         });
-                        c.Item().Row(r =>
+                        c.Item().PaddingTop(3).Row(r =>
                         {
-                            r.RelativeItem().Text("Date").FontColor("#888888");
-                            r.RelativeItem().AlignRight().Text(order.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm"));
+                            r.RelativeItem().Text("Ngày lập / Date").FontSize(8).FontColor("#999999");
+                            r.ConstantItem(110).AlignRight().Text(order.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")).FontSize(9);
                         });
-                        c.Item().Row(r =>
+                        c.Item().PaddingTop(3).Row(r =>
                         {
-                            r.RelativeItem().Text("Shop").FontColor("#888888");
-                            r.RelativeItem().AlignRight().Text(order.Shop?.ShopName ?? "—");
+                            r.RelativeItem().Text("Cửa hàng / Shop").FontSize(8).FontColor("#999999");
+                            r.ConstantItem(110).AlignRight().Text(order.Shop?.ShopName ?? "—").FontSize(9);
                         });
-                        c.Item().Row(r =>
+                        c.Item().PaddingTop(3).Row(r =>
                         {
-                            r.RelativeItem().Text("Status").FontColor("#888888");
-                            r.RelativeItem().AlignRight().Text(order.OrderStatus.ToString()).Bold();
+                            r.RelativeItem().Text("Trạng thái / Status").FontSize(8).FontColor("#999999");
+                            r.ConstantItem(110).AlignRight().Text(order.OrderStatus.ToString()).Bold().FontSize(9).FontColor("#1a1a1a");
                         });
-                        c.Item().Row(r =>
+                        c.Item().PaddingTop(3).Row(r =>
                         {
-                            r.RelativeItem().Text("Payment").FontColor("#888888");
-                            r.RelativeItem().AlignRight().Text(order.PaymentStatus.ToString());
+                            r.RelativeItem().Text("Thanh toán / Payment").FontSize(8).FontColor("#999999");
+                            r.ConstantItem(110).AlignRight().Text(order.PaymentStatus.ToString()).FontSize(9).FontColor("#27ae60");
                         });
                     });
                 });
 
                 // Items table
-                col.Item().PaddingTop(8).Table(table =>
+                col.Item().PaddingTop(12).Table(table =>
                 {
                     table.ColumnsDefinition(cols =>
                     {
-                        cols.RelativeColumn(4); // product
-                        cols.RelativeColumn(1); // qty
-                        cols.RelativeColumn(2); // unit price
-                        cols.RelativeColumn(2); // discount
-                        cols.RelativeColumn(2); // final price
+                        cols.RelativeColumn(0.4f); // order number
+                        cols.RelativeColumn(2.4f); // product
+                        cols.RelativeColumn(0.8f); // qty
+                        cols.RelativeColumn(1.8f); // unit price
+                        cols.RelativeColumn(1.5f); // discount
+                        cols.RelativeColumn(1.8f); // final price
                     });
 
                     // Header row
                     static IContainer HeaderCell(IContainer c) =>
-                        c.Background("#1a1a1a").Padding(6);
+                        c.Background("#1a1a1a").Padding(8);
 
                     table.Header(h =>
                     {
-                        h.Cell().Element(HeaderCell).Text("Product").Bold().FontColor("#ffffff").FontSize(9);
-                        h.Cell().Element(HeaderCell).AlignCenter().Text("Qty").Bold().FontColor("#ffffff").FontSize(9);
-                        h.Cell().Element(HeaderCell).AlignRight().Text("Unit Price").Bold().FontColor("#ffffff").FontSize(9);
-                        h.Cell().Element(HeaderCell).AlignRight().Text("Discount").Bold().FontColor("#ffffff").FontSize(9);
-                        h.Cell().Element(HeaderCell).AlignRight().Text("Final Price").Bold().FontColor("#ffffff").FontSize(9);
+                        h.Cell().Element(HeaderCell).AlignCenter().Text("#").Bold().FontColor("#ffffff").FontSize(8);
+                        h.Cell().Element(HeaderCell).Text("Tên sản phẩm / Product").Bold().FontColor("#ffffff").FontSize(8);
+                        h.Cell().Element(HeaderCell).AlignCenter().Text("SL / Qty").Bold().FontColor("#ffffff").FontSize(8);
+                        h.Cell().Element(HeaderCell).AlignRight().Text("Đơn giá / Unit Price").Bold().FontColor("#ffffff").FontSize(8);
+                        h.Cell().Element(HeaderCell).AlignRight().Text("Giảm / Discount").Bold().FontColor("#ffffff").FontSize(8);
+                        h.Cell().Element(HeaderCell).AlignRight().Text("Thành tiền / Total").Bold().FontColor("#ffffff").FontSize(8);
                     });
 
                     bool isOdd = true;
+                    int itemIndex = 1;
                     foreach (var item in order.OrderItems.Where(i => i.ItemStatus == Domain.Enums.OrderItemStatus.Active))
                     {
-                        string rowBg = isOdd ? "#ffffff" : "#f7f7f7";
+                        string rowBg = isOdd ? "#ffffff" : "#f9f9f9";
                         isOdd = !isOdd;
 
                         static IContainer DataCell(IContainer c, string bg) =>
-                            c.Background(bg).Padding(6);
+                            c.Background(bg).Padding(7);
 
                         var totalDiscount = item.ShopAllocatedDiscount + item.SystemAllocatedDiscount;
 
+                        table.Cell().Element(c => DataCell(c, rowBg)).AlignCenter().Text(itemIndex.ToString()).FontSize(9);
                         table.Cell().Element(c => DataCell(c, rowBg)).Column(inner =>
                         {
-                            inner.Item().Text(item.ProductName).SemiBold();
+                            inner.Item().Text(item.ProductName).SemiBold().FontSize(9);
                             if (item.IsCustom)
-                                inner.Item().Text("Custom Build").FontSize(8).FontColor("#888888").Italic();
+                                inner.Item().PaddingTop(1).Text("Tuỳ chỉnh / Custom Build").FontSize(7).FontColor("#999999").Italic();
                         });
-                        table.Cell().Element(c => DataCell(c, rowBg)).AlignCenter().Text(item.Quantity.ToString());
-                        table.Cell().Element(c => DataCell(c, rowBg)).AlignRight().Text(FormatVnd(item.UnitPrice));
+                        table.Cell().Element(c => DataCell(c, rowBg)).AlignCenter().Text(item.Quantity.ToString()).FontSize(9);
+                        table.Cell().Element(c => DataCell(c, rowBg)).AlignRight().Text(FormatVnd(item.UnitPrice)).FontSize(9);
                         table.Cell().Element(c => DataCell(c, rowBg)).AlignRight()
-                            .Text(totalDiscount > 0 ? $"-{FormatVnd(totalDiscount)}" : "—").FontColor("#e74c3c");
-                        table.Cell().Element(c => DataCell(c, rowBg)).AlignRight().Text(FormatVnd(item.FinalPrice)).Bold();
+                            .Text(totalDiscount > 0 ? $"-{FormatVnd(totalDiscount)}" : "—").FontSize(9).FontColor("#e74c3c");
+                        table.Cell().Element(c => DataCell(c, rowBg)).AlignRight().Text(FormatVnd(item.FinalPrice)).Bold().FontSize(9);
+                        
+                        itemIndex++;
                     }
                 });
 
                 // Totals
-                col.Item().PaddingTop(16).AlignRight().Width(240).Column(c =>
+                col.Item().PaddingTop(16).AlignRight().Width(260).Column(c =>
                 {
                     c.Item().LineHorizontal(0.5f).LineColor("#dddddd");
-                    c.Item().PaddingTop(6).Row(r =>
+                    c.Item().PaddingTop(6).PaddingBottom(2).Row(r =>
                     {
-                        r.RelativeItem().Text("Subtotal").FontColor("#555555");
-                        r.ConstantItem(100).AlignRight().Text(FormatVnd(order.SubTotal));
+                        r.RelativeItem().Text("Tạm tính / Subtotal").FontSize(9).FontColor("#555555");
+                        r.ConstantItem(110).AlignRight().Text(FormatVnd(order.SubTotal)).FontSize(9);
                     });
                     if (order.DiscountAmount > 0)
                     {
-                        c.Item().Row(r =>
+                        c.Item().PaddingBottom(2).Row(r =>
                         {
-                            r.RelativeItem().Text("Shop Voucher").FontColor("#e74c3c");
-                            r.ConstantItem(100).AlignRight().Text($"-{FormatVnd(order.DiscountAmount)}").FontColor("#e74c3c");
+                            r.RelativeItem().Text("Voucher cửa hàng / Shop").FontSize(9).FontColor("#e74c3c");
+                            r.ConstantItem(110).AlignRight().Text($"-{FormatVnd(order.DiscountAmount)}").FontSize(9).FontColor("#e74c3c").Bold();
                         });
                     }
                     if (order.SystemDiscountAmount > 0)
                     {
-                        c.Item().Row(r =>
+                        c.Item().PaddingBottom(2).Row(r =>
                         {
-                            r.RelativeItem().Text("Platform Voucher").FontColor("#e74c3c");
-                            r.ConstantItem(100).AlignRight().Text($"-{FormatVnd(order.SystemDiscountAmount)}").FontColor("#e74c3c");
+                            r.RelativeItem().Text("Voucher hệ thống / Platform").FontSize(9).FontColor("#e74c3c");
+                            r.ConstantItem(110).AlignRight().Text($"-{FormatVnd(order.SystemDiscountAmount)}").FontSize(9).FontColor("#e74c3c").Bold();
                         });
                     }
-                    c.Item().PaddingTop(4).LineHorizontal(1).LineColor("#1a1a1a");
-                    c.Item().PaddingTop(4).Row(r =>
+                    c.Item().PaddingTop(6).LineHorizontal(1).LineColor("#1a1a1a");
+                    c.Item().PaddingTop(6).Row(r =>
                     {
-                        r.RelativeItem().Text("TOTAL").Bold().FontSize(12);
-                        r.ConstantItem(100).AlignRight().Text(FormatVnd(order.TotalAmount)).Bold().FontSize(12);
+                        r.RelativeItem().Text("TỔNG CỘNG / TOTAL").Bold().FontSize(13).FontColor("#1a1a1a");
+                        r.ConstantItem(110).AlignRight().Text(FormatVnd(order.TotalAmount)).Bold().FontSize(13).FontColor("#1a1a1a");
                     });
                 });
+
+                // Special Notice
+                col.Item().PaddingTop(20).BorderTop(0.5f).BorderColor("#e74c3c").BorderBottom(0.5f).PaddingVertical(10)
+                    .Background("#fef5f5").Padding(10).Column(c =>
+                    {
+                        c.Item().Text("LƯU Ý QUAN TRỌNG / IMPORTANT NOTICE").Bold().FontSize(9).FontColor("#c0392b");
+                        c.Item().PaddingTop(4).Text("Khách hàng vui lòng kiểm tra và xác nhận tình trạng sản phẩm trước khi nhận hàng. Nếu sản phẩm bị trầy xước, bể, vỡ hoặc móp méo vui lòng hoàn trả lại nhân viên giao hàng.")
+                            .FontSize(8).FontColor("#555555");
+                        c.Item().PaddingTop(3).Text("Please check and confirm the condition of products before delivery. If the product is scratched, broken, cracked or dented, please return it to the delivery staff.")
+                            .FontSize(8).FontColor("#555555").Italic();
+                    });
 
                 if (!string.IsNullOrWhiteSpace(order.Note))
                 {
                     col.Item().PaddingTop(20).Column(c =>
                     {
-                        c.Item().Text("Note").Bold().FontSize(9).FontColor("#888888");
-                        c.Item().PaddingTop(2).Text(order.Note).FontColor("#555555");
+                        c.Item().Text("GHI CHÚ / NOTE").Bold().FontSize(8).FontColor("#999999");
+                        c.Item().PaddingTop(4).Text(order.Note).FontSize(9).FontColor("#555555");
                     });
                 }
             });
@@ -213,18 +235,24 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         private static void ComposeFooter(IContainer container)
         {
-            container.BorderTop(0.5f).BorderColor("#dddddd").PaddingTop(8)
+            container.BorderTop(0.5f).BorderColor("#dddddd").PaddingTop(10).PaddingBottom(5)
                 .Row(row =>
                 {
-                    row.RelativeItem().Text("Thank you for shopping at AMEKOLAB.")
-                        .FontSize(8).FontColor("#888888").Italic();
-                    row.ConstantItem(80).AlignRight()
+                    row.RelativeItem().Column(col =>
+                    {
+                        col.Item().Text("Cảm ơn bạn đã mua hàng tại AMEKOLAB")
+                            .FontSize(8).FontColor("#999999").Italic();
+                        col.Item().PaddingTop(1).Text("Thank you for shopping at AMEKOLAB")
+                            .FontSize(8).FontColor("#999999").Italic();
+                    });
+                    
+                    row.ConstantItem(90).AlignRight()
                         .Text(x =>
                         {
-                            x.Span("Page ").FontSize(8).FontColor("#888888");
-                            x.CurrentPageNumber().FontSize(8).FontColor("#888888");
-                            x.Span(" / ").FontSize(8).FontColor("#888888");
-                            x.TotalPages().FontSize(8).FontColor("#888888");
+                            x.Span("Trang ").FontSize(7).FontColor("#999999");
+                            x.CurrentPageNumber().FontSize(7).FontColor("#999999");
+                            x.Span(" / ").FontSize(7).FontColor("#999999");
+                            x.TotalPages().FontSize(7).FontColor("#999999");
                         });
                 });
         }
