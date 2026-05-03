@@ -236,13 +236,35 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                 .ForMember(dest => dest.OrderItems, opt => opt.MapFrom(src => src.OrderItems))
 
                 .ForMember(dest => dest.HasCancelRequest, opt => opt.MapFrom(src =>
-                    src.OrderIssues != null && src.OrderIssues.Any(oi => !oi.IsDeleted && 
+                    src.OrderIssues != null && src.OrderIssues.Any(oi => !oi.IsDeleted &&
                     oi.Type == OrderIssueType.CancelRequest &&
                     (oi.Status == OrderIssueStatus.Pending || oi.Status == OrderIssueStatus.InProgress))
                 ))
                 .ForMember(dest => dest.HasWarrantyRequest, opt => opt.MapFrom(src =>
-                    src.OrderIssues != null && src.OrderIssues.Any(oi => !oi.IsDeleted && 
+                    src.OrderIssues != null && src.OrderIssues.Any(oi => !oi.IsDeleted &&
                     (oi.Type == OrderIssueType.ReturnRequest || oi.Type == OrderIssueType.WarrantyClaim))
+                ))
+                .ForMember(dest => dest.CancelledBy, opt => opt.MapFrom(src =>
+                    src.OrderIssues != null && src.OrderIssues.Any(oi => !oi.IsDeleted &&
+                        oi.Type == OrderIssueType.CancelRequest && oi.Status == OrderIssueStatus.AutoCancelled)
+                        ? "System"
+                    : src.OrderIssues != null && src.OrderIssues.Any(oi => !oi.IsDeleted &&
+                        oi.Type == OrderIssueType.CancelRequest && oi.Status == OrderIssueStatus.ShopAccepted)
+                        ? "Customer"
+                    : src.CancelReason != null
+                        ? "Shop"
+                    : null
+                ))
+                .ForMember(dest => dest.CancelReason, opt => opt.MapFrom(src =>
+                    src.OrderIssues != null && src.OrderIssues.Any(oi => !oi.IsDeleted &&
+                        oi.Type == OrderIssueType.CancelRequest && oi.Status == OrderIssueStatus.AutoCancelled)
+                        ? src.OrderIssues.First(oi => !oi.IsDeleted &&
+                            oi.Type == OrderIssueType.CancelRequest && oi.Status == OrderIssueStatus.AutoCancelled).ShopResponse
+                    : src.OrderIssues != null && src.OrderIssues.Any(oi => !oi.IsDeleted &&
+                        oi.Type == OrderIssueType.CancelRequest && oi.Status == OrderIssueStatus.ShopAccepted)
+                        ? src.OrderIssues.First(oi => !oi.IsDeleted &&
+                            oi.Type == OrderIssueType.CancelRequest && oi.Status == OrderIssueStatus.ShopAccepted).Description
+                    : src.CancelReason
                 ))
                 .ReverseMap();
 

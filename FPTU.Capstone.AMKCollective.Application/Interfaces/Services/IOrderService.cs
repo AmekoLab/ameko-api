@@ -1,4 +1,6 @@
 ﻿using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Order;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
@@ -24,8 +26,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<CalculateCartResponse> CalculateCartPreviewAsync(Guid userId, CalculateCartRequest request);
 
         //CUSTOMER HISTORY
-        Task<List<OrderResponse>> GetMyOrdersAsync(Guid userId, CancellationToken token = default);
-        Task<List<OrderGroupResponse>> GetMyOrderGroupsAsync(Guid userId, CancellationToken token = default);
+        Task<PaginatedResult<OrderResponse>> GetMyOrdersAsync(Guid userId, MyOrdersFilterRequest filter, CancellationToken token = default);
+        Task<PaginatedResult<OrderGroupResponse>> GetMyOrderGroupsAsync(Guid userId, MyPaymentHistoryFilterRequest filter, CancellationToken token = default);
 
         Task<OrderGroupResponse> GetOrderGroupDetailAsync(Guid orderGroupId, CancellationToken token = default);
 

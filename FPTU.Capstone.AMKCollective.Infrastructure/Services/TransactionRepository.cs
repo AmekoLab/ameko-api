@@ -139,6 +139,33 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .OrderByDescending(t => t.CreatedAt)
                 .ToListAsync();
         }
+
+        public async Task<List<Transaction>> GetByWalletIdInRangeAsync(Guid walletId, DateTime fromUtc, DateTime toUtc)
+        {
+            return await _context.Transactions
+                .Include(t => t.RelatedOrder)
+                .Where(t => t.WalletId == walletId && t.CreatedAt >= fromUtc && t.CreatedAt < toUtc)
+                .OrderBy(t => t.CreatedAt)
+                .ToListAsync();
+        }
+
+        public async Task<Transaction?> GetLastBeforeAsync(Guid walletId, DateTime beforeUtc)
+        {
+            return await _context.Transactions
+                .Where(t => t.WalletId == walletId && t.CreatedAt < beforeUtc)
+                .OrderByDescending(t => t.CreatedAt)
+                .FirstOrDefaultAsync();
+        }
+
+        public async Task<decimal> SumFeeByTypeInRangeAsync(Guid walletId, TransactionType type, DateTime fromUtc, DateTime toUtc)
+        {
+            return await _context.Transactions
+                .Where(t => t.WalletId == walletId
+                            && t.Type == type
+                            && t.CreatedAt >= fromUtc
+                            && t.CreatedAt < toUtc)
+                .SumAsync(t => (decimal?)t.FeeAmount) ?? 0m;
+        }
     }
 }
     

@@ -798,6 +798,92 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             };
         }
 
+        public async Task<ShopStatementResponse> GetShopStatementAsync(Guid userId, int month, int year)
+        {
+            if (month < 1 || month > 12)
+                throw new ArgumentException("Month must be between 1 and 12.", nameof(month));
+            if (year < 2000 || year > 2100)
+                throw new ArgumentException("Year is out of range.", nameof(year));
+
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+            if (wallet == null)
+                throw new KeyNotFoundException("Wallet not found.");
+
+            var fromUtc = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var toUtc = fromUtc.AddMonths(1);
+
+            var transactions = await _unitOfWork.Transactions.GetByWalletIdInRangeAsync(wallet.Id, fromUtc, toUtc);
+
+            // Opening balance = balance after the last transaction before this period.
+            // If no prior transaction exists, opening = current balance - net delta of this period would be wrong;
+            // use 0 as opening when wallet had no activity, otherwise pull from the latest pre-period txn snapshot.
+            decimal openingBalance = 0m;
+            decimal openingHeld = 0m;
+            var lastBefore = await _unitOfWork.Transactions.GetLastBeforeAsync(wallet.Id, fromUtc);
+            if (lastBefore != null)
+            {
+                openingBalance = lastBefore.BalanceAfterTransaction;
+                openingHeld = lastBefore.HeldBalanceAfterTransaction;
+            }
+
+            decimal closingBalance = openingBalance;
+            decimal closingHeld = openingHeld;
+            if (transactions.Count > 0)
+            {
+                var last = transactions[transactions.Count - 1];
+                closingBalance = last.BalanceAfterTransaction;
+                closingHeld = last.HeldBalanceAfterTransaction;
+            }
+
+            decimal totalSalesRevenue = transactions
+                .Where(t => t.Type == TransactionType.SalesRevenue)
+                .Sum(t => t.Amount - t.FeeAmount); // net shop received
+            decimal totalSalesPending = transactions
+                .Where(t => t.Type == TransactionType.SalesPending)
+                .Sum(t => t.Amount - t.FeeAmount);
+            decimal totalRefundsDeducted = transactions
+                .Where(t => t.Type == TransactionType.OrderRefund && t.Direction == TransactionDirection.Out)
+                .Sum(t => t.Amount)
+                + transactions
+                    .Where(t => t.Type == TransactionType.ManualAdjustment
+                                && t.Direction == TransactionDirection.Out
+                                && t.Description != null
+                                && t.Description.Contains("REFUND DEDUCTION", StringComparison.OrdinalIgnoreCase))
+                    .Sum(t => t.Amount);
+            decimal totalWithdrawals = transactions
+                .Where(t => t.Type == TransactionType.Withdrawal)
+                .Sum(t => t.Amount);
+            decimal totalPlatformFees = transactions
+                .Where(t => t.Type == TransactionType.SalesRevenue)
+                .Sum(t => t.FeeAmount);
+
+            // Pending withdrawals at end of period: any WithdrawalRequest still in Pending whose RequestedAt < toUtc.
+            var allUserWithdrawals = await _unitOfWork.WithdrawalRequests.GetByUserIdAsync(userId);
+            decimal totalPendingWithdrawals = allUserWithdrawals
+                .Where(w => w.Status == WithdrawalStatus.Pending && w.RequestedAt < toUtc)
+                .Sum(w => w.Amount);
+
+            var mapped = _mapper.Map<List<WalletTransactionResponse>>(transactions).ConvertDatesToLocal();
+
+            return new ShopStatementResponse
+            {
+                Month = month,
+                Year = year,
+                OpeningBalance = openingBalance,
+                ClosingBalance = closingBalance,
+                OpeningHeldBalance = openingHeld,
+                ClosingHeldBalance = closingHeld,
+                TotalSalesRevenue = totalSalesRevenue,
+                TotalSalesPending = totalSalesPending,
+                TotalRefundsDeducted = totalRefundsDeducted,
+                TotalWithdrawals = totalWithdrawals,
+                TotalPendingWithdrawals = totalPendingWithdrawals,
+                TotalPlatformFees = totalPlatformFees,
+                TransactionCount = transactions.Count,
+                Transactions = mapped
+            };
+        }
+
         public async Task<List<HeldTransactionResponse>> GetHeldTransactionsAsync(Guid userId)
         {
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);

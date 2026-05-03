@@ -155,6 +155,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                                         _orderSettings.SystemVoucherShopShareRate,
                                         _orderSettings.SystemVoucherShopShareCap);
                                     decimal feeAmount = order.TotalAmount - shopRevenue;
+                                    order.PlatformFeeAmount = feeAmount;
                                     shopPendingSales.Add((shopProfile.UserId, order.Id, shopRevenue, feeAmount));
                                 }
                             }

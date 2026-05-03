@@ -1,3 +1,4 @@
+using FPTU.Capstone.AMKCollective.Application.DTOs.Order;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
@@ -42,9 +43,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .ExecuteUpdateAsync(s => s.SetProperty(og => og.PaymentStatus, status), token);
         }
 
-        public async Task<IEnumerable<OrderGroup>> GetByUserIdAsync(Guid userId, CancellationToken token = default)
+        public async Task<(IEnumerable<OrderGroup> groups, int totalCount)> GetByUserIdPagedAsync(Guid userId, MyPaymentHistoryFilterRequest filter, CancellationToken token = default)
         {
-            return await _context.OrderGroups
+            var query = _context.OrderGroups
                 .AsNoTracking()
                 .Include(og => og.Orders)
                     .ThenInclude(o => o.Shop)
@@ -55,8 +56,29 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                         .ThenInclude(oi => oi.Product)
                 .Include(og => og.Payments)
                 .Where(og => og.Orders.Any(o => o.CustomerId == userId) && !og.IsDeleted)
+                .AsQueryable();
+
+            if (!string.IsNullOrEmpty(filter.PaymentStatus) && Enum.TryParse<PaymentStatus>(filter.PaymentStatus, true, out var parsedStatus))
+                query = query.Where(og => og.PaymentStatus == parsedStatus);
+
+            if (!string.IsNullOrEmpty(filter.PaymentMethod) && Enum.TryParse<PaymentMethod>(filter.PaymentMethod, true, out var parsedMethod))
+                query = query.Where(og => og.Payments.Any(p => p.Method == parsedMethod));
+
+            if (filter.FromDate.HasValue)
+                query = query.Where(og => og.CreatedAt >= filter.FromDate.Value.ToUniversalTime());
+
+            if (filter.ToDate.HasValue)
+                query = query.Where(og => og.CreatedAt <= filter.ToDate.Value.ToUniversalTime());
+
+            var totalCount = await query.CountAsync(token);
+            var groups = await query
                 .OrderByDescending(og => og.CreatedAt)
+                .Skip((filter.Page - 1) * filter.Size)
+                .Take(filter.Size)
+                .AsSplitQuery()
                 .ToListAsync(token);
+
+            return (groups, totalCount);
         }
         public async Task<int> SaveChangesAsync(CancellationToken token = default)
         {

@@ -1,5 +1,7 @@
 using AutoMapper;
 using FPTU.Capstone.AMKCollective.Application.DTOs;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Order;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Builder;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Reputation;
 using FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues;
@@ -402,20 +404,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             });
         }
 
-        public async Task<List<OrderResponse>> GetMyOrdersAsync(Guid userId, CancellationToken token = default)
+        public async Task<PaginatedResult<OrderResponse>> GetMyOrdersAsync(Guid userId, MyOrdersFilterRequest filter, CancellationToken token = default)
         {
-            // Gọi Repo lấy Order lẻ (Hàm này bạn đã có trong OrderRepository, nhớ kiểm tra vụ .ThenInclude nhé)
-            var orders = await _unitOfWork.Orders.GetOrdersByUserIdAsync(userId, false, token);
-            var historyOrders = orders.Where(o => o.OrderStatus != OrderStatus.InCart).ToList();
-            // Map sang OrderDto (Lúc này danh sách sẽ phẳng, dễ hiển thị)
-            return _mapper.Map<List<OrderResponse>>(historyOrders).ConvertDatesToLocal();
+            var (orders, totalCount) = await _unitOfWork.Orders.GetOrdersByUserIdPagedAsync(userId, filter, token);
+            var mapped = _mapper.Map<List<OrderResponse>>(orders.ToList()).ConvertDatesToLocal();
+            return new PaginatedResult<OrderResponse>(mapped, totalCount, filter.Page, filter.Size);
         }
 
-        public async Task<List<OrderGroupResponse>> GetMyOrderGroupsAsync(Guid userId, CancellationToken token = default)
+        public async Task<PaginatedResult<OrderGroupResponse>> GetMyOrderGroupsAsync(Guid userId, MyPaymentHistoryFilterRequest filter, CancellationToken token = default)
         {
-            // Logic cũ giữ nguyên
-            var groups = await _unitOfWork.OrderGroups.GetByUserIdAsync(userId);
-            return _mapper.Map<List<OrderGroupResponse>>(groups).ConvertDatesToLocal();
+            var (groups, totalCount) = await _unitOfWork.OrderGroups.GetByUserIdPagedAsync(userId, filter, token);
+            var mapped = _mapper.Map<List<OrderGroupResponse>>(groups.ToList()).ConvertDatesToLocal();
+            return new PaginatedResult<OrderGroupResponse>(mapped, totalCount, filter.Page, filter.Size);
         }
 
         public async Task<OrderGroupResponse> GetOrderGroupDetailAsync(Guid orderGroupId, CancellationToken token = default)
@@ -1081,6 +1081,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                                 _orderSettings.SystemVoucherShopShareRate,
                                 _orderSettings.SystemVoucherShopShareCap);
                             decimal feeAmount = order.TotalAmount - shopRevenue;
+                            order.PlatformFeeAmount = feeAmount;
                         await _walletService.AddPendingSalesToWalletAsync(shopProfile.UserId, order.Id, shopRevenue, feeAmount);
                         }
                     }
@@ -1339,8 +1340,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         _orderSettings.SystemVoucherShopShareCap);
                     decimal feeAmount = order.TotalAmount - actualShopRevenue;
                     await _walletService.ReleaseHeldMoneyAsync(shop.UserId, order.Id, actualShopRevenue, feeAmount);
-                    // 5. Đánh dấu đơn đã nhả tiền
+                    // 5. Đánh dấu đơn đã nhả tiền + ghi nhận thời điểm doanh thu cho kế toán
                     order.PaymentStatus = PaymentStatus.Released;
+                    order.RevenueRecognizedAt = DateTime.UtcNow;
                     await _unitOfWork.Orders.UpdateOrderAsync(order, token);
 
                     // 6. Cộng điểm uy tín sau bảo hành
@@ -1404,6 +1406,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             _orderSettings.SystemVoucherShopShareRate,
                             _orderSettings.SystemVoucherShopShareCap);
                         decimal feeAmount = order.TotalAmount - shopRevenue;
+                        order.PlatformFeeAmount = feeAmount;
                         await _walletService.AddPendingSalesToWalletAsync(shopProfile.UserId, order.Id, shopRevenue, feeAmount);
                     }
                 }

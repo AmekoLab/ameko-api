@@ -18,19 +18,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<ShopCustomerBehaviorOverviewResponse> GetCustomerBehaviorOverviewAsync(Guid shopUserId, ShopBehaviorFilterRequest filter)
         {
-            var (shop, fromUtc, toUtc, allOrders, rangeOrders) = await LoadShopOrdersAsync(shopUserId, filter);
-            var _ = shop;
-
-            var allFirstOrderDateByCustomer = allOrders
-                .GroupBy(o => o.CustomerId)
-                .ToDictionary(g => g.Key, g => g.Min(x => x.CreatedAt));
+            var (_, fromUtc, toUtc, rangeOrders, firstOrderDates) = await LoadShopOrdersAsync(shopUserId, filter);
 
             var customerOrderCountsInRange = rangeOrders
                 .GroupBy(o => o.CustomerId)
                 .ToDictionary(g => g.Key, g => g.Count());
 
             var totalCustomers = customerOrderCountsInRange.Count;
-            var newCustomers = customerOrderCountsInRange.Keys.Count(customerId => allFirstOrderDateByCustomer[customerId] >= fromUtc && allFirstOrderDateByCustomer[customerId] <= toUtc);
+            var newCustomers = customerOrderCountsInRange.Keys.Count(customerId =>
+                firstOrderDates.TryGetValue(customerId, out var firstDate) &&
+                firstDate >= fromUtc && firstDate <= toUtc);
             var returningCustomers = totalCustomers - newCustomers;
             var repeatCustomers = customerOrderCountsInRange.Count(x => x.Value >= 2);
             var totalOrders = rangeOrders.Count;
@@ -54,11 +51,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<List<ShopCustomerTrendResponse>> GetCustomerBehaviorTrendAsync(Guid shopUserId, ShopBehaviorFilterRequest filter)
         {
-            var (_, fromUtc, toUtc, allOrders, rangeOrders) = await LoadShopOrdersAsync(shopUserId, filter);
-
-            var firstOrderByCustomer = allOrders
-                .GroupBy(o => o.CustomerId)
-                .ToDictionary(g => g.Key, g => g.Min(x => x.CreatedAt));
+            var (_, fromUtc, toUtc, rangeOrders, firstOrderDates) = await LoadShopOrdersAsync(shopUserId, filter);
 
             var normalizedGranularity = (filter.Granularity ?? "day").Trim().ToLowerInvariant();
             var buckets = rangeOrders
@@ -67,7 +60,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 .Select(g =>
                 {
                     var customerIds = g.Select(x => x.CustomerId).Distinct().ToList();
-                    var newCustomers = customerIds.Count(customerId => IsSameBucket(firstOrderByCustomer[customerId], g.Key, normalizedGranularity));
+                    var newCustomers = customerIds.Count(customerId =>
+                        firstOrderDates.TryGetValue(customerId, out var firstDate) &&
+                        IsSameBucket(firstDate, g.Key, normalizedGranularity));
                     var returningCustomers = customerIds.Count - newCustomers;
 
                     return new ShopCustomerTrendResponse
@@ -101,7 +96,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<PaginatedResult<ShopTopSpenderResponse>> GetTopSpendersAsync(Guid shopUserId, ShopBehaviorFilterRequest filter)
         {
-            var (_, fromUtc, toUtc, _, rangeOrders) = await LoadShopOrdersAsync(shopUserId, filter);
+            var (_, fromUtc, toUtc, rangeOrders, _) = await LoadShopOrdersAsync(shopUserId, filter);
             var page = NormalizePage(filter.PageNumber);
             var size = NormalizePageSize(filter.PageSize);
 
@@ -130,11 +125,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<PaginatedResult<ShopChurnRiskCustomerResponse>> GetChurnRiskCustomersAsync(Guid shopUserId, ShopBehaviorFilterRequest filter)
         {
-            var (_, _, toUtc, allOrders, _) = await LoadShopOrdersAsync(shopUserId, filter);
+            var shop = await _unitOfWork.Shops.GetByUserIdAsync(shopUserId)
+                ?? throw new KeyNotFoundException("Shop profile not found.");
+            var (_, toUtc) = ResolveDateRange(filter);
             var page = NormalizePage(filter.PageNumber);
             var size = NormalizePageSize(filter.PageSize);
             var churnDays = filter.ChurnDays <= 0 ? 30 : filter.ChurnDays;
             var thresholdDate = toUtc.Date.AddDays(-churnDays);
+
+            var allOrders = await _unitOfWork.Orders.GetShopOrdersForDashboardAsync(shop.Id, null, null);
 
             var customers = allOrders
                 .GroupBy(o => o.CustomerId)
@@ -165,7 +164,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<ShopPurchaseFrequencyResponse> GetPurchaseFrequencyAsync(Guid shopUserId, ShopBehaviorFilterRequest filter)
         {
-            var (_, fromUtc, toUtc, _, rangeOrders) = await LoadShopOrdersAsync(shopUserId, filter);
+            var (_, fromUtc, toUtc, rangeOrders, _) = await LoadShopOrdersAsync(shopUserId, filter);
             var groups = rangeOrders.GroupBy(o => o.CustomerId).ToList();
 
             decimal avgDaysBetweenOrders = 0;
@@ -198,7 +197,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<ShopConversionResponse> GetConversionSummaryAsync(Guid shopUserId, ShopBehaviorFilterRequest filter)
         {
-            var (_, fromUtc, toUtc, _, rangeOrders) = await LoadShopOrdersAsync(shopUserId, filter);
+            var (_, fromUtc, toUtc, rangeOrders, _) = await LoadShopOrdersAsync(shopUserId, filter);
 
             var totalOrders = rangeOrders.Count;
             var paidOrders = rangeOrders.Count(o => o.PaymentStatus == PaymentStatus.Paid || o.PaymentStatus == PaymentStatus.Released);
@@ -219,24 +218,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             };
         }
 
-        private async Task<(ShopProfile shop, DateTime fromUtc, DateTime toUtc, List<Order> allOrders, List<Order> rangeOrders)> LoadShopOrdersAsync(Guid shopUserId, ShopBehaviorFilterRequest filter)
+        private async Task<(ShopProfile shop, DateTime fromUtc, DateTime toUtc, List<Order> rangeOrders, Dictionary<Guid, DateTime> firstOrderDates)> LoadShopOrdersAsync(Guid shopUserId, ShopBehaviorFilterRequest filter)
         {
-            var shop = await _unitOfWork.Shops.GetByUserIdAsync(shopUserId);
-            if (shop == null)
-            {
-                throw new KeyNotFoundException("Shop profile not found.");
-            }
+            var shop = await _unitOfWork.Shops.GetByUserIdAsync(shopUserId)
+                ?? throw new KeyNotFoundException("Shop profile not found.");
 
             var (fromUtc, toUtc) = ResolveDateRange(filter);
-            var orders = (await _unitOfWork.Orders.GetOrdersByShopIdAsync(shop.Id))
-                .Where(o => !o.IsDeleted && o.OrderStatus != OrderStatus.InCart)
-                .ToList();
 
-            var rangeOrders = orders
-                .Where(o => o.CreatedAt >= fromUtc && o.CreatedAt <= toUtc)
-                .ToList();
+            var rangeOrders = await _unitOfWork.Orders.GetShopOrdersForDashboardAsync(shop.Id, fromUtc, toUtc);
+            var firstOrderDates = await _unitOfWork.Orders.GetCustomerFirstOrderDatesAsync(shop.Id);
 
-            return (shop, fromUtc, toUtc, orders, rangeOrders);
+            return (shop, fromUtc, toUtc, rangeOrders, firstOrderDates);
         }
 
         private static (DateTime fromUtc, DateTime toUtc) ResolveDateRange(ShopBehaviorFilterRequest filter)

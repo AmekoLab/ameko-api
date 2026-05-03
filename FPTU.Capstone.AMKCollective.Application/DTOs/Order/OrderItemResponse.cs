@@ -28,6 +28,12 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
         public List<Guid>? CustomComponentIds { get; set; }
         public List<OrderItemComponentDto> OrderItemComponents { get; set; } = new();
 
+        // Chỉ có giá trị khi IsCustom = true.
+        // = UnitPrice - tổng giá các add-on components → bằng đúng baseKit.Price tại thời điểm checkout.
+        public decimal? BaseKitPriceSnapshot => IsCustom
+            ? UnitPrice - OrderItemComponents.Sum(c => c.PartPriceSnapshot * c.Quantity)
+            : null;
+
         /// <summary>True khi shop của item này bị ban/inactive — FE hiển thị warning và block checkout.</summary>
         public bool IsShopUnavailable { get; set; }
         public string? ShopUnavailableReason { get; set; }
