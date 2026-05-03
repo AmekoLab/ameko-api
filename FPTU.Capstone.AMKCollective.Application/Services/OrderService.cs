@@ -1048,12 +1048,30 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (orderGroup.Orders.Any(o => o.OrderStatus == OrderStatus.Cancelled))
                 throw new InvalidOperationException("This order has been cancelled. Please order again.");
 
+            if (orderGroup.Orders.Any(o => o.OrderStatus != OrderStatus.Pending))
+                throw new InvalidOperationException("Cannot repay: one or more orders are no longer in Pending status.");
+
+            // 4. Validate Wallet PIN (giống Checkout)
+            if (request.PaymentMethod == PaymentMethod.Wallet)
+            {
+                var hasPin = await _walletService.IsPinCreatedAsync(userId);
+                if (!hasPin)
+                    throw new InvalidOperationException("You must set up a Wallet PIN before making payments using Wallet.");
+
+                if (string.IsNullOrEmpty(request.WalletPin))
+                    throw new ArgumentException("Wallet PIN is required to repay using Wallet.");
+
+                var isPinValid = await _walletService.VerifyPinAsync(userId, request.WalletPin);
+                if (!isPinValid)
+                    throw new UnauthorizedAccessException("Incorrect Wallet PIN. Repay failed.");
+            }
+
             // Chuẩn bị URL
             string successUrl = string.IsNullOrEmpty(request.SuccessUrl) ? _frontendUrls.PaymentSuccessPath : request.SuccessUrl;
             string cancelUrl = string.IsNullOrEmpty(request.CancelUrl) ? _frontendUrls.OrderPendingPath : request.CancelUrl;
 
             // =====================================================================
-            // 4. RẼ NHÁNH PHƯƠNG THỨC THANH TOÁN LẠI (REPAY)
+            // 5. RẼ NHÁNH PHƯƠNG THỨC THANH TOÁN LẠI (REPAY)
             // =====================================================================
 
             if (request.PaymentMethod == PaymentMethod.Wallet)
