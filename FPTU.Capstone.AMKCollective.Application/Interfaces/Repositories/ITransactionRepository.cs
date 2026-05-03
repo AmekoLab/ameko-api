@@ -22,5 +22,22 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<bool> ExistsByOrderAndTypeAsync(Guid walletId, Guid orderId, TransactionType type);
         Task<decimal> SumAmountByTypeAsync(Guid walletId, TransactionType type, int? month = null, int? year = null);
         Task<List<Transaction>> GetByWalletIdAndTypeAsync(Guid walletId, TransactionType type);
+
+        /// <summary>
+        /// Lấy toàn bộ transaction trong khoảng [from, to) — sort asc theo CreatedAt.
+        /// Dùng cho báo cáo statement theo kỳ.
+        /// </summary>
+        Task<List<Transaction>> GetByWalletIdInRangeAsync(Guid walletId, DateTime fromUtc, DateTime toUtc);
+
+        /// <summary>
+        /// Lấy transaction gần nhất trước thời điểm <paramref name="beforeUtc"/> để tính số dư đầu kỳ.
+        /// Trả về null nếu không có giao dịch nào trước đó.
+        /// </summary>
+        Task<Transaction?> GetLastBeforeAsync(Guid walletId, DateTime beforeUtc);
+
+        /// <summary>
+        /// Tổng FeeAmount theo type trong khoảng thời gian — dùng để tổng hợp phí platform của shop.
+        /// </summary>
+        Task<decimal> SumFeeByTypeInRangeAsync(Guid walletId, TransactionType type, DateTime fromUtc, DateTime toUtc);
     }
 }

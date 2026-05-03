@@ -120,14 +120,14 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         [HttpGet("my-orders")]
         [SwaggerOperation(
             Summary = "Get detailed list of orders",
-            Description = "Returns a flat list of individual orders for tracking shipment and shop-level status."
+            Description = "Returns a paginated, filterable list of individual orders. Filter by Status (Pending|Processing|Shipped|Completed|Cancelled|Returning|Returned|Refunded), ShopName, FromDate, ToDate."
         )]
-        [SwaggerResponse(200, "Success", typeof(List<OrderResponse>))]
+        [SwaggerResponse(200, "Success", typeof(PaginatedResult<OrderResponse>))]
         [SwaggerResponse(401, "Unauthorized")]
-        public async Task<IActionResult> GetMyOrders()
+        public async Task<IActionResult> GetMyOrders([FromQuery] MyOrdersFilterRequest filter)
         {
             var userId = GetCurrentUserId();
-            var orders = await _orderService.GetMyOrdersAsync(userId);
+            var orders = await _orderService.GetMyOrdersAsync(userId, filter);
 
             return SuccessResponse(orders, "Order list retrieved successfully.");
         }
@@ -137,15 +137,15 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         [Authorize]
         [SwaggerOperation(
             Summary = "Get payment history (Grouped)",
-            Description = "Returns a list of payment batches (Order Groups). Each group contains multiple child orders."
+            Description = "Returns a paginated, filterable list of payment batches (Order Groups). Filter by PaymentStatus (Pending|Paid|Failed|Refunded|Released), PaymentMethod (CreditCard|Wallet|VnPay), FromDate, ToDate."
         )]
-        [SwaggerResponse(200, "Success", typeof(List<OrderGroupResponse>))]
+        [SwaggerResponse(200, "Success", typeof(PaginatedResult<OrderGroupResponse>))]
         [SwaggerResponse(401, "Unauthorized")]
-        public async Task<IActionResult> GetMyPaymentHistory()
+        public async Task<IActionResult> GetMyPaymentHistory([FromQuery] MyPaymentHistoryFilterRequest filter)
         {
             var userId = GetCurrentUserId();
 
-            var orderGroups = await _orderService.GetMyOrderGroupsAsync(userId);
+            var orderGroups = await _orderService.GetMyOrderGroupsAsync(userId, filter);
 
             return SuccessResponse(orderGroups, "Payment history retrieved successfully.");
         }

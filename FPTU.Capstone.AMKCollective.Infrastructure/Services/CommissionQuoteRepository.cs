@@ -67,6 +67,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Where(q => q.Status == Domain.Enums.QuoteStatus.PendingUserDecision
                     && q.CustomerDecisionDeadlineAt.HasValue
                     && q.CustomerDecisionDeadlineAt.Value <= now)
+                .AsSplitQuery()
                 .ToListAsync();
         }
 
@@ -86,6 +87,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                     q.Status == Domain.Enums.QuoteStatus.Accepted
                     && q.UpdatedAt.HasValue
                     && q.UpdatedAt.Value <= acceptedBefore)
+                .AsSplitQuery()
                 .ToListAsync();
         }
 

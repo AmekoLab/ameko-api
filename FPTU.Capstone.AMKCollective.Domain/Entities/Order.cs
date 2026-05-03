@@ -28,11 +28,25 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         public decimal DiscountAmount { get; set; } = 0;
         [Column(TypeName = "decimal(18,2)")]
         public decimal SystemDiscountAmount { get; set; } = 0;
+
+        /// <summary>
+        /// Tổng phí platform thu trên đơn hàng — set lúc checkout dựa trên ShopPayoutRate
+        /// (PlatformFeeAmount = TotalAmount - actualShopRevenue). Itemize per-order để kế toán đối chiếu.
+        /// </summary>
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal PlatformFeeAmount { get; set; } = 0;
         //TODO: need enum for order status
-        public OrderStatus OrderStatus { get; set; } = OrderStatus.Pending;  //OrderStatus == "InCart" 
+        public OrderStatus OrderStatus { get; set; } = OrderStatus.Pending;  //OrderStatus == "InCart"
         public PaymentStatus PaymentStatus { get; set; } = PaymentStatus.Pending;
-        public string? Note { get; set; } 
+        public string? Note { get; set; }
         public string? CancelReason { get; set; }
+
+        /// <summary>
+        /// Thời điểm doanh thu được ghi nhận — set khi tiền chuyển từ HeldBalance sang Balance
+        /// (PaymentStatus -> Released). Null nếu đơn chưa qua bảo hành.
+        /// Dùng cho kế toán đối chiếu doanh thu theo kỳ.
+        /// </summary>
+        public DateTime? RevenueRecognizedAt { get; set; }
 
         // Navigation Properties
         public virtual OrderGroup? OrderGroup { get; set; }

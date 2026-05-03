@@ -1,4 +1,5 @@
 using FPTU.Capstone.AMKCollective.Application.DTOs.AdminDashboard;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Order;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
@@ -53,6 +54,40 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .OrderByDescending(o => o.CreatedAt)
                 .AsSplitQuery()
                 .ToListAsync(token);
+        }
+
+        public async Task<(IEnumerable<Order> orders, int totalCount)> GetOrdersByUserIdPagedAsync(Guid userId, MyOrdersFilterRequest filter, CancellationToken token = default)
+        {
+            var query = _context.Orders
+                .AsNoTracking()
+                .Include(o => o.OrderIssues)
+                .Include(o => o.Shop)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                .Where(o => o.CustomerId == userId && !o.IsDeleted && o.OrderStatus != OrderStatus.InCart)
+                .AsQueryable();
+
+            if (!string.IsNullOrEmpty(filter.Status) && Enum.TryParse<OrderStatus>(filter.Status, true, out var parsedStatus))
+                query = query.Where(o => o.OrderStatus == parsedStatus);
+
+            if (!string.IsNullOrEmpty(filter.ShopName))
+                query = query.Where(o => o.Shop != null && o.Shop.ShopName.Contains(filter.ShopName));
+
+            if (filter.FromDate.HasValue)
+                query = query.Where(o => o.CreatedAt >= filter.FromDate.Value.ToUniversalTime());
+
+            if (filter.ToDate.HasValue)
+                query = query.Where(o => o.CreatedAt <= filter.ToDate.Value.ToUniversalTime());
+
+            var totalCount = await query.CountAsync(token);
+            var orders = await query
+                .OrderByDescending(o => o.CreatedAt)
+                .Skip((filter.Page - 1) * filter.Size)
+                .Take(filter.Size)
+                .AsSplitQuery()
+                .ToListAsync(token);
+
+            return (orders, totalCount);
         }
 
         public async Task<IEnumerable<Order>> GetOrdersByShopIdAsync(Guid shopId, CancellationToken token = default)
@@ -306,7 +341,8 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Where(o => o.OrderStatus == OrderStatus.Processing
                     && o.PaymentStatus == PaymentStatus.Paid
                     && o.CreatedAt <= thresholdUtc
-                    && !o.IsDeleted)
+                    && !o.IsDeleted
+                    && o.OrderItems.Any(oi => oi.IsCustom && !oi.IsDeleted))
                 .ToListAsync(token);
         }
 
@@ -352,6 +388,31 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .AsNoTracking()
                 .Where(o => !o.IsDeleted && o.CreatedAt >= fromUtc && o.CreatedAt <= toUtc)
                 .ToListAsync(token);
+        }
+
+        public async Task<List<Order>> GetShopOrdersForDashboardAsync(Guid shopId, DateTime? fromUtc, DateTime? toUtc, CancellationToken token = default)
+        {
+            var query = _context.Orders
+                .AsNoTracking()
+                .Include(o => o.Customer)
+                .Where(o => o.ShopId == shopId && !o.IsDeleted && o.OrderStatus != OrderStatus.InCart);
+
+            if (fromUtc.HasValue)
+                query = query.Where(o => o.CreatedAt >= fromUtc.Value);
+            if (toUtc.HasValue)
+                query = query.Where(o => o.CreatedAt <= toUtc.Value);
+
+            return await query.ToListAsync(token);
+        }
+
+        public async Task<Dictionary<Guid, DateTime>> GetCustomerFirstOrderDatesAsync(Guid shopId, CancellationToken token = default)
+        {
+            return await _context.Orders
+                .AsNoTracking()
+                .Where(o => o.ShopId == shopId && !o.IsDeleted && o.OrderStatus != OrderStatus.InCart)
+                .GroupBy(o => o.CustomerId)
+                .Select(g => new { CustomerId = g.Key, FirstDate = g.Min(o => o.CreatedAt) })
+                .ToDictionaryAsync(x => x.CustomerId, x => x.FirstDate, token);
         }
 
         public async Task<OrderDashboardStats> GetOrderStatsForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default)

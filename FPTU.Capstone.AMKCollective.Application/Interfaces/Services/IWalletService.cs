@@ -31,6 +31,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 
         Task<WalletStatisticsResponse> GetWalletStatisticsAsync(Guid userId);
         Task<List<HeldTransactionResponse>> GetHeldTransactionsAsync(Guid userId);
+
+        /// <summary>
+        /// Báo cáo doanh thu / chi phí / rút tiền của shop theo tháng cho mục đích đối chiếu.
+        /// </summary>
+        Task<ShopStatementResponse> GetShopStatementAsync(Guid userId, int month, int year);
         //PIN
         Task<bool> IsPinCreatedAsync(Guid userId); // Kiểm tra xem user đã có PIN chưa
         Task SetupPinAsync(Guid userId, SetupWalletPinRequest request);

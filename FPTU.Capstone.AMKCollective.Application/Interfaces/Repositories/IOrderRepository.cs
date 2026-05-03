@@ -1,4 +1,5 @@
 ﻿using FPTU.Capstone.AMKCollective.Application.DTOs.AdminDashboard;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Order;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System;
@@ -13,6 +14,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
     {
         Task<Order?> GetByIdAsync(Guid id, CancellationToken token = default);
         Task<IEnumerable<Order>> GetOrdersByUserIdAsync(Guid userId, bool includeDeleted = false, CancellationToken token = default);
+        Task<(IEnumerable<Order> orders, int totalCount)> GetOrdersByUserIdPagedAsync(Guid userId, MyOrdersFilterRequest filter, CancellationToken token = default);
         Task<IEnumerable<Order>> GetOrdersByShopIdAsync(Guid shopId, CancellationToken token = default);
         Task<int> CountInProgressOrdersForCustomerShopAsync(Guid customerId, Guid shopId, CancellationToken token = default);
         Task<int> CountMonthlyOrdersForCustomerAsync(Guid customerId, DateTime fromUtc, DateTime toUtc, CancellationToken token = default);
@@ -58,6 +60,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         /// Read-only dataset for dashboard analytics.
         /// </summary>
         Task<List<Order>> GetOrdersForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default);
+
+        /// <summary>
+        /// Lean shop-scoped order query for dashboard. Only includes Customer nav property.
+        /// Pass null for fromUtc/toUtc to get all-time orders (used by churn analysis).
+        /// </summary>
+        Task<List<Order>> GetShopOrdersForDashboardAsync(Guid shopId, DateTime? fromUtc, DateTime? toUtc, CancellationToken token = default);
+
+        /// <summary>
+        /// Returns the first order date per customer for a shop, computed entirely in DB.
+        /// Replaces in-memory GroupBy(allOrders) for new/returning customer logic.
+        /// </summary>
+        Task<Dictionary<Guid, DateTime>> GetCustomerFirstOrderDatesAsync(Guid shopId, CancellationToken token = default);
 
         /// <summary>
         /// Returns pre-aggregated order stats computed entirely in the database.

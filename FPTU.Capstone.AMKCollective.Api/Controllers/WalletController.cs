@@ -500,6 +500,41 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
         }
 
+        /// <summary>
+        /// [Shop] Retrieves a monthly statement summarising sales revenue, withdrawals, refunds and platform fees.
+        /// </summary>
+        /// <remarks>
+        /// Báo cáo dùng để đối chiếu doanh thu theo tháng. Trường <c>Transactions</c> là danh sách giao dịch trong kỳ
+        /// (CreatedAt thuộc tháng được chọn, theo UTC).
+        /// </remarks>
+        /// <param name="month">Tháng (1-12).</param>
+        /// <param name="year">Năm (>= 2000).</param>
+        [HttpGet("statements")]
+        [ProducesResponseType(typeof(ApiResponse<ShopStatementResponse>), 200)]
+        [ProducesResponseType(typeof(ApiResponse<object>), 400)]
+        [ProducesResponseType(typeof(ApiResponse<object>), 404)]
+        public async Task<IActionResult> GetShopStatement([FromQuery] int month, [FromQuery] int year)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var result = await _walletService.GetShopStatementAsync(userId, month, year);
+                return SuccessResponse(result, "Shop statement retrieved successfully.");
+            }
+            catch (ArgumentException ex)
+            {
+                return ErrorResponse<object>(ex.Message);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<object>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>(ex.Message);
+            }
+        }
+
         // ────────────────────────────────────────────────────────────────
         // [SHOP] Withdrawal History – với đầy đủ Status
         // ────────────────────────────────────────────────────────────────

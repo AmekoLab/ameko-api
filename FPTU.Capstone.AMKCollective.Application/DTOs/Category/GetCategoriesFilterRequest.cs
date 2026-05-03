@@ -12,7 +12,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Category
         public Guid? ParentId { get; set; }
         public bool IncludeSubCategories { get; set; } = false;
         public int PageNumber { get; set; } = 1;
-        public int PageSize { get; set; } = 20;
+        public int PageSize { get; set; } = 200;
         
         /// <summary>
         /// Filter categories by Shop ID
