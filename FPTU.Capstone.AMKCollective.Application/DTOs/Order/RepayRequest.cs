@@ -13,6 +13,8 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Order
         [JsonIgnore]
         public Guid OrderGroupId { get; set; }
         public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.CreditCard;
+        /// <summary>Required when PaymentMethod == Wallet.</summary>
+        public string? WalletPin { get; set; }
         public string SuccessUrl { get; set; } = string.Empty;
         public string CancelUrl { get; set; } = string.Empty;
     }
