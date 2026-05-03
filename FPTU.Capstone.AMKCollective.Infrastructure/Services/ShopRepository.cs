@@ -173,8 +173,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             var query = _context.ShopProfiles
                 .AsNoTracking()
                 .Where(s => !s.IsDeleted &&
-                            s.Status == ShopStatus.Active &&
-                            s.IsActive == true)
+                            s.Status == ShopStatus.Active)
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(filter.SearchTerm))

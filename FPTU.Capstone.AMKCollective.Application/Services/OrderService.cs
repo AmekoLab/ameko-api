@@ -2271,7 +2271,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 ShopName = shopName,
                 OrderItemComponents = componentsDto,
                 IsShopUnavailable = shopUnavailable,
-                ShopUnavailableReason = shopUnavailableReason
+                ShopUnavailableReason = shopUnavailableReason,
+                BaseKitPriceSnapshot = item.IsCustom && item.ProductId.HasValue && componentsDto.Any()
+                    ? (decimal?)(currentPrice - componentsDto.Sum(c => c.PartPriceSnapshot * c.Quantity))
+                    : null
             };
         }
 
