@@ -22,7 +22,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         public async Task<(IEnumerable<User> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize)
         {
-            var query = _context.Users.Include(u => u.Role).AsQueryable();
+            var query = _context.Users.Include(u => u.Role).Include(u => u.ShopProfile).AsQueryable();
             var totalCount = await query.CountAsync();
             var items = await query
                 .Skip((pageNumber - 1) * pageSize)
