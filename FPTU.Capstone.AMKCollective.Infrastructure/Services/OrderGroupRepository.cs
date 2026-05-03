@@ -25,9 +25,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         {
             return await _context.OrderGroups
                 .Include(og => og.Orders)
-                    .ThenInclude(o => o.OrderItems) 
+                    .ThenInclude(o => o.OrderItems)
+                        .ThenInclude(oi => oi.OrderItemComponents)
                 .Include(og => og.Orders)
-                    .ThenInclude(o => o.OrderIssues) 
+                    .ThenInclude(o => o.OrderIssues)
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(og => og.Id == id && !og.IsDeleted, token);
         }
 
@@ -54,6 +56,9 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Include(og => og.Orders)
                     .ThenInclude(o => o.OrderItems)
                         .ThenInclude(oi => oi.Product)
+                .Include(og => og.Orders)
+                    .ThenInclude(o => o.OrderItems)
+                        .ThenInclude(oi => oi.OrderItemComponents)
                 .Include(og => og.Payments)
                 .Where(og => og.Orders.Any(o => o.CustomerId == userId) && !og.IsDeleted)
                 .AsQueryable();

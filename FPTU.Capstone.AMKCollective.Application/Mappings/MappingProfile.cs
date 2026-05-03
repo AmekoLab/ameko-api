@@ -294,7 +294,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
                    : null)) 
 
                .ForMember(dest => dest.IsCustom, opt => opt.MapFrom(src => src.IsCustom))
-               .ForMember(dest => dest.OrderItemComponents, opt => opt.MapFrom(src => src.OrderItemComponents));
+               .ForMember(dest => dest.OrderItemComponents, opt => opt.MapFrom(src => src.OrderItemComponents))
+               .ForMember(dest => dest.BaseKitPriceSnapshot, opt => opt.MapFrom(src =>
+                   src.IsCustom && src.OrderItemComponents != null && src.OrderItemComponents.Any()
+                       ? (decimal?)(src.UnitPrice - src.OrderItemComponents.Sum(c => c.PartPriceSnapshot * c.Quantity))
+                       : null));
             //order item component
             CreateMap<OrderItemComponent, OrderItemComponentDto>();
 
