@@ -2082,6 +2082,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 var shop = await _unitOfWork.Shops.GetByIdAsync(baseKit.ShopId);
                 if (shop != null && shop.UserId == cart.CustomerId)
                     throw new InvalidOperationException("You cannot add your own shop product to cart.");
+                if (shop != null && (shop.Status == ShopStatus.Banned || shop.Status == ShopStatus.Inactive || !shop.IsActive))
+                    throw new InvalidOperationException($"Shop '{shop.ShopName}' is currently unavailable.");
             }
 
             if (baseKit.StockQuantity < request.Quantity) throw new InvalidOperationException($"Insufficient stock. Available: {baseKit.StockQuantity}");

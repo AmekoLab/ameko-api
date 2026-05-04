@@ -25,11 +25,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IPasswordHasher<User> _passwordHasher;
         private readonly IEmailService _emailService;
         private readonly IPaymentService _paymentService;
+        private readonly IVnPayService _vnPayService;
         private readonly WalletSettings _walletSettings;
         private readonly FrontendUrls _frontendUrls;
 
         public WalletService (IUnitOfWork unitOfWork, IMapper mapper, //UserManager<User> userManager,
-            IPasswordHasher<User> passwordHasher, IEmailService emailService, IPaymentService paymentService, IOptions<WalletSettings> walletOptions, IOptions<FrontendUrls> urlOptions)
+            IPasswordHasher<User> passwordHasher, IEmailService emailService, IPaymentService paymentService, IVnPayService vnPayService, IOptions<WalletSettings> walletOptions, IOptions<FrontendUrls> urlOptions)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
@@ -37,6 +38,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _passwordHasher = passwordHasher;
             _emailService = emailService;
             _paymentService = paymentService;
+            _vnPayService = vnPayService;
             _walletSettings = walletOptions.Value;
             _frontendUrls = urlOptions.Value;
         }
@@ -730,28 +732,46 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _emailService.SendEmailAsync(user.Email, "Security Alert", "Your Wallet PIN has been successfully reset.");
         }
 
-        public async Task<string> CreateDepositTransactionAsync(Guid userId, DepositRequest request)
+        public async Task<string> CreateDepositTransactionAsync(Guid userId, DepositRequest request, Microsoft.AspNetCore.Http.HttpContext? httpContext = null)
         {
             var user = await _unitOfWork.Users.GetByIdAsync(userId);
             if (user == null) throw new KeyNotFoundException("User not found");
 
-            // TODO: Thay URL này bằng URL thật của Frontend
-            var successUrl = _frontendUrls.DepositSuccessPath;
-            var cancelUrl = _frontendUrls.DepositCancelPath;
+            if (request.Method == PaymentMethod.VnPay)
+            {
+                if (httpContext == null) throw new ArgumentNullException(nameof(httpContext), "HttpContext is required for VNPay deposit.");
 
-            // Gọi PaymentService
+                var vnpayPayment = new Payment
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    Amount = request.Amount,
+                    Type = PaymentType.Deposit,
+                    Status = PaymentStatus.Pending,
+                    Method = PaymentMethod.VnPay,
+                    Currency = "VND",
+                    Description = "Top up wallet via VNPay",
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await _unitOfWork.Payments.AddAsync(vnpayPayment);
+                await _unitOfWork.CommitAsync();
+
+                return await _vnPayService.CreateDepositUrlAsync(request.Amount, vnpayPayment.Id, httpContext);
+            }
+
+            // Default: Stripe (CreditCard)
             var stripeResult = await _paymentService.CreateDepositSessionAsync(
                 request.Amount,
                 user.Email,
                 userId.ToString(),
-                successUrl,
-                cancelUrl
+                _frontendUrls.DepositSuccessPath,
+                _frontendUrls.DepositCancelPath
             );
 
-            // Tạo Payment Record
             var payment = new Payment
             {
-                Id = Guid.NewGuid(), 
+                Id = Guid.NewGuid(),
                 UserId = userId,
                 Amount = request.Amount,
                 Type = PaymentType.Deposit,
@@ -766,10 +786,39 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Payments.AddAsync(payment);
             await _unitOfWork.CommitAsync();
 
-            // Trả về URL thanh toán
             return stripeResult.PaymentUrl;
         }
 
+        public async Task CreditVnPayDepositAsync(Guid userId, decimal amount, Guid paymentId)
+        {
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+            if (wallet == null) throw new InvalidOperationException("Wallet not found.");
+
+            var (success, oldBal, oldHeld) = await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, amount, 0);
+            if (!success) throw new InvalidOperationException($"Failed to update wallet balance. WalletId: {wallet.Id}");
+
+            var txCode = $"DEP-{DateTime.UtcNow:yyMMdd}-{Guid.NewGuid().ToString().Substring(0, 6).ToUpper()}";
+            var transaction = new Transaction
+            {
+                TransactionCode = txCode,
+                IdempotencyKey = $"VNPAY_DEPOSIT_{paymentId}",
+                WalletId = wallet.Id,
+                Amount = amount,
+                BalanceBeforeTransaction = oldBal,
+                BalanceAfterTransaction = oldBal + amount,
+                Direction = TransactionDirection.In,
+                Type = TransactionType.Deposit,
+                HeldBalanceBeforeTransaction = oldHeld,
+                HeldBalanceAfterTransaction = oldHeld,
+                FeeAmount = 0,
+                Description = $"Deposit via VNPay (Payment: {paymentId})",
+                Currency = "VND",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _unitOfWork.Transactions.AddAsync(transaction);
+            await _unitOfWork.CommitAsync();
+        }
 
         public async Task<WalletStatisticsResponse> GetWalletStatisticsAsync(Guid userId)
         {

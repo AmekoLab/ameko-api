@@ -330,6 +330,35 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
 
+            // Gửi email thông báo kết quả duyệt cho shop
+            try
+            {
+                var user = await _unitOfWork.Users.GetByIdAsync(shop.UserId);
+                if (user != null)
+                {
+                    if (request.Status == ShopStatus.Active)
+                    {
+                        await _emailService.SendEmailAsync(
+                            user.Email,
+                            "Your shop has been approved!",
+                            $"Congratulations! Your shop \"{shop.ShopName}\" has been approved and is now active on AMK Collective.\n\n" +
+                            $"To start selling, please top up your shop wallet with a minimum of 2,000,000 VND. " +
+                            $"This balance is required to activate your shop and covers compensation obligations.\n\n" +
+                            $"You can top up via Stripe (credit card) or VNPay at: Wallet > Top Up.");
+                    }
+                    else
+                    {
+                        await _emailService.SendEmailAsync(
+                            user.Email,
+                            "Your shop application was not approved",
+                            $"Unfortunately, your shop \"{shop.ShopName}\" was not approved at this time.\n\n" +
+                            (string.IsNullOrWhiteSpace(request.AdminNote) ? "" : $"Reason: {request.AdminNote}\n\n") +
+                            $"You may resubmit your application after addressing the issues.");
+                    }
+                }
+            }
+            catch { /* Email failure không nên block luồng approve */ }
+
             try { await _aiService.SyncShopAsync(shop); } catch { /* Ignore */ }
         }
 
@@ -385,7 +414,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (shop.IsActive)
                 throw new InvalidOperationException("Shop is already active.");
 
-            shop.IsActive = true;  // Chủ shop quyết định IsActive
+            // Yêu cầu balance tối thiểu 2,000,000 VND để hoạt động (đảm bảo khả năng đền bù)
+            var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(userId);
+            if (wallet == null || wallet.Balance < 2_000_000m)
+                throw new InvalidOperationException("Insufficient wallet balance. Your shop must have at least 2,000,000 VND to activate. Please top up your wallet first.");
+
+            shop.IsActive = true;
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
         }

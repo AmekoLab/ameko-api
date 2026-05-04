@@ -145,5 +145,12 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             _context.Users.RemoveRange(usersToDelete);
             return usersToDelete.Count;
         }
+
+        public async Task<IEnumerable<Guid>> GetAllUserIdsAsync(CancellationToken cancellationToken = default)
+            => await _context.Users
+                .AsNoTracking()
+                .Where(u => !u.IsDeleted)
+                .Select(u => u.Id)
+                .ToListAsync(cancellationToken);
     }
 }

@@ -396,6 +396,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (quote.Status != QuoteStatus.PendingUserDecision)
                 return (false, null, "This quotation is no longer available for acceptance.");
 
+            var quotingShop = await _unitOfWork.Shops.GetByIdAsync(quote.ShopId);
+            if (quotingShop == null || quotingShop.Status == ShopStatus.Banned || quotingShop.Status == ShopStatus.Inactive || !quotingShop.IsActive)
+                return (false, null, "This shop is currently unavailable. Please wait for the shop to reopen before accepting.");
+
             // 1. Cập nhật statuses
             quote.Status = QuoteStatus.Accepted;
             // Ghi lại thời điểm accept chính xác — dùng làm mốc đếm PaymentWindowHours.

@@ -15,6 +15,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         // Hàm tạo link thanh toán dành riêng cho Mobile
         Task<string> CreatePaymentUrlMobileAsync(CreateCheckoutSessionRequest request, Guid requestingUserId, HttpContext context, string returnUrl);
 
+        // Hàm tạo link nạp tiền ví qua VNPay
+        Task<string> CreateDepositUrlAsync(decimal amount, Guid paymentId, HttpContext context);
+
         // Hàm xử lý khi VNPay gọi IPN trả kết quả về
         Task<PaymentResponseModel> ProcessIpnAsync(IQueryCollection collections);
     }

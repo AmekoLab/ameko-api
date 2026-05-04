@@ -407,7 +407,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Tạo yêu cầu nạp tiền vào ví (Deposit). Trả về URL thanh toán Stripe.
+        /// Tạo yêu cầu nạp tiền vào ví. Trả về URL thanh toán.
+        /// Method: CreditCard (Stripe, mặc định) hoặc VnPay.
         /// </summary>
         [HttpPost("deposit")]
         public async Task<IActionResult> Deposit([FromBody] DepositRequest request)
@@ -418,11 +419,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-               
-                var paymentUrl = await _walletService.CreateDepositTransactionAsync(userId, request);
-
-                // Trả về URL để FE redirect người dùng sang Stripe
-                return SuccessResponse(new { Url = paymentUrl }, "Top-up session created successfully.");
+                var paymentUrl = await _walletService.CreateDepositTransactionAsync(userId, request, HttpContext);
+                return SuccessResponse(new { Url = paymentUrl }, "Deposit session created successfully.");
             }
             catch (KeyNotFoundException ex)
             {
@@ -430,7 +428,6 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
             catch (Exception ex)
             {
-                // Log lỗi nếu cần
                 return ServerErrorResponse<object>($"System error: {ex.Message}");
             }
         }

@@ -199,15 +199,18 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                     ["responseCode"] = response.VnPayResponseCode
                 };
 
-                var targetUrl = response.IsPaid
-                    ? _frontendUrls.PaymentSuccessPath
-                    : _frontendUrls.PaymentCancelPath;
+                // Deposit: TxnRef bắt đầu bằng "DEP_" → redirect về deposit success/cancel
+                bool isDeposit = response.OrderId?.StartsWith("DEP_") == true;
+
+                var targetUrl = isDeposit
+                    ? (response.IsPaid ? _frontendUrls.DepositSuccessPath : _frontendUrls.DepositCancelPath)
+                    : (response.IsPaid ? _frontendUrls.PaymentSuccessPath : _frontendUrls.PaymentCancelPath);
 
                 return Redirect(PaymentUrlHelper.AttachQuery(targetUrl, query));
             }
             catch
             {
-                return Redirect(PaymentUrlHelper.AttachQuery(_frontendUrls.PaymentCancelPath,
+                return Redirect(PaymentUrlHelper.AttachQuery(_frontendUrls.DepositCancelPath,
                                 new Dictionary<string, string> { ["provider"] = "vnpay", ["paid"] = "0" }));
             }
         }

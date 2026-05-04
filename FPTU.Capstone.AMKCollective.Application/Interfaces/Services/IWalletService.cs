@@ -27,7 +27,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 
         Task AdjustBalanceAsync(Guid adminId, AdjustBalanceRequest request);
         Task CreditPlatformFeeAsync(decimal amount, string description);
-        Task<string> CreateDepositTransactionAsync(Guid userId, DepositRequest request);
+        Task<string> CreateDepositTransactionAsync(Guid userId, DepositRequest request, Microsoft.AspNetCore.Http.HttpContext? httpContext = null);
+        Task CreditVnPayDepositAsync(Guid userId, decimal amount, Guid paymentId);
 
         Task<WalletStatisticsResponse> GetWalletStatisticsAsync(Guid userId);
         Task<List<HeldTransactionResponse>> GetHeldTransactionsAsync(Guid userId);
