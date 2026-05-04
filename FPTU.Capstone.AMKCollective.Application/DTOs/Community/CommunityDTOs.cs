@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace FPTU.Capstone.AMKCollective.Application.DTOs.Community;
 
@@ -76,9 +77,16 @@ public class UpdatePostDto
 
 public class CreateSystemNotificationDto
 {
+    [Required]
     public Guid UserId { get; set; }
+
+    [Required]
+    [MaxLength(200)]
     public string Title { get; set; } = string.Empty;
+
+    [MaxLength(1000)]
     public string? Message { get; set; }
+
     public string? ReferenceType { get; set; }
     public string? ReferenceId { get; set; }
     public string? RedirectUrl { get; set; }
@@ -86,9 +94,23 @@ public class CreateSystemNotificationDto
 
 public class UpdateNotificationDto
 {
+    [MaxLength(200)]
     public string? Title { get; set; }
+
+    [MaxLength(1000)]
     public string? Message { get; set; }
-    public bool? IsRead { get; set; }
+}
+
+public class BroadcastNotificationDto
+{
+    [Required]
+    [MaxLength(200)]
+    public string Title { get; set; } = string.Empty;
+
+    [MaxLength(1000)]
+    public string? Message { get; set; }
+
+    public string? RedirectUrl { get; set; }
 }
 
 public class PostReactionDetailResponse

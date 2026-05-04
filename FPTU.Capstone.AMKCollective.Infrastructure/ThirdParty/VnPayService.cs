@@ -96,6 +96,30 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
             return paymentUrl;
         }
 
+        public async Task<string> CreateDepositUrlAsync(decimal amount, Guid paymentId, HttpContext context)
+        {
+            // DEP_{paymentId}_{tick} — prefix "DEP" phân biệt deposit vs order trong IPN và vnpay-return
+            var tick = DateTime.Now.Ticks.ToString();
+            var txnRef = $"DEP_{paymentId}_{tick}";
+
+            var pay = new VnPayLibrary();
+            pay.AddRequestData("vnp_Version", _vnpaySettings.Version);
+            pay.AddRequestData("vnp_Command", _vnpaySettings.Command);
+            pay.AddRequestData("vnp_TmnCode", _vnpaySettings.TmnCode);
+            pay.AddRequestData("vnp_Amount", ((long)(amount * 100)).ToString());
+            pay.AddRequestData("vnp_CreateDate", DateTime.Now.ToString("yyyyMMddHHmmss"));
+            pay.AddRequestData("vnp_CurrCode", _vnpaySettings.CurrCode);
+            pay.AddRequestData("vnp_IpAddr", pay.GetIpAddress(context));
+            pay.AddRequestData("vnp_Locale", _vnpaySettings.Locale);
+            pay.AddRequestData("vnp_OrderInfo", $"AMK Wallet Deposit {paymentId}");
+            pay.AddRequestData("vnp_OrderType", "other");
+            // Dùng cùng ReturnUrl với order — backend vnpay-return nhận biết deposit qua prefix "DEP_"
+            pay.AddRequestData("vnp_ReturnUrl", _vnpaySettings.ReturnUrl);
+            pay.AddRequestData("vnp_TxnRef", txnRef);
+
+            return pay.CreateRequestUrl(_vnpaySettings.BaseUrl, _vnpaySettings.HashSecret);
+        }
+
         public async Task<PaymentResponseModel> ProcessIpnAsync(IQueryCollection collections)
         {
             var pay = new VnPayLibrary();
@@ -106,19 +130,46 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                               && (string.IsNullOrEmpty(transactionStatus) || transactionStatus == "00");
             if (!response.Success) return response; // Sai chữ ký bảo mật
 
-            // Tách cái TxnRef (Guid_Tick) ra để lấy lại OrderGroupId
             var parts = response.OrderId.Split('_');
-            if (parts.Length > 0 && Guid.TryParse(parts[0], out Guid orderGroupId))
+
+            // Deposit: DEP_{paymentId}_{tick}
+            if (parts.Length >= 2 && parts[0] == "DEP" && Guid.TryParse(parts[1], out Guid paymentId))
             {
-                // Kiểm tra vnp_ResponseCode == "00" nghĩa là khách đã thanh toán thành công
                 if (response.VnPayResponseCode == "00")
-                {
+                    await FulfillDepositAsync(paymentId);
+            }
+            // Order: {orderGroupId}_{tick}
+            else if (parts.Length > 0 && Guid.TryParse(parts[0], out Guid orderGroupId))
+            {
+                if (response.VnPayResponseCode == "00")
                     await FulfillOrderAsync(orderGroupId, response.TransactionId, response.OrderId, response.Amount);
-                }
             }
 
             return response;
         }
+        private async Task FulfillDepositAsync(Guid paymentId)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var walletService = scope.ServiceProvider.GetRequiredService<IWalletService>();
+
+                var payment = await _unitOfWork.Payments.GetByIdAsync(paymentId);
+                if (payment == null || payment.Status == PaymentStatus.Paid) return; // idempotency guard
+
+                payment.Status = PaymentStatus.Paid;
+                _unitOfWork.Payments.Update(payment);
+                await _unitOfWork.CommitAsync();
+
+                await walletService.CreditVnPayDepositAsync(payment.UserId, payment.Amount, paymentId);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[VNPAY DEPOSIT IPN ERROR] {ex.Message}");
+                throw;
+            }
+        }
+
         private async Task FulfillOrderAsync(Guid orderGroupId, string transactionId, string vnPaySessionId, decimal amount)
         {
             try

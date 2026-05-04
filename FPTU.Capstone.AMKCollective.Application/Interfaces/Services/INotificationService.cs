@@ -25,5 +25,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<NotificationDto> CreateSystemNotificationAsync(CreateSystemNotificationDto request, CancellationToken cancellationToken = default);
         Task<NotificationDto> UpdateNotificationAsync(int id, UpdateNotificationDto request, CancellationToken cancellationToken = default);
         Task DeleteNotificationAsync(int id, CancellationToken cancellationToken = default);
+        Task CreateBroadcastSystemNotificationsAsync(BroadcastNotificationDto request, CancellationToken cancellationToken = default);
     }
 }

@@ -65,6 +65,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         /// Retrieves paginated system notifications for Admin.
         /// </summary>
         [HttpGet("admin")]
+        [Authorize(Roles = "Admin")]
         [SwaggerOperation(Summary = "Get All System Notifications", Description = "Admin endpoint to retrieve all notifications in the system.")]
         [SwaggerResponse(200, "Successfully retrieved notifications")]
         public async Task<IActionResult> GetAllNotifications([FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 20, CancellationToken cancellationToken = default)
@@ -77,6 +78,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         /// Retrieves a specific notification by ID (Admin).
         /// </summary>
         [HttpGet("admin/{id}")]
+        [Authorize(Roles = "Admin")]
         [SwaggerOperation(Summary = "Get Notification By ID", Description = "Admin endpoint to retrieve a specific notification.")]
         [SwaggerResponse(200, "Successfully retrieved notification", typeof(NotificationDto))]
         [SwaggerResponse(404, "Notification not found")]
@@ -90,6 +92,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         /// Creates a new system notification (Admin).
         /// </summary>
         [HttpPost("admin")]
+        [Authorize(Roles = "Admin")]
         [SwaggerOperation(Summary = "Create System Notification", Description = "Admin endpoint to dispatch a direct system notification to a user.")]
         [SwaggerResponse(200, "Notification created successfully", typeof(NotificationDto))]
         public async Task<IActionResult> CreateNotification([FromBody] CreateSystemNotificationDto request, CancellationToken cancellationToken = default)
@@ -102,6 +105,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         /// Updates a notification (Admin).
         /// </summary>
         [HttpPut("admin/{id}")]
+        [Authorize(Roles = "Admin")]
         [SwaggerOperation(Summary = "Update Notification", Description = "Admin endpoint to override notification details.")]
         [SwaggerResponse(200, "Notification updated successfully", typeof(NotificationDto))]
         [SwaggerResponse(404, "Notification not found")]
@@ -115,6 +119,7 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         /// Deletes a notification (Admin).
         /// </summary>
         [HttpDelete("admin/{id}")]
+        [Authorize(Roles = "Admin")]
         [SwaggerOperation(Summary = "Delete Notification", Description = "Admin endpoint to hard-delete a notification from the system.")]
         [SwaggerResponse(200, "Notification deleted successfully")]
         [SwaggerResponse(404, "Notification not found")]
@@ -122,6 +127,19 @@ namespace FPTU.Capstone.AMKCollective.Api.Controllers
         {
             await _notificationService.DeleteNotificationAsync(id, cancellationToken);
             return SuccessResponse(new { Id = id }, "Notification deleted successfully");
+        }
+
+        /// <summary>
+        /// Broadcasts a system notification to all users (Admin).
+        /// </summary>
+        [HttpPost("admin/broadcast")]
+        [Authorize(Roles = "Admin")]
+        [SwaggerOperation(Summary = "Broadcast System Notification", Description = "Admin endpoint to send a system notification to all users.")]
+        [SwaggerResponse(200, "Broadcast sent successfully")]
+        public async Task<IActionResult> BroadcastNotification([FromBody] BroadcastNotificationDto request, CancellationToken cancellationToken = default)
+        {
+            await _notificationService.CreateBroadcastSystemNotificationsAsync(request, cancellationToken);
+            return SuccessResponse(new { }, "Broadcast sent successfully");
         }
     }
 }

@@ -35,5 +35,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         /// Returns the number of deleted users.
         /// </summary>
         Task<int> DeleteUnverifiedAccountsOlderThanAsync(DateTime thresholdUtc, CancellationToken token = default);
+
+        Task<IEnumerable<Guid>> GetAllUserIdsAsync(CancellationToken cancellationToken = default);
     }
 }

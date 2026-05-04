@@ -1,9 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace FPTU.Capstone.AMKCollective.Application.DTOs.Payment
 {
@@ -13,7 +9,9 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.Payment
         [Range(10000, double.MaxValue, ErrorMessage = "Minimum deposit amount is 10,000 VND")]
         public decimal Amount { get; set; }
 
-        // Có thể thêm ReturnUrl nếu muốn redirect về trang cụ thể sau khi nạp
+        /// <summary>Phương thức thanh toán: CreditCard (Stripe) hoặc VnPay. Mặc định là CreditCard.</summary>
+        public PaymentMethod Method { get; set; } = PaymentMethod.CreditCard;
+
         public string? SuccessUrl { get; set; }
         public string? CancelUrl { get; set; }
     }

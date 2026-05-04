@@ -52,7 +52,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Id = notification.Id,
                 Title = notification.Title,
                 Message = notification.Message,
-                ActorId = notification.ActorId ?? Guid.Empty,
+                ActorId = notification.ActorId,
                 Type = notification.Type.ToString(),
                 ReferenceId = notification.ReferenceId,
                 ReferenceType = notification.ReferenceType,
@@ -109,7 +109,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Id = notification.Id,
                 Title = notification.Title,
                 Message = notification.Message,
-                ActorId = notification.ActorId ?? Guid.Empty,
+                ActorId = notification.ActorId,
                 Type = notification.Type.ToString(),
                 ReferenceId = notification.ReferenceId,
                 ReferenceType = notification.ReferenceType,
@@ -194,7 +194,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Id = n.Id,
                 Title = n.Title,
                 Message = n.Message,
-                ActorId = n.ActorId ?? Guid.Empty,
+                ActorId = n.ActorId,
                 Type = n.Type.ToString(),
                 ReferenceId = n.ReferenceId,
                 ReferenceType = n.ReferenceType,
@@ -219,7 +219,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Id = n.Id,
                 Title = n.Title,
                 Message = n.Message,
-                ActorId = n.ActorId ?? Guid.Empty,
+                ActorId = n.ActorId,
                 Type = n.Type.ToString(),
                 ReferenceId = n.ReferenceId,
                 ReferenceType = n.ReferenceType,
@@ -239,7 +239,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Id = n.Id,
                 Title = n.Title,
                 Message = n.Message,
-                ActorId = n.ActorId ?? Guid.Empty,
+                ActorId = n.ActorId,
                 Type = n.Type.ToString(),
                 ReferenceId = n.ReferenceId,
                 ReferenceType = n.ReferenceType,
@@ -251,10 +251,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<NotificationDto> CreateSystemNotificationAsync(CreateSystemNotificationDto request, CancellationToken cancellationToken = default)
         {
+            var user = await _unitOfWork.Users.GetByIdAsync(request.UserId);
+            if (user == null)
+                throw new KeyNotFoundException($"User {request.UserId} not found.");
+
             var notification = new Notification
             {
                 UserId = request.UserId,
-                ActorId = Guid.Empty, // System actor
+                ActorId = null,
                 Title = request.Title,
                 Message = request.Message,
                 Type = FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType.System,
@@ -268,6 +272,21 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Notifications.AddAsync(notification, cancellationToken);
             await _unitOfWork.CommitAsync();
 
+            var dto = new NotificationDto
+            {
+                Id = notification.Id,
+                Title = notification.Title,
+                Message = notification.Message,
+                ActorId = null,
+                Type = notification.Type.ToString(),
+                ReferenceId = notification.ReferenceId,
+                ReferenceType = notification.ReferenceType,
+                RedirectUrl = notification.RedirectUrl,
+                IsRead = notification.IsRead,
+                CreatedAt = notification.CreatedAt
+            };
+            await _publisher.PublishNotificationAsync(request.UserId, dto, cancellationToken);
+
             return await GetNotificationByIdAsync(notification.Id, cancellationToken);
         }
 
@@ -278,7 +297,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (request.Title != null) notification.Title = request.Title;
             if (request.Message != null) notification.Message = request.Message;
-            if (request.IsRead.HasValue) notification.IsRead = request.IsRead.Value;
 
             _unitOfWork.Notifications.Update(notification);
             await _unitOfWork.CommitAsync();
@@ -293,6 +311,36 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             _unitOfWork.Notifications.Remove(notification);
             await _unitOfWork.CommitAsync();
+        }
+
+        public async Task CreateBroadcastSystemNotificationsAsync(BroadcastNotificationDto request, CancellationToken cancellationToken = default)
+        {
+            var userIds = await _unitOfWork.Users.GetAllUserIdsAsync(cancellationToken);
+            var userIdsList = userIds.ToList();
+            if (!userIdsList.Any()) return;
+
+            const int batchSize = 500;
+            var now = DateTime.UtcNow;
+
+            for (int i = 0; i < userIdsList.Count; i += batchSize)
+            {
+                var batch = userIdsList.Skip(i).Take(batchSize).ToList();
+                var notifications = batch.Select(uid => new Notification
+                {
+                    UserId = uid,
+                    ActorId = null,
+                    Title = request.Title,
+                    Message = request.Message,
+                    Type = FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType.System,
+                    RedirectUrl = request.RedirectUrl,
+                    IsRead = false,
+                    CreatedAt = now
+                }).ToList();
+
+                await _unitOfWork.Notifications.AddRangeAsync(notifications, cancellationToken);
+                await _unitOfWork.CommitAsync();
+                _unitOfWork.ClearChangeTracker();
+            }
         }
     }
 }
