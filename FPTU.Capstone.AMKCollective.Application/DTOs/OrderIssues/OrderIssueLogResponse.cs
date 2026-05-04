@@ -16,6 +16,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.OrderIssues
         public string? ActorRoleName { get; set; }
         public OrderIssueAction ActionType { get; set; }
         public string? ActionName { get; set; }
+        public string? EvidenceUrl { get; set; }
         public string Comment { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
     }
