@@ -341,6 +341,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 await _unitOfWork.CommitAsync();
                 _unitOfWork.ClearChangeTracker();
             }
+
+            var broadcastDto = new NotificationDto
+            {
+                Title = request.Title,
+                Message = request.Message,
+                Type = FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType.System.ToString(),
+                RedirectUrl = request.RedirectUrl,
+                IsRead = false,
+                CreatedAt = now
+            };
+            await _publisher.PublishBroadcastAsync(broadcastDto, cancellationToken);
         }
     }
 }

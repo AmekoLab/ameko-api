@@ -9,6 +9,7 @@ namespace FPTU.Capstone.AMKCollective.Domain.Enums
         OrderCreated = 4,
         OrderStatusUpdated = 5,
         Warranty = 6,
-        Product = 7
+        Product = 7,
+        Refund = 8
     }
 }
