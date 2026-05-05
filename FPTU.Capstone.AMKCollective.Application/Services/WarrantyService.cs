@@ -918,6 +918,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 ActionType = l.Action,
                 ActionName = l.Action.ToString(),
                 Comment = l.Comment ?? string.Empty,
+                EvidenceUrl = l.EvidenceUrl ?? string.Empty,
                 CreatedAt = l.CreatedAt.ConvertToLocalTime()
             }).OrderByDescending(l => l.CreatedAt);
         }
