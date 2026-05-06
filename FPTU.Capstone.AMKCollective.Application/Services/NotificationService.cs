@@ -80,12 +80,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
         }
 
-        public async Task CreateNotificationAsync(Guid receiverId, Guid actorId, FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType type, string referenceId, string referenceType, string? redirectUrl, CancellationToken cancellationToken = default)
+        public async Task CreateNotificationAsync(Guid receiverId, Guid actorId, FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType type, string referenceId, string referenceType, string? redirectUrl, string? title = null, string? message = null, CancellationToken cancellationToken = default)
         {
             var timeWindow = DateTime.UtcNow.AddSeconds(-10);
-            
+
             bool isSpam = await _unitOfWork.Notifications.IsSpamAsync(receiverId, actorId, type, referenceId, referenceType, timeWindow, cancellationToken);
-                    
+
             if (isSpam) return;
 
             var notification = new Notification
@@ -96,7 +96,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 ReferenceId = referenceId,
                 ReferenceType = referenceType,
                 RedirectUrl = redirectUrl,
-                Title = "New Notification",
+                Title = title ?? "Thông báo mới",
+                Message = message,
                 IsRead = false
             };
 
@@ -120,7 +121,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _publisher.PublishNotificationAsync(receiverId, dto, cancellationToken);
         }
 
-        public async Task CreateBulkNotificationsAsync(IEnumerable<Guid> receiverIds, Guid actorId, FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType type, string referenceId, string referenceType, string? redirectUrl, CancellationToken cancellationToken = default)
+        public async Task CreateBulkNotificationsAsync(IEnumerable<Guid> receiverIds, Guid actorId, FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType type, string referenceId, string referenceType, string? redirectUrl, string? title = null, string? message = null, CancellationToken cancellationToken = default)
         {
             var receiversList = receiverIds.ToList();
             const int batchSize = 500;
@@ -136,7 +137,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     ReferenceId = referenceId,
                     ReferenceType = referenceType,
                     RedirectUrl = redirectUrl,
-                    Title = "New Notification",
+                    Title = title ?? "Thông báo mới",
+                    Message = message,
                     IsRead = false
                 }).ToList();
 

@@ -31,7 +31,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Include(ap => ap.ProductAssembledDetails)
                     .ThenInclude(pad => pad.Component)
                         .ThenInclude(m => m.Shop)
-                .Where(ap => !ap.IsDeleted);
+                .Where(ap => !ap.IsDeleted && _context.ShopProfiles.Any(s => s.UserId == ap.CreatedBy && s.IsActive));
 
             if (!string.IsNullOrWhiteSpace(request.SearchTerm))
                 query = query.Where(ap => ap.Name.ToLower().Contains(request.SearchTerm.ToLower()));
@@ -84,7 +84,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Include(ap => ap.ProductAssembledDetails)
                     .ThenInclude(pad => pad.Component)
                         .ThenInclude(m => m.Shop)
-                .Where(ap => !ap.IsDeleted);
+                .Where(ap => !ap.IsDeleted && _context.ShopProfiles.Any(s => s.UserId == ap.CreatedBy && s.IsActive));
 
             var totalCount = await query.CountAsync();
             var items = await query

@@ -28,9 +28,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IVnPayService _vnPayService;
         private readonly WalletSettings _walletSettings;
         private readonly FrontendUrls _frontendUrls;
+        private readonly INotificationService _notificationService;
 
         public WalletService (IUnitOfWork unitOfWork, IMapper mapper, //UserManager<User> userManager,
-            IPasswordHasher<User> passwordHasher, IEmailService emailService, IPaymentService paymentService, IVnPayService vnPayService, IOptions<WalletSettings> walletOptions, IOptions<FrontendUrls> urlOptions)
+            IPasswordHasher<User> passwordHasher, IEmailService emailService, IPaymentService paymentService, IVnPayService vnPayService, IOptions<WalletSettings> walletOptions, IOptions<FrontendUrls> urlOptions,
+            INotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
@@ -41,6 +43,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _vnPayService = vnPayService;
             _walletSettings = walletOptions.Value;
             _frontendUrls = urlOptions.Value;
+            _notificationService = notificationService;
         }
 
         public async Task<WalletResponse?> GetWalletByUserIdAsync(Guid userId)
@@ -484,7 +487,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _unitOfWork.WithdrawalRequests.Update(withdrawalReq);
             await _unitOfWork.CommitAsync();
 
-            // TODO: Gửi email thông báo cho Shop là tiền đã về tài khoản ngân hàng hoặc notification idk
+            await _notificationService.SendNotificationAsync(
+                withdrawalReq.UserId,
+                "Yêu cầu rút tiền đã được duyệt",
+                $"Yêu cầu rút {withdrawalReq.Amount:N0} ₫ đã được duyệt. Tiền sẽ về tài khoản ngân hàng của bạn.",
+                nameof(FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType.WalletTransaction),
+                paymentId.ToString(),
+                "WithdrawalRequest");
         }
 
         public async Task RejectWithdrawalAsync(Guid adminId, Guid paymentId, WithdrawalActionRequest request)
@@ -545,7 +554,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _unitOfWork.WithdrawalRequests.Update(withdrawalReq);
             await _unitOfWork.CommitAsync();
 
-            // TODO: Gửi email thông báo cho Shop lý do bị từ chối hoặc notification idk
+            await _notificationService.SendNotificationAsync(
+                withdrawalReq.UserId,
+                "Yêu cầu rút tiền bị từ chối",
+                $"Yêu cầu rút {withdrawalReq.Amount:N0} ₫ bị từ chối. Tiền đã được hoàn lại vào ví. Lý do: {request.Reason}",
+                nameof(FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType.WalletTransaction),
+                paymentId.ToString(),
+                "WithdrawalRequest");
         }
 
         public async Task AdjustBalanceAsync(Guid adminId, AdjustBalanceRequest request)
@@ -858,6 +873,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.Transactions.AddAsync(transaction);
             await _unitOfWork.CommitAsync();
+
+            await _notificationService.SendNotificationAsync(
+                userId,
+                "Nạp tiền thành công",
+                $"Ví của bạn vừa được cộng {amount:N0} ₫ qua VNPay.",
+                nameof(FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType.WalletTransaction),
+                paymentId.ToString(),
+                "Payment");
         }
 
         public async Task<WalletStatisticsResponse> GetWalletStatisticsAsync(Guid userId)

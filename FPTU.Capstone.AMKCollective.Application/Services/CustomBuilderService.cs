@@ -109,12 +109,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // Lưu vào Database
             await _unitOfWork.KitDesignOptions.CreateAsync(entity);
             await _unitOfWork.CommitAsync();
+
+            await ReevaluateBuilderReadinessAsync(entity.BaseKitId);
         }
 
         public async Task DeleteOptionAsync(Guid id)
         {
+            var option = await _unitOfWork.KitDesignOptions.GetByIdAsync(id);
+            if (option == null) throw new KeyNotFoundException("Kit design option not found.");
+
             await _unitOfWork.KitDesignOptions.DeleteAsync(id);
             await _unitOfWork.CommitAsync();
+
+            await ReevaluateBuilderReadinessAsync(option.BaseKitId);
         }
 
         public async Task BulkCreateOptionsAsync(List<CreateKitOptionRequest> requests)
@@ -140,6 +147,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             {
                 await _unitOfWork.KitDesignOptions.CreateBatchAsync(entitiesToInsert);
                 await _unitOfWork.CommitAsync();
+
+                await ReevaluateBuilderReadinessAsync(entitiesToInsert.First().BaseKitId);
             }
         }
 
@@ -189,6 +198,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 await _unitOfWork.KitDesignOptions.CreateBatchAsync(newOptions);
                 await _unitOfWork.CommitAsync();
             });
+
+            await ReevaluateBuilderReadinessAsync(baseKitId);
         }
 
         public async Task<string> UploadLayerImageAsync(IFormFile file)
@@ -204,6 +215,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.KitDesignOptions.DeleteByBaseKitAsync(baseKitId);
             await _unitOfWork.CommitAsync();
+
+            await _unitOfWork.Models.UpdateIsBuilderReadyAsync(baseKitId, false);
         }
         public async Task<bool> IsMatchAsync(Guid baseKitId, Guid componentId)
         {
@@ -219,13 +232,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var baseKit = await _unitOfWork.Models.GetByIdAsync(request.BaseKitId);
             if (baseKit == null) throw new KeyNotFoundException("Base Kit not found");
 
+            if (!baseKit.IsBuilderReady)
+                throw new InvalidOperationException("Kit này chưa sẵn sàng để build. Shop đang cấu hình linh kiện.");
+
             //  Lấy workflow động từ JSON
             var workflow = GetWorkflowFromKit(baseKit);
             var firstStep = workflow.FirstOrDefault();
 
             if (firstStep == null)
             {
-                // Fallback: nếu không tìm thấy bước nào, báo lỗi 
                 throw new InvalidOperationException("Kit configuration is invalid (no steps defined in Specifications).");
             }
             // ---------------------------------------------
@@ -1097,6 +1112,26 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
             catch { }
             return 1; 
+        }
+
+        /// Tính lại IsBuilderReady sau mỗi lần thay đổi KitDesignOption.
+        /// Ready = tất cả bước trong workflow đều có ít nhất 1 option.
+        private async Task ReevaluateBuilderReadinessAsync(Guid baseKitId)
+        {
+            var kit = await _unitOfWork.Models.GetByIdAsync(baseKitId);
+            if (kit == null) return;
+
+            var workflowSteps = GetWorkflowFromKit(kit)
+                .Select(s => s.Step)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var configuredSteps = (await _unitOfWork.KitDesignOptions.GetOptionsByBaseKitAsync(baseKitId))
+                .Select(o => o.StepName)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            bool isReady = workflowSteps.Count > 0 && workflowSteps.All(s => configuredSteps.Contains(s));
+
+            await _unitOfWork.Models.UpdateIsBuilderReadyAsync(baseKitId, isReady);
         }
 
         private List<KitWorkflowStep> GetWorkflowFromKit(Model baseKit)

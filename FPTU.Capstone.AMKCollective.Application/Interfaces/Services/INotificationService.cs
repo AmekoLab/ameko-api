@@ -13,8 +13,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task MarkAllAsReadAsync(Guid userId);
 
         // Social Commerce Hardened Methods
-        Task CreateNotificationAsync(Guid receiverId, Guid actorId, FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType type, string referenceId, string referenceType, string? redirectUrl, CancellationToken cancellationToken = default);
-        Task CreateBulkNotificationsAsync(IEnumerable<Guid> receiverIds, Guid actorId, FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType type, string referenceId, string referenceType, string? redirectUrl, CancellationToken cancellationToken = default);
+        Task CreateNotificationAsync(Guid receiverId, Guid actorId, FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType type, string referenceId, string referenceType, string? redirectUrl, string? title = null, string? message = null, CancellationToken cancellationToken = default);
+        Task CreateBulkNotificationsAsync(IEnumerable<Guid> receiverIds, Guid actorId, FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType type, string referenceId, string referenceType, string? redirectUrl, string? title = null, string? message = null, CancellationToken cancellationToken = default);
         Task<CursorPagedResult<NotificationDto>> GetUserNotificationsAsync(Guid userId, string? referenceType, string? type, string? cursor, int pageSize, CancellationToken cancellationToken = default);
         Task<int> GetUnreadCountAsync(Guid userId, CancellationToken cancellationToken = default);
         Task MarkAsReadSecureAsync(int notificationId, Guid userId, CancellationToken cancellationToken = default);

@@ -6,6 +6,8 @@ using FPTU.Capstone.AMKCollective.Application.Interfaces.AI;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Services;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,13 +23,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IMapper _mapper;
         private readonly IStorageService _storage;
         private readonly IAIService _aiService;
+        private readonly IMemoryCache _cache;
+        private readonly IServiceScopeFactory _scopeFactory;
 
-        public ProductService(IUnitOfWork unitOfWork, IMapper mapper, IStorageService storage, IAIService aiService)
+        public ProductService(IUnitOfWork unitOfWork, IMapper mapper, IStorageService storage, IAIService aiService, IMemoryCache cache, IServiceScopeFactory scopeFactory)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _storage = storage;
             _aiService = aiService;
+            _cache = cache;
+            _scopeFactory = scopeFactory;
         }
 
         public async Task<(IEnumerable<PartResponse> Items, int TotalCount)> GetListAsync(GetPartsFilterRequest query, Guid? userId = null)
@@ -65,23 +71,53 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<PartResponse> CreateAsync(Guid userId, CreateUpdatePartRequest request)
         {
-            // 1. Map dữ liệu cơ bản
+            // Resolve shopId first (fast) so we can build the dedup cache key before the slow image uploads
+            var shopId = await GetShopIdFromUserId(userId);
+
+            // Dedup: same shop + same name within 10 min → trả kết quả cũ, không tạo duplicate.
+            // Xử lý trường hợp mạng yếu: response không về client dù server đã commit thành công.
+            var dedupKey = $"create-part:{shopId}:{request.Name?.Trim().ToLowerInvariant()}";
+            if (_cache.TryGetValue(dedupKey, out PartResponse? cached) && cached != null)
+                return cached;
+
+            // 1. Buffer ảnh vào memory TRƯỚC — IFormFile stream chỉ hợp lệ trong request scope.
+            // Phải đọc hết vào byte[] trước khi fire background task.
+            byte[]? thumbBytes = null;
+            string? thumbFileName = null;
+            byte[]? layerBytes = null;
+            string? layerFileName = null;
+
+            if (request.ThumbnailImage != null)
+            {
+                using var ms = new MemoryStream();
+                await request.ThumbnailImage.OpenReadStream().CopyToAsync(ms);
+                thumbBytes = ms.ToArray();
+                thumbFileName = request.ThumbnailImage.FileName;
+            }
+
+            if (request.LayerImage != null)
+            {
+                using var ms = new MemoryStream();
+                await request.LayerImage.OpenReadStream().CopyToAsync(ms);
+                layerBytes = ms.ToArray();
+                layerFileName = request.LayerImage.FileName;
+            }
+
+            // 2. Map entity và gán dữ liệu cơ bản
             var entity = _mapper.Map<Model>(request);
 
-            entity.ShopId = await GetShopIdFromUserId(userId);
+            entity.ShopId = shopId;
             entity.Slug = GenerateSlug(entity.Name);
             entity.IsActive = true;
 
-            // Gán trực tiếp để tránh trường hợp AutoMapper bỏ qua hoặc map đè
             if (!string.IsNullOrEmpty(request.Specifications))
             {
                 entity.Specifications = request.Specifications;
             }
 
-            // 2. Logic Fallback (Chỉ chạy khi FE không gửi JSON Specifications)
+            // Logic Fallback (Chỉ chạy khi FE không gửi JSON Specifications)
             if (string.IsNullOrEmpty(entity.Specifications))
             {
-                // Kiểm tra logic switch/stabilizer 
                 bool hasSwitch = request.RecipeSwitchCount.HasValue && request.RecipeSwitchCount > 0;
                 bool hasStab = request.RecipeStabilizerCount.HasValue && request.RecipeStabilizerCount > 0;
 
@@ -91,45 +127,48 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     if (hasSwitch) recipeDict.Add("switch", request.RecipeSwitchCount!.Value);
                     if (hasStab) recipeDict.Add("stabilizer", request.RecipeStabilizerCount!.Value);
 
-                    var specData = new { recipe = recipeDict };
-                    entity.Specifications = JsonSerializer.Serialize(specData);
+                    entity.Specifications = JsonSerializer.Serialize(new { recipe = recipeDict });
                 }
             }
-            // ----------------------------------------
 
-            // 3. Upload ảnh (Giữ nguyên)
-            if (request.ThumbnailImage != null)
-            {
-                entity.ThumbnailURL = await _storage.UploadAsync(
-                    request.ThumbnailImage.OpenReadStream(),
-                    request.ThumbnailImage.FileName,
-                    "products");
-            }
-
-            if (request.LayerImage != null)
-            {
-                entity.DefaultLayerImageUrl = await _storage.UploadAsync(
-                    request.LayerImage.OpenReadStream(),
-                    request.LayerImage.FileName,
-                    "layers");
-            }
-
+            // 3. Lưu entity vào DB NGAY (không có ảnh) — trả response nhanh, tránh timeout khi mạng yếu
             await _unitOfWork.Models.CreateAsync(entity);
             await _unitOfWork.CommitAsync();
 
-            try
-            {
-                await _aiService.SyncPartAsync(entity);
-            }
-            catch (Exception ex)
-            {
-                // Non-blocking sync failure
-                // In production, maybe queue this or log it properly
-            }
-
-            // [FIX] Map response and manually assign Specifications to ensure it is returned
             var response = _mapper.Map<PartResponse>(entity);
             response.Specifications = entity.Specifications;
+            _cache.Set(dedupKey, response, TimeSpan.FromMinutes(10));
+
+            // 4. Upload ảnh trong background — không block response
+            // IFormFile đã được buffer vào byte[] ở bước 1, an toàn khi dùng sau khi request kết thúc.
+            if (thumbBytes != null || layerBytes != null)
+            {
+                var entityId = entity.Id;
+                _ = Task.Run(async () =>
+                {
+                    await using var scope = _scopeFactory.CreateAsyncScope();
+                    var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+                    var storage = scope.ServiceProvider.GetRequiredService<IStorageService>();
+
+                    try
+                    {
+                        var part = await unitOfWork.Models.GetByIdAsync(entityId);
+                        if (part == null) return;
+
+                        if (thumbBytes != null)
+                            part.ThumbnailURL = await storage.UploadAsync(new MemoryStream(thumbBytes), thumbFileName!, "products");
+
+                        if (layerBytes != null)
+                            part.DefaultLayerImageUrl = await storage.UploadAsync(new MemoryStream(layerBytes), layerFileName!, "layers");
+
+                        await unitOfWork.Models.UpdateAsync(part);
+                        await unitOfWork.CommitAsync();
+                    }
+                    catch { /* upload failure is non-critical; part already exists in DB */ }
+                });
+            }
+
+            try { await _aiService.SyncPartAsync(entity); } catch { }
 
             return response;
         }

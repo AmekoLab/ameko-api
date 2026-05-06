@@ -43,14 +43,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 }
             }
 
-            return _mapper.Map<OrderIssueResponse>(issue).ConvertDatesToLocal();
+            // Re-fetch with full includes so CancelledItemsAmount mapping has OrderItems data
+            var fullIssue = await _unitOfWork.OrderIssues.GetByIdAsync(issue.Id, token);
+            return fullIssue != null ? _mapper.Map<OrderIssueResponse>(fullIssue).ConvertDatesToLocal() : null;
         }
 
         // 2. Khách hàng lấy danh sách khiếu nại của mình
         public async Task<PaginatedResult<OrderIssueResponse>> GetMyIssuesAsync(Guid userId, OrderIssueFilterRequest request, CancellationToken token = default)
         {
+            var types = request.Type.HasValue ? new[] { request.Type.Value } : (IEnumerable<OrderIssueType>?)null;
             var (items, totalCount) = await _unitOfWork.OrderIssues.GetUserIssuesPaginatedAsync(
-                userId, request.Status, request.PageNumber, request.PageSize);
+                userId, request.Status, request.PageNumber, request.PageSize, token, types);
 
             var mappedItems = _mapper.Map<List<OrderIssueResponse>>(items);
             mappedItems.ConvertDatesToLocal();
@@ -64,11 +67,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var shop = await _unitOfWork.Shops.GetByUserIdAsync(userId);
             if (shop == null)
             {
-                // Quăng lỗi để Controller bắt
                 throw new UnauthorizedAccessException("You do not have a registered shop.");
             }
+            var types = request.Type.HasValue ? new[] { request.Type.Value } : (IEnumerable<OrderIssueType>?)null;
             var (items, totalCount) = await _unitOfWork.OrderIssues.GetShopIssuesPaginatedAsync(
-                shop.Id, request.Status, request.PageNumber, request.PageSize);
+                shop.Id, request.Status, request.PageNumber, request.PageSize, token, types);
 
             var mappedItems = _mapper.Map<List<OrderIssueResponse>>(items);
             mappedItems.ConvertDatesToLocal();

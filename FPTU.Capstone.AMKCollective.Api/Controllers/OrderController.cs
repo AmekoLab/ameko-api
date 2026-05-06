@@ -439,7 +439,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 if (shop == null)
                     return ErrorResponse<object>("This account does not own a shop.");
 
-                await _orderService.CancelOrderByShopAsync(shop.Id, orderId, request.Reason);
+                await _orderService.CancelOrderByShopAsync(shop.Id, orderId, request.CancelReason);
                 return SuccessResponse("Order cancelled successfully.");
             }
             catch (KeyNotFoundException ex)

@@ -52,7 +52,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
             if (queryParams.RequireBuilderConfig == true)
             {
-                query = query.Where(x => x.PartType == "kit" && x.AsBaseKitOptions.Any());
+                query = query.Where(x => x.IsBuilderReady);
             }
 
             // Filter addon-eligible parts (keycap artisan, special switches, etc.)
@@ -146,6 +146,16 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Where(x => x.Id == partId && !x.IsDeleted)
                 .ExecuteUpdateAsync(
                     s => s.SetProperty(x => x.Embedding, embedding),
+                    cancellationToken);
+        }
+
+        public async Task UpdateIsBuilderReadyAsync(Guid id, bool isReady, CancellationToken cancellationToken = default)
+        {
+            await _context.Models
+                .Where(x => x.Id == id && !x.IsDeleted)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.IsBuilderReady, isReady)
+                    .SetProperty(x => x.UpdatedAt, DateTime.UtcNow),
                     cancellationToken);
         }
 

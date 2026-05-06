@@ -21,6 +21,9 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         /// True = part này có thể dùng để custom per-key trên bàn phím ảo (add-on)
         public bool IsAddonEligible { get; set; } = false;
 
+        /// True = tất cả bước trong workflow đều đã có ít nhất 1 KitDesignOption. Được tự động tính lại bởi service.
+        public bool IsBuilderReady { get; set; } = false;
+
         /// <summary>
         /// JSON-serialized vector embedding for semantic search.
         /// </summary>

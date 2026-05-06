@@ -19,6 +19,8 @@ public class NotificationDispatchItem
     public string ReferenceId { get; set; } = string.Empty;
     public string ReferenceType { get; set; } = string.Empty;
     public string? RedirectUrl { get; set; }
+    public string? Title { get; set; }
+    public string? Message { get; set; }
 }
 
 public interface INotificationQueue
@@ -81,7 +83,7 @@ public class NotificationBackgroundWorker : BackgroundService
                 if (item.ReceiverId.HasValue)
                 {
                     await notificationService.CreateNotificationAsync(
-                        item.ReceiverId.Value, item.ActorId, item.Type, item.ReferenceId, item.ReferenceType, item.RedirectUrl, stoppingToken);
+                        item.ReceiverId.Value, item.ActorId, item.Type, item.ReferenceId, item.ReferenceType, item.RedirectUrl, item.Title, item.Message, stoppingToken);
                 }
                 else
                 {
@@ -91,7 +93,7 @@ public class NotificationBackgroundWorker : BackgroundService
                     if (followerIds.Any())
                     {
                         await notificationService.CreateBulkNotificationsAsync(
-                            followerIds, item.ActorId, item.Type, item.ReferenceId, item.ReferenceType, item.RedirectUrl, stoppingToken);
+                            followerIds, item.ActorId, item.Type, item.ReferenceId, item.ReferenceType, item.RedirectUrl, item.Title, item.Message, stoppingToken);
                     }
                 }
 

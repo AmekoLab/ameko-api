@@ -541,16 +541,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Mappings
         internal static decimal GetCancelledAmount(OrderIssue src)
         {
             if (src.Order == null) return 0;
-            if (string.IsNullOrEmpty(src.CancelledItemIds)) return src.Order.TotalAmount;
+            // Full cancel: sum all items' FinalPrice + ShippingFee.
+            // TotalAmount is zeroed after cancellation so we can't rely on it.
+            if (string.IsNullOrEmpty(src.CancelledItemIds))
+                return src.Order.OrderItems.Sum(oi => oi.FinalPrice) + src.Order.ShippingFee;
             try
             {
                 var ids = JsonSerializer.Deserialize<List<Guid>>(src.CancelledItemIds);
-                if (ids == null || ids.Count == 0) return src.Order.TotalAmount;
+                if (ids == null || ids.Count == 0)
+                    return src.Order.OrderItems.Sum(oi => oi.FinalPrice) + src.Order.ShippingFee;
                 return src.Order.OrderItems
                     .Where(oi => ids.Contains(oi.Id))
                     .Sum(oi => oi.FinalPrice);
             }
-            catch { return src.Order.TotalAmount; }
+            catch { return src.Order.OrderItems.Sum(oi => oi.FinalPrice) + src.Order.ShippingFee; }
         }
 
         internal static int GetCancelledCount(OrderIssue src)
