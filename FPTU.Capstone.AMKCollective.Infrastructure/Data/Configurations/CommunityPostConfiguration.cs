@@ -17,7 +17,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
 
             builder.Property(cp => cp.Title)
                 .IsRequired()
-                .HasMaxLength(500);
+                .HasMaxLength(1000);
 
             // Relationships
             builder.HasOne(cp => cp.User)
