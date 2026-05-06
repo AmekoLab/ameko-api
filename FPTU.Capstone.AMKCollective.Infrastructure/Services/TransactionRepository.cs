@@ -146,6 +146,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .Include(t => t.RelatedOrder)
                 .Where(t => t.WalletId == walletId && t.CreatedAt >= fromUtc && t.CreatedAt < toUtc)
                 .OrderBy(t => t.CreatedAt)
+                .OrderByDescending(t => t.CreatedAt)
                 .ToListAsync();
         }
 
