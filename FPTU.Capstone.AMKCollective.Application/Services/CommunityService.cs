@@ -181,7 +181,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Type = FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType.PostCreated,
                 ReferenceId = post.Id.ToString(),
                 ReferenceType = NotificationReferenceHelper.TypePost,
-                RedirectUrl = $"/posts/{post.Id}"
+                Title = "Bài đăng mới",
+                Message = "Người bạn theo dõi vừa đăng một bài viết mới."
             };
             await _notificationQueue.QueueNotificationAsync(notificationItem);
 
@@ -297,10 +298,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     var notificationItem = new NotificationDispatchItem
                     {
                         ActorId = userId,
+                        ReceiverId = post.UserId,
                         Type = FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType.Reaction,
                         ReferenceId = postId.ToString(),
                         ReferenceType = NotificationReferenceHelper.TypePost,
-                        RedirectUrl = $"/posts/{postId}"
+                        Title = "Có người thả cảm xúc",
+                        Message = "Ai đó vừa thả cảm xúc vào bài viết của bạn."
                     };
                     await _notificationQueue.QueueNotificationAsync(notificationItem);
                 }
@@ -390,7 +393,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     Type = FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType.Comment,
                     ReferenceId = postId.ToString(),
                     ReferenceType = NotificationReferenceHelper.TypePost,
-                    RedirectUrl = $"/posts/{postId}"
+                    Title = "Bình luận mới",
+                    Message = "Ai đó vừa bình luận vào bài viết của bạn."
                 });
             }
 

@@ -816,9 +816,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
         }
 
+        private static readonly IEnumerable<OrderIssueType> _warrantyTypes = new[]
+        {
+            OrderIssueType.ReturnRequest,
+            OrderIssueType.WarrantyClaim
+        };
+
         public async Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetAllWarrantyIssuesAsync(OrderIssueStatus? status, int currentPage, int pageSize, CancellationToken ct = default)
         {
-            var (items, totalCount) = await _unitOfWork.OrderIssues.GetAllPagedAsync(status, currentPage, pageSize, ct);
+            var (items, totalCount) = await _unitOfWork.OrderIssues.GetAllPagedAsync(status, currentPage, pageSize, ct, _warrantyTypes);
             var mappedItems = items.Select(MapToResponse);
 
             return new FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>(
@@ -827,7 +833,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>> GetMyWarrantyIssuesAsync(Guid userId, OrderIssueStatus? status, int currentPage, int pageSize, CancellationToken ct = default)
         {
-            var (items, totalCount) = await _unitOfWork.OrderIssues.GetByUserIdPagedAsync(userId, status, currentPage, pageSize, ct);
+            var (items, totalCount) = await _unitOfWork.OrderIssues.GetByUserIdPagedAsync(userId, status, currentPage, pageSize, ct, _warrantyTypes);
             var mappedItems = items.Select(MapToResponse);
 
             return new FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>(
@@ -840,7 +846,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (shop == null)
                 throw new UnauthorizedAccessException("This account is not a Shop Owner.");
 
-            var (items, totalCount) = await _unitOfWork.OrderIssues.GetByShopIdPagedAsync(shop.Id, status, currentPage, pageSize, ct);
+            var (items, totalCount) = await _unitOfWork.OrderIssues.GetByShopIdPagedAsync(shop.Id, status, currentPage, pageSize, ct, _warrantyTypes);
             var mappedItems = items.Select(MapToResponse);
 
             return new FPTU.Capstone.AMKCollective.Application.DTOs.Common.PaginatedResult<WarrantyIssueResponse>(

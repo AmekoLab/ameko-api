@@ -112,6 +112,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 return (false, null, $"Quantity must be between 1 and {MaxCommissionQuantity}.");
             }
 
+            Guid? targetedShopUserId = null;
             if (requestDto.TargetedShopId.HasValue)
             {
                 var targetedShop = await _unitOfWork.Shops.GetByIdAsync(requestDto.TargetedShopId.Value);
@@ -119,6 +120,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 {
                     return (false, null, "You cannot create a commission request for your own shop.");
                 }
+                targetedShopUserId = targetedShop?.UserId;
             }
 
             var request = _mapper.Map<CommissionRequest>(requestDto);
@@ -172,6 +174,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.CommissionRequests.AddAsync(request);
             await _unitOfWork.CommitAsync();
+
+            if (request.Status == CommissionStatus.PendingTarget && targetedShopUserId.HasValue)
+            {
+                await _notificationService.SendNotificationAsync(
+                    targetedShopUserId.Value,
+                    "Bạn có yêu cầu commission mới",
+                    $"Một khách hàng đã gửi yêu cầu commission trực tiếp đến shop của bạn: \"{request.Title}\".",
+                    nameof(NotificationType.CommissionRequest),
+                    request.Id.ToString(),
+                    "CommissionRequest",
+                    actorId: userId);
+            }
 
             return (true, request.Id, string.Empty);
         }
@@ -302,6 +316,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommissionQuotes.AddAsync(quote);
             await _unitOfWork.CommitAsync();
 
+            await _notificationService.SendNotificationAsync(
+                request.UserId,
+                "Bạn nhận được báo giá mới",
+                $"Shop \"{shop.ShopName}\" đã gửi báo giá cho yêu cầu commission của bạn.",
+                nameof(NotificationType.QuoteReceived),
+                quote.Id.ToString(),
+                "CommissionQuote",
+                actorId: shopUserId);
+
             return (true, string.Empty);
         }
 
@@ -324,6 +347,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.CommissionRequests.UpdateAsync(request);
             await _unitOfWork.CommitAsync();
+
+            await _notificationService.SendNotificationAsync(
+                request.UserId,
+                "Yêu cầu commission bị từ chối",
+                $"Shop đã từ chối yêu cầu commission \"{request.Title}\". Bạn có thể chọn shop khác hoặc đăng lên chợ chung.",
+                nameof(NotificationType.CommissionRequest),
+                request.Id.ToString(),
+                "CommissionRequest",
+                actorId: shopUserId);
 
             return (true, string.Empty);
         }
@@ -454,8 +486,17 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CartItems.AddAsync(cartItem);
             await _unitOfWork.CommitAsync();
 
+            await _notificationService.SendNotificationAsync(
+                quotingShop.UserId,
+                "Báo giá của bạn được chấp thuận",
+                $"Khách hàng đã chấp thuận báo giá của bạn cho yêu cầu \"{request.Title}\". Đơn hàng đã được thêm vào giỏ hàng.",
+                nameof(NotificationType.QuoteStatusUpdated),
+                quoteId.ToString(),
+                "CommissionQuote",
+                actorId: userId);
+
             return (true, cart.Id, string.Empty);
-        }      
+        }
 
         public async Task<(bool Success, string ErrorMessage)> RejectQuoteAsync(Guid userId, Guid quoteId)
         {
@@ -497,6 +538,25 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                 await _unitOfWork.CommissionRequests.UpdateAsync(request);
                 await _unitOfWork.CommitAsync();
+
+                var autoShopUserId = quote.Shop?.UserId;
+                if (autoShopUserId == null)
+                {
+                    var autoShop = await _unitOfWork.Shops.GetByIdAsync(quote.ShopId);
+                    autoShopUserId = autoShop?.UserId;
+                }
+                if (autoShopUserId.HasValue)
+                {
+                    await _notificationService.SendNotificationAsync(
+                        autoShopUserId.Value,
+                        "Yêu cầu commission đã bị hủy",
+                        $"Khách hàng đã từ chối báo giá nhiều lần, yêu cầu \"{request.Title}\" đã bị hủy tự động.",
+                        nameof(NotificationType.QuoteStatusUpdated),
+                        quoteId.ToString(),
+                        "CommissionQuote",
+                        actorId: userId);
+                }
+
                 return (true, string.Empty);
             }
 
@@ -517,6 +577,25 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             await _unitOfWork.CommitAsync();
+
+            var rejectedShopUserId = quote.Shop?.UserId;
+            if (rejectedShopUserId == null)
+            {
+                var rejectedShop = await _unitOfWork.Shops.GetByIdAsync(quote.ShopId);
+                rejectedShopUserId = rejectedShop?.UserId;
+            }
+            if (rejectedShopUserId.HasValue)
+            {
+                await _notificationService.SendNotificationAsync(
+                    rejectedShopUserId.Value,
+                    "Báo giá của bạn bị từ chối",
+                    $"Khách hàng đã từ chối báo giá của bạn cho yêu cầu \"{request.Title}\".",
+                    nameof(NotificationType.QuoteStatusUpdated),
+                    quoteId.ToString(),
+                    "CommissionQuote",
+                    actorId: userId);
+            }
+
             return (true, string.Empty);
         }
 
@@ -550,6 +629,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.CommitAsync();
 
+            await _notificationService.SendNotificationAsync(
+                request.UserId,
+                "Báo giá đã bị thu hồi",
+                $"Shop đã thu hồi báo giá cho yêu cầu commission \"{request.Title}\".",
+                nameof(NotificationType.QuoteStatusUpdated),
+                quoteId.ToString(),
+                "CommissionQuote",
+                actorId: shopUserId);
+
             return (true, string.Empty);
         }
 
@@ -572,15 +660,32 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             request.Status = CommissionStatus.Canceled;
 
-            // Tùy chọn: Đổi trạng thái các Quote bên trong thành Rejected luôn
+            var shopsToNotify = new List<Guid>();
             foreach (var quote in request.Quotes)
             {
+                if (quote.Status == QuoteStatus.PendingUserDecision)
+                {
+                    var shopProfile = quote.Shop ?? await _unitOfWork.Shops.GetByIdAsync(quote.ShopId);
+                    if (shopProfile != null) shopsToNotify.Add(shopProfile.UserId);
+                }
                 quote.Status = QuoteStatus.Rejected;
                 await _unitOfWork.CommissionQuotes.UpdateAsync(quote);
             }
 
             await _unitOfWork.CommissionRequests.UpdateAsync(request);
             await _unitOfWork.CommitAsync();
+
+            foreach (var shopUserId in shopsToNotify)
+            {
+                await _notificationService.SendNotificationAsync(
+                    shopUserId,
+                    "Yêu cầu commission đã bị hủy",
+                    $"Khách hàng đã hủy yêu cầu commission \"{request.Title}\". Báo giá của bạn đã bị hủy.",
+                    nameof(NotificationType.CommissionRequest),
+                    requestId.ToString(),
+                    "CommissionRequest",
+                    actorId: userId);
+            }
 
             return (true, string.Empty);
         }

@@ -289,6 +289,20 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                     {
                         await walletService.AddPendingSalesToWalletAsync(shopUserId, orderId, amount, feeAmt);
                     }
+
+                    // Notify shop: đơn hàng mới
+                    var notificationService = scope.ServiceProvider.GetRequiredService<INotificationService>();
+                    foreach (var (shopUserId, orderId, _, _) in shopPendingSales)
+                    {
+                        await notificationService.SendNotificationAsync(
+                            shopUserId,
+                            "Đơn hàng mới",
+                            $"Bạn có đơn hàng mới #{orderId} cần xử lý.",
+                            nameof(FPTU.Capstone.AMKCollective.Domain.Enums.NotificationType.OrderCreated),
+                            orderId.ToString(),
+                            "Order",
+                            actorId: orderGroup.CustomerId);
+                    }
                 }
             }
             catch (Exception ex)

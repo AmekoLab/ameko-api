@@ -28,17 +28,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IAIService _aiService;
         private readonly ILogger<ShopService> _logger;
         private readonly ISearchHistoryQueue _searchQueue;
+        private readonly INotificationService _notificationService;
 
         public ShopService(
             IUnitOfWork unitOfWork,
             IStorageService storage,
             IMapper mapper,
             IUserService userService,
-            IWalletService walletService,  
+            IWalletService walletService,
             IEmailService emailService,
             IAIService aiService,
             ILogger<ShopService> logger,
-            ISearchHistoryQueue searchQueue) 
+            ISearchHistoryQueue searchQueue,
+            INotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _storage = storage;
@@ -49,6 +51,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _aiService = aiService;
             _logger = logger;
             _searchQueue = searchQueue;
+            _notificationService = notificationService;
         }
 
         public async Task<ShopResponse> GetShopPublicProfileAsync(Guid shopId)
@@ -330,6 +333,27 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
 
+            if (request.Status == ShopStatus.Active)
+            {
+                await _notificationService.SendNotificationAsync(
+                    shop.UserId,
+                    "Shop của bạn đã được duyệt",
+                    $"Chúc mừng! Shop \"{shop.ShopName}\" đã được duyệt và có thể bắt đầu hoạt động. Vui lòng nạp tối thiểu 2.000.000 ₫ vào ví để kích hoạt shop.",
+                    nameof(NotificationType.ShopStatusUpdated),
+                    shopId.ToString(),
+                    "Shop");
+            }
+            else
+            {
+                await _notificationService.SendNotificationAsync(
+                    shop.UserId,
+                    "Hồ sơ shop không được duyệt",
+                    $"Shop \"{shop.ShopName}\" chưa được duyệt." + (string.IsNullOrWhiteSpace(request.AdminNote) ? "" : $" Lý do: {request.AdminNote}"),
+                    nameof(NotificationType.ShopStatusUpdated),
+                    shopId.ToString(),
+                    "Shop");
+            }
+
             // Gửi email thông báo kết quả duyệt cho shop
             try
             {
@@ -446,6 +470,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             shop.IsActive = false;
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
+
+            await _notificationService.SendNotificationAsync(
+                shop.UserId,
+                "Shop của bạn đã bị cấm hoạt động",
+                $"Shop \"{shop.ShopName}\" đã bị cấm hoạt động trên nền tảng. Vui lòng liên hệ admin để biết thêm chi tiết.",
+                nameof(NotificationType.ShopStatusUpdated),
+                shopId.ToString(),
+                "Shop");
         }
 
         public async Task UnbanShopAsync(Guid shopId)
@@ -469,6 +501,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.Shops.UpdateAsync(shop);
             await _unitOfWork.CommitAsync();
+
+            await _notificationService.SendNotificationAsync(
+                shop.UserId,
+                "Shop của bạn đã được gỡ lệnh cấm",
+                $"Shop \"{shop.ShopName}\" đã được gỡ lệnh cấm và đang chờ duyệt lại. Vui lòng chờ admin xét duyệt trước khi tiếp tục hoạt động.",
+                nameof(NotificationType.ShopStatusUpdated),
+                shopId.ToString(),
+                "Shop");
         }
 
         public async Task UpdateBankInfoAsync(Guid userId, UpdateBankInfoRequest request)

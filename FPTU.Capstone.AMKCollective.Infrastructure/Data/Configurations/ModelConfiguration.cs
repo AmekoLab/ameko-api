@@ -60,13 +60,16 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Data.Configurations
             builder.Property(x => x.IsAddonEligible)
                 .HasDefaultValue(false);
 
-            // Indexes 
+            builder.Property(x => x.IsBuilderReady)
+                .HasDefaultValue(false);
+
+            // Indexes
 
             builder.HasIndex(x => x.Slug)
                 .IsUnique();
 
-            // Builder / Search filter
-            builder.HasIndex(x => new { x.PartType, x.IsActive });
+            // Builder / Search filter — IsBuilderReady để filter kit sẵn sàng trong listing
+            builder.HasIndex(x => new { x.PartType, x.IsActive, x.IsBuilderReady });
 
             // Addon-options query: shop lọc part nào được phép custom per-key
             builder.HasIndex(x => new { x.ShopId, x.IsAddonEligible, x.IsActive });

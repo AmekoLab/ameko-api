@@ -41,10 +41,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         private readonly IVnPayService _vnPayService;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IAIService _aiService;
+        private readonly INotificationService _notificationService;
 
         public OrderService(IUnitOfWork unitOfWork, IMapper mapper, IPaymentService paymentService, IVoucherService voucher, IWalletService wallet, IOptions<OrderSettings> orderOptions,
         IOptions<FrontendUrls> urlOptions, IOptions<SystemSettings> systemSettings, IOptions<ReputationSettings> reputationOptions, IReputationService reputationService, IVnPayService vnPayService, IHttpContextAccessor httpContextAccessor,
-        IAIService aiService)
+        IAIService aiService, INotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
@@ -59,6 +60,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             _vnPayService = vnPayService;
             _httpContextAccessor = httpContextAccessor;
             _aiService = aiService;
+            _notificationService = notificationService;
         }
 
         // =================================================================
@@ -587,6 +589,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.Orders.UpdateOrderAsync(order);
             await _unitOfWork.CommitAsync();
+
+            await _notificationService.SendNotificationAsync(
+                order.CustomerId,
+                "Đơn hàng đã bị hủy",
+                $"Shop đã hủy đơn hàng #{order.Id}. Lý do: {reason}",
+                nameof(NotificationType.OrderStatusUpdated),
+                order.Id.ToString(),
+                "Order");
         }
 
         public async Task UpdateOrderStatusAsync(Guid shopId, Guid orderId, DTOs.Order.UpdateOrderStatusRequest request, CancellationToken token = default)
@@ -637,6 +647,24 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             order.OrderStatus = request.Status;
             await _unitOfWork.Orders.UpdateOrderAsync(order);
             await _unitOfWork.CommitAsync();
+
+            var (notifTitle, notifMessage) = request.Status switch
+            {
+                OrderStatus.Shipped => ("Đơn hàng đang được giao", $"Đơn hàng #{order.Id} đã được giao cho đơn vị vận chuyển."),
+                OrderStatus.Completed => ("Đơn hàng hoàn tất", $"Đơn hàng #{order.Id} đã được xác nhận hoàn tất."),
+                OrderStatus.Cancelled => ("Đơn hàng đã bị hủy", $"Đơn hàng #{order.Id} đã bị shop hủy."),
+                _ => (null, null)
+            };
+            if (notifTitle != null)
+            {
+                await _notificationService.SendNotificationAsync(
+                    order.CustomerId,
+                    notifTitle,
+                    notifMessage!,
+                    nameof(NotificationType.OrderStatusUpdated),
+                    order.Id.ToString(),
+                    "Order");
+            }
         }
 
 
@@ -755,7 +783,21 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.CommitAsync();
 
-            // TODO: notify shop
+            if (!isSpamRequest && order.ShopId.HasValue)
+            {
+                var shopProfile = order.Shop ?? await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value);
+                if (shopProfile != null)
+                {
+                    await _notificationService.SendNotificationAsync(
+                        shopProfile.UserId,
+                        "Yêu cầu hủy đơn mới",
+                        $"Khách hàng đã gửi yêu cầu hủy đơn #{order.Id}. Vui lòng xử lý trong {_orderSettings.ShopResponseTimeoutHours} giờ, nếu không hệ thống sẽ tự động chấp thuận.",
+                        nameof(NotificationType.OrderStatusUpdated),
+                        issue.Id.ToString(),
+                        "OrderIssue",
+                        actorId: userId);
+                }
+            }
 
             return _mapper.Map<OrderIssueResponse>(issue).ConvertDatesToLocal();
         }
@@ -845,8 +887,36 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         {
                             order.OrderStatus = OrderStatus.Cancelled;
                             order.CancelReason = request.Decision == OrderIssueStatus.AutoCancelled
-                                ? "Request timeout 24h (Auto-Refund)"
+                                ? $"Request timeout {_orderSettings.ShopResponseTimeoutHours}h (Auto-Refund)"
                                 : $"Shop approved: {issue.Reason}";
+
+                            if (request.Decision == OrderIssueStatus.AutoCancelled)
+                            {
+                                await _notificationService.SendNotificationAsync(
+                                    order.CustomerId,
+                                    "Yêu cầu hủy đơn đã được duyệt tự động",
+                                    $"Yêu cầu hủy đơn #{order.Id} đã được tự động chấp thuận do shop không phản hồi trong {_orderSettings.ShopResponseTimeoutHours} giờ.",
+                                    nameof(NotificationType.OrderStatusUpdated),
+                                    order.Id.ToString(),
+                                    "Order");
+                                await _notificationService.SendNotificationAsync(
+                                    realActionUserId,
+                                    "Đơn hàng đã bị hủy tự động",
+                                    $"Yêu cầu hủy đơn #{order.Id} đã bị hệ thống tự động chấp thuận do bạn không phản hồi trong {_orderSettings.ShopResponseTimeoutHours} giờ.",
+                                    nameof(NotificationType.OrderStatusUpdated),
+                                    order.Id.ToString(),
+                                    "Order");
+                            }
+                            else
+                            {
+                                await _notificationService.SendNotificationAsync(
+                                    order.CustomerId,
+                                    "Yêu cầu hủy đơn đã được duyệt",
+                                    $"Yêu cầu hủy đơn #{order.Id} đã được shop chấp thuận.",
+                                    nameof(NotificationType.OrderStatusUpdated),
+                                    order.Id.ToString(),
+                                    "Order");
+                            }
                         }
 
                         // --- 3.2 REFUND & PHẠT ---
@@ -1083,6 +1153,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
                 // Cập nhật trạng thái
                 orderGroup.PaymentStatus = PaymentStatus.Paid;
+                var repayNotifs = new List<(Guid ShopUserId, Guid OrderId)>();
                 foreach (var order in orderGroup.Orders)
                 {
                     order.PaymentStatus = PaymentStatus.Paid;
@@ -1100,13 +1171,26 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                                 _orderSettings.SystemVoucherShopShareCap);
                             decimal feeAmount = order.TotalAmount - shopRevenue;
                             order.PlatformFeeAmount = feeAmount;
-                        await _walletService.AddPendingSalesToWalletAsync(shopProfile.UserId, order.Id, shopRevenue, feeAmount);
+                            await _walletService.AddPendingSalesToWalletAsync(shopProfile.UserId, order.Id, shopRevenue, feeAmount);
+                            repayNotifs.Add((shopProfile.UserId, order.Id));
                         }
                     }
                 }
 
                 //_unitOfWork.OrderGroups.Update(orderGroup);
                 await _unitOfWork.CommitAsync();
+
+                foreach (var (shopUserId, orderId) in repayNotifs)
+                {
+                    await _notificationService.SendNotificationAsync(
+                        shopUserId,
+                        "Đơn hàng mới",
+                        $"Bạn có đơn hàng mới #{orderId} cần xử lý.",
+                        nameof(NotificationType.OrderCreated),
+                        orderId.ToString(),
+                        "Order",
+                        actorId: userId);
+                }
 
                 return new CheckoutResponse
                 {
@@ -1144,6 +1228,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 // 1. Cập nhật trạng thái
                 order.OrderStatus = OrderStatus.Cancelled;
                 order.CancelReason = "The order was automatically cancelled because the payment time expired.";
+
+                await _notificationService.SendNotificationAsync(
+                    order.CustomerId,
+                    "Đơn hàng đã bị hủy tự động",
+                    $"Đơn hàng #{order.Id} đã bị hủy do hết thời gian thanh toán.",
+                    nameof(NotificationType.OrderStatusUpdated),
+                    order.Id.ToString(),
+                    "Order");
 
                 // 2. Nhả lại kho (Stock) cho Base Product
                 foreach (var item in order.OrderItems)
@@ -1358,6 +1450,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         _orderSettings.SystemVoucherShopShareCap);
                     decimal feeAmount = order.TotalAmount - actualShopRevenue;
                     await _walletService.ReleaseHeldMoneyAsync(shop.UserId, order.Id, actualShopRevenue, feeAmount);
+
+                    await _notificationService.SendNotificationAsync(
+                        shop.UserId,
+                        "Doanh thu đã được giải ngân",
+                        $"Doanh thu từ đơn hàng #{order.Id} ({actualShopRevenue:N0} ₫) đã được chuyển vào số dư ví của bạn.",
+                        nameof(NotificationType.WalletTransaction),
+                        order.Id.ToString(),
+                        "Order");
+
                     // 5. Đánh dấu đơn đã nhả tiền + ghi nhận thời điểm doanh thu cho kế toán
                     order.PaymentStatus = PaymentStatus.Released;
                     order.RevenueRecognizedAt = DateTime.UtcNow;
@@ -1408,6 +1509,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             // 2. Cập nhật trạng thái Payment của OrderGroup và các Order lẻ thành Đã Thanh Toán
             orderGroup.PaymentStatus = PaymentStatus.Paid;
+            var newOrderNotifs = new List<(Guid ShopUserId, Guid OrderId)>();
             foreach (var order in orderGroup.Orders)
             {
                 order.PaymentStatus = PaymentStatus.Paid;
@@ -1426,12 +1528,25 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         decimal feeAmount = order.TotalAmount - shopRevenue;
                         order.PlatformFeeAmount = feeAmount;
                         await _walletService.AddPendingSalesToWalletAsync(shopProfile.UserId, order.Id, shopRevenue, feeAmount);
+                        newOrderNotifs.Add((shopProfile.UserId, order.Id));
                     }
                 }
             }
 
             //_unitOfWork.OrderGroups.Update(orderGroup);
             await _unitOfWork.CommitAsync();
+
+            foreach (var (shopUserId, orderId) in newOrderNotifs)
+            {
+                await _notificationService.SendNotificationAsync(
+                    shopUserId,
+                    "Đơn hàng mới",
+                    $"Bạn có đơn hàng mới #{orderId} cần xử lý.",
+                    nameof(NotificationType.OrderCreated),
+                    orderId.ToString(),
+                    "Order",
+                    actorId: userId);
+            }
 
             // 3. Trả về Response 
             return new CheckoutResponse
