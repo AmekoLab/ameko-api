@@ -175,6 +175,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommunityPosts.AddAsync(post, cancellationToken);
             await _unitOfWork.CommitAsync();
 
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            var posterName = user?.Username ?? "Ai đó";
+
             var notificationItem = new NotificationDispatchItem
             {
                 ActorId = userId,
@@ -182,11 +185,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 ReferenceId = post.Id.ToString(),
                 ReferenceType = NotificationReferenceHelper.TypePost,
                 Title = "Bài đăng mới",
-                Message = "Người bạn theo dõi vừa đăng một bài viết mới."
+                Message = $"{posterName} vừa đăng một bài viết mới: \"{sanitizedTitle}\"."
             };
             await _notificationQueue.QueueNotificationAsync(notificationItem);
-
-            var user = await _unitOfWork.Users.GetByIdAsync(userId);
             
             var response = new PostFeedResponse
             {
@@ -384,8 +385,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.PostComments.AddAsync(comment, cancellationToken);
             await _unitOfWork.CommitAsync();
 
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+
             if (post.UserId != userId)
             {
+                var commenterName = user?.Username ?? "Ai đó";
                 await _notificationQueue.QueueNotificationAsync(new NotificationDispatchItem
                 {
                     ActorId = userId,
@@ -394,11 +398,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     ReferenceId = postId.ToString(),
                     ReferenceType = NotificationReferenceHelper.TypePost,
                     Title = "Bình luận mới",
-                    Message = "Ai đó vừa bình luận vào bài viết của bạn."
+                    Message = $"{commenterName} vừa bình luận vào bài viết \"{post.Title}\" của bạn."
                 });
             }
-
-            var user = await _unitOfWork.Users.GetByIdAsync(userId);
 
             return new CommentResponse
             {

@@ -1,3 +1,4 @@
+using FPTU.Capstone.AMKCollective.Application.Exceptions;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -103,7 +104,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public IAIChatRepository AIChat => _aiChat ??= new AIChatRepository(_context);
         public async Task CommitAsync()
         {
-            await _context.SaveChangesAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                throw new ConcurrencyException(ex.Message);
+            }
         }
 
         public void Rollback()

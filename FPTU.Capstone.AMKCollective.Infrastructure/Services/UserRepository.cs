@@ -97,6 +97,25 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             _context.RefreshTokens.RemoveRange(tokens);
         }
 
+        public async Task EnforceRefreshTokenLimitAsync(Guid userId, int limit)
+        {
+            var count = await _context.RefreshTokens.CountAsync(rt => rt.UserId == userId);
+            if (count < limit) return;
+
+            var oldestId = await _context.RefreshTokens
+                .Where(rt => rt.UserId == userId)
+                .OrderBy(rt => rt.CreatedAt)
+                .Select(rt => rt.Id)
+                .FirstOrDefaultAsync();
+
+            if (oldestId == Guid.Empty) return;
+
+            // ExecuteDeleteAsync: direct SQL, không qua change tracker → không throw nếu row đã bị xóa bởi request khác
+            await _context.RefreshTokens
+                .Where(rt => rt.Id == oldestId)
+                .ExecuteDeleteAsync();
+        }
+
         public async Task<(IEnumerable<User> Items, int TotalCount)> SearchByNamePagedAsync(string name, int pageNumber, int pageSize, CancellationToken token = default)
         {
             var query = _context.Users

@@ -12,6 +12,9 @@ namespace FPTU.Capstone.AMKCollective.Domain.Entities
         [Column(TypeName = "decimal(18,2)")]
         public decimal Amount { get; set; }
 
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal FeeAmount { get; set; }
+
         [MaxLength(255)]
         public string BankName { get; set; } = null!;
 
