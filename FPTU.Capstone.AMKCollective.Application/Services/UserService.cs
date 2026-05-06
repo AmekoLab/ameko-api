@@ -9,6 +9,7 @@ using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using System.Security.Cryptography;
 using System.Text;
+using FPTU.Capstone.AMKCollective.Application.Exceptions;
 using Microsoft.Extensions.Options;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Settings;
 
@@ -240,8 +241,15 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             var newToken = _tokenService.CreateToken(user);
             var newRefreshTokenRaw = await SaveRefreshTokenAsync(user);
-            
-            await _unitOfWork.CommitAsync();
+
+            try
+            {
+                await _unitOfWork.CommitAsync();
+            }
+            catch (ConcurrencyException)
+            {
+                return (null, "Invalid or already used refresh token");
+            }
 
             return (new RefreshTokenResponse { Token = newToken, RefreshToken = newRefreshTokenRaw }, string.Empty);
         }
@@ -259,16 +267,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 TokenSalt = parts[0]
             };
 
-            // Enforce limit of tokens per user from settings
-            if (user.RefreshTokens.Count >= _securitySettings.RefreshTokenLimit)
-            {
-                var oldestToken = user.RefreshTokens.OrderBy(rt => rt.CreatedAt).FirstOrDefault();
-                if (oldestToken != null)
-                {
-                    await _unitOfWork.Users.RemoveRefreshTokenAsync(oldestToken);
-                }
-            }
-
+            await _unitOfWork.Users.EnforceRefreshTokenLimitAsync(user.Id, _securitySettings.RefreshTokenLimit);
             await _unitOfWork.Users.AddRefreshTokenAsync(refreshTokenEntity);
             return refreshTokenRaw;
         }

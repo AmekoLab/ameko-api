@@ -21,6 +21,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task AddRefreshTokenAsync(RefreshToken token);
         Task RemoveRefreshTokenAsync(RefreshToken token);
         Task RemoveAllRefreshTokensAsync(Guid userId);
+        Task EnforceRefreshTokenLimitAsync(Guid userId, int limit);
         Task<(IEnumerable<User> Items, int TotalCount)> SearchByNamePagedAsync(string name, int pageNumber, int pageSize, CancellationToken token = default);
 
         /// <summary>

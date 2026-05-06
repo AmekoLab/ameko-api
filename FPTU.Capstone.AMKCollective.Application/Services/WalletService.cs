@@ -159,7 +159,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Id = Guid.NewGuid(),
                 UserId = userId,
                 Amount = request.Amount,
-               // FeeAmount = feeAmount,
+                FeeAmount = feeAmount,
                 BankName = shop.BankName,
                 BankAccountNumber = shop.BankAccountNumber,
                 BankAccountName = shop.BankAccountName,
@@ -516,9 +516,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             if (wallet != null)
             {
-                decimal feePercent = _walletSettings.WithdrawalFeePercent;
-                decimal feeAmount = withdrawalReq.Amount * feePercent;
-                decimal refundAmount = withdrawalReq.Amount + feeAmount;
+                decimal refundAmount = withdrawalReq.Amount + withdrawalReq.FeeAmount;
 
                 var (_, oldBal, oldHeld) = await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, refundAmount, 0);
 
@@ -533,7 +531,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     Type = TransactionType.ManualAdjustment,
                     HeldBalanceBeforeTransaction = oldHeld,
                     HeldBalanceAfterTransaction = oldHeld,
-                    //FeeAmount = withdrawalReq.FeeAmount,
+                    FeeAmount = withdrawalReq.FeeAmount,
                     Description = $"[REJECTED] Withdrawal refunded. Reason: {request.Reason}",
                     Currency = "VND",
                     CreatedAt = DateTime.UtcNow
@@ -958,16 +956,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 .Sum(t => t.Amount)
                 + transactions
                     .Where(t => t.Type == TransactionType.ManualAdjustment
-                                && t.Direction == TransactionDirection.Out
+                                && (t.Direction == TransactionDirection.Out || t.Direction == TransactionDirection.Held)
                                 && t.Description != null
                                 && t.Description.Contains("REFUND DEDUCTION", StringComparison.OrdinalIgnoreCase))
                     .Sum(t => t.Amount);
             decimal totalWithdrawals = transactions
                 .Where(t => t.Type == TransactionType.Withdrawal)
-                .Sum(t => t.Amount);
+                .Sum(t => t.Amount - t.FeeAmount); // net: chỉ tính số tiền shop thực rút, không tính phí
             decimal totalPlatformFees = transactions
                 .Where(t => t.Type == TransactionType.SalesRevenue)
-                .Sum(t => t.FeeAmount);
+                .Sum(t => t.FeeAmount)
+                + transactions
+                    .Where(t => t.Type == TransactionType.Withdrawal)
+                    .Sum(t => t.FeeAmount); // bao gồm cả withdrawal fees
 
             // Pending withdrawals at end of period: any WithdrawalRequest still in Pending whose RequestedAt < toUtc.
             var allUserWithdrawals = await _unitOfWork.WithdrawalRequests.GetByUserIdAsync(userId);
@@ -1138,13 +1139,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         /// </summary>
         private WithdrawalSummaryResponse MapToWithdrawalSummary(WithdrawalRequest w)
         {
-            decimal feeAmount = w.Amount * _walletSettings.WithdrawalFeePercent;
             return new WithdrawalSummaryResponse
             {
                 Id = w.Id,
                 Amount = w.Amount,
-                FeeAmount = feeAmount,
-                TotalDeducted = w.Amount + feeAmount,
+                FeeAmount = w.FeeAmount,
+                TotalDeducted = w.Amount + w.FeeAmount,
                 BankName = w.BankName,
                 BankAccountNumber = w.BankAccountNumber,
                 BankAccountName = w.BankAccountName,
