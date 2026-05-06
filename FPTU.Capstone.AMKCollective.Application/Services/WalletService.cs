@@ -776,12 +776,52 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             // Default: Stripe (CreditCard)
+            // Gọi PaymentService
             var stripeResult = await _paymentService.CreateDepositSessionAsync(
                 request.Amount,
                 user.Email,
                 userId.ToString(),
                 _frontendUrls.DepositSuccessPath,
                 _frontendUrls.DepositCancelPath
+            );
+
+            // Tạo Payment Record
+            var payment = new Payment
+            {
+                Id = Guid.NewGuid(), 
+                UserId = userId,
+                Amount = request.Amount,
+                Type = PaymentType.Deposit,
+                Status = PaymentStatus.Pending,
+                Method = PaymentMethod.CreditCard,
+                StripeSessionId = stripeResult.SessionId,
+                Currency = "VND",
+                Description = "Top up wallet",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _unitOfWork.Payments.AddAsync(payment);
+            await _unitOfWork.CommitAsync();
+
+            // Return the payment URL
+            return stripeResult.PaymentUrl;
+        }
+
+        public async Task<string> CreateDepositTransactionMobileAsync(Guid userId, DepositMobileRequest request)
+        {
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            if (user == null) throw new KeyNotFoundException("User not found");
+
+            // For Mobile, we use the custom URLs provided (e.g. ameko://payment/success)
+            var successUrl = request.SuccessUrl;
+            var cancelUrl = request.CancelUrl;
+
+            var stripeResult = await _paymentService.CreateDepositSessionAsync(
+                request.Amount,
+                user.Email,
+                userId.ToString(),
+                successUrl,
+                cancelUrl
             );
 
             var payment = new Payment
@@ -794,7 +834,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Method = PaymentMethod.CreditCard,
                 StripeSessionId = stripeResult.SessionId,
                 Currency = "VND",
-                Description = "Top up wallet",
+                Description = "Top up wallet (Mobile)",
                 CreatedAt = DateTime.UtcNow
             };
 
