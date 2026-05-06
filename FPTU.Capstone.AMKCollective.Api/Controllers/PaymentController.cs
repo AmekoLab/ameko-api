@@ -151,7 +151,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Receives VNPay IPN callbacks from VNPay servers.
         /// </summary>
         [HttpGet("vnpay-ipn")]
-        [AllowAnonymous] // Bắt buộc AllowAnonymous để server VNPay gọi vào được
+        [AllowAnonymous] // AllowAnonymous is required so VNPay server can call this
         [SwaggerOperation(
             Summary = "VNPay IPN Webhook",
             Description = "Endpoint for VNPay to send asynchronous payment events (Do not call manually)."
@@ -164,18 +164,18 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
                 if (response.Success)
                 {
-                    // Chỗ này KHÔNG dùng SuccessResponse() của project
-                    // Bạn phải trả về đúng chuẩn JSON mà Server VNPay yêu cầu
+                    // Do NOT use the project's SuccessResponse() here
+                    // Must return JSON format as required by VNPay Server
                     return Ok(new { RspCode = "00", Message = "Confirm Success" });
                 }
 
-                // Nếu chữ ký không hợp lệ
+                // If signature is invalid
                 return Ok(new { RspCode = "97", Message = "Invalid Signature" });
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[VNPAY IPN CRITICAL] {ex.Message}");
-                // Lỗi hệ thống của dự án
+                // System error
                 return Ok(new { RspCode = "99", Message = "Unknown error" });
             }
         }
@@ -199,7 +199,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                     ["responseCode"] = response.VnPayResponseCode
                 };
 
-                // Deposit: TxnRef bắt đầu bằng "DEP_" → redirect về deposit success/cancel
+                // Deposit: TxnRef starts with "DEP_" -> redirect to deposit success/cancel
                 bool isDeposit = response.OrderId?.StartsWith("DEP_") == true;
 
                 var targetUrl = isDeposit
@@ -225,7 +225,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
             var userId = GetCurrentUserId();
 
-            // Tạo absolute URL trỏ về endpoint callback mobile
+            // Create absolute URL pointing to the mobile callback endpoint
             var returnUrl = $"{Request.Scheme}://{Request.Host}/api/v1/Payment/vnpay-return-mobile";
 
             var paymentUrl = await _vnPayService.CreatePaymentUrlMobileAsync(request, userId, HttpContext, returnUrl);
@@ -242,7 +242,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                // Tận dụng ProcessIpnAsync để kiểm tra chữ ký và fulfill đơn hàng (logic này dùng chung)
+                // Use ProcessIpnAsync to verify signature and fulfill order (shared logic)
                 var response = await _vnPayService.ProcessIpnAsync(Request.Query);
 
                 var queryParams = new Dictionary<string, string>
@@ -254,7 +254,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                     ["message"] = response.IsPaid ? "Success" : "Failed"
                 };
 
-                // Chuyển hướng về Deep Link của Flutter
+                // Redirect to Flutter Deep Link
                 // Format: ameko://payment/callback?paid=1&orderId=...
                 var deepLink = PaymentUrlHelper.AttachQuery("ameko://payment/callback", queryParams);
 
@@ -262,7 +262,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
             catch (Exception ex)
             {
-                // Nếu có lỗi, vẫn trả về Deep Link với trạng thái lỗi để App xử lý
+                // If an error occurs, still return Deep Link with error status for the App to handle
                 return Redirect($"ameko://payment/callback?paid=0&message={Uri.EscapeDataString(ex.Message)}");
             }
         }
@@ -290,6 +290,25 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                         : response.Success ? $"Payment failed (code: {response.VnPayResponseCode})"
                         : "Invalid signature"
             });
+        }
+
+        /// <summary>
+        /// Handles Stripe return for Mobile by redirecting to a deep link.
+        /// Uses path parameter for redirectUrl to avoid query string conflicts with Stripe's session_id.
+        /// </summary>
+        [HttpGet("stripe-return-mobile/{redirectUrl}")]
+        [AllowAnonymous]
+        public IActionResult StripeReturnMobile([FromRoute] string redirectUrl, [FromQuery] string session_id)
+        {
+            if (string.IsNullOrEmpty(redirectUrl)) return BadRequest("Missing redirectUrl");
+
+            // Decode the redirectUrl as it was passed as a path segment
+            var decodedUrl = Uri.UnescapeDataString(redirectUrl);
+
+            // Attach the session_id to the deep link
+            var deepLink = PaymentUrlHelper.AttachQuery(decodedUrl, new Dictionary<string, string> { ["session_id"] = session_id });
+
+            return Redirect(deepLink);
         }
 
         // ... existing methods ...

@@ -1,4 +1,5 @@
 using FPTU.Capstone.AMKCollective.Api.Controllers;
+using FPTU.Capstone.AMKCollective.Application.Helpers;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Common;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Payment;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Wallet;
@@ -37,8 +38,8 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
                 if (wallet == null)
                 {
-                    // Tùy chọn: Có thể tự động tạo ví nếu chưa có, hoặc trả về lỗi
-                    // Ở đây mình trả về lỗi để FE biết xử lý
+                    // Optional: Automatically create wallet if missing, or return error
+                    // Here we return error so FE can handle it
                     return NotFoundResponse<WalletResponse>("Wallet not found or not activated.");
                 }
 
@@ -188,7 +189,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                var adminId = GetCurrentUserId(); // Lấy ID Admin thực hiện
+                var adminId = GetCurrentUserId(); // Get Admin ID performing the action
                 await _walletService.ApproveWithdrawalAsync(adminId, paymentId, request);
 
                 return SuccessResponse("Withdrawal approved successfully. Status updated to Paid.");
@@ -231,7 +232,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             {
                 return NotFoundResponse<object>(ex.Message);
             }
-            catch (ArgumentException ex) // Bắt lỗi validate (thiếu lý do)
+            catch (ArgumentException ex) // Validation error (missing reason)
             {
                 return ErrorResponse<object>(ex.Message);
             }
@@ -398,7 +399,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
             }
             catch (ArgumentException ex)
             {
-                return ErrorResponse<object>(ex.Message); // Lỗi do sai OTP hoặc hết hạn
+                return ErrorResponse<object>(ex.Message); // Error due to invalid OTP or expired
             }
             catch (Exception ex)
             {
@@ -407,20 +408,61 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         }
 
         /// <summary>
-        /// Tạo yêu cầu nạp tiền vào ví. Trả về URL thanh toán.
-        /// Method: CreditCard (Stripe, mặc định) hoặc VnPay.
+        /// Creates a deposit request for the wallet. Returns the payment URL.
+        /// Method: CreditCard (Stripe, default) or VnPay.
         /// </summary>
         [HttpPost("deposit")]
         public async Task<IActionResult> Deposit([FromBody] DepositRequest request)
         {
             if (!ModelState.IsValid)
-                return ErrorResponse<object>("Dữ liệu không hợp lệ.", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList());
+                return ErrorResponse<object>("Invalid data.", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList());
 
             try
             {
                 var userId = GetCurrentUserId();
                 var paymentUrl = await _walletService.CreateDepositTransactionAsync(userId, request, HttpContext);
                 return SuccessResponse(new { Url = paymentUrl }, "Deposit session created successfully.");
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFoundResponse<object>(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return ServerErrorResponse<object>($"System error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Creates a deposit request for the wallet (Specifically for Mobile). 
+        /// Allows passing custom SuccessUrl and CancelUrl (e.g., Deep Links).
+        /// </summary>
+        [HttpPost("deposit/mobile")]
+        public async Task<IActionResult> DepositMobile([FromBody] DepositMobileRequest request)
+        {
+            if (!ModelState.IsValid)
+                return ErrorResponse<object>("Invalid data.", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList());
+
+            try
+            {
+                var userId = GetCurrentUserId();
+
+                // Stripe requires SuccessUrl and CancelUrl to be absolute http/https URLs.
+                // We wrap the mobile deep link as a path segment in our proxy endpoint.
+                var baseUrl = $"{Request.Scheme}://{Request.Host}/api/v1/Payment/stripe-return-mobile";
+                
+                if (!string.IsNullOrEmpty(request.SuccessUrl))
+                {
+                    request.SuccessUrl = $"{baseUrl}/{Uri.EscapeDataString(request.SuccessUrl)}";
+                }
+                
+                if (!string.IsNullOrEmpty(request.CancelUrl))
+                {
+                    request.CancelUrl = $"{baseUrl}/{Uri.EscapeDataString(request.CancelUrl)}";
+                }
+
+                var paymentUrl = await _walletService.CreateDepositTransactionMobileAsync(userId, request);
+                return SuccessResponse(new { Url = paymentUrl }, "Mobile deposit session created successfully.");
             }
             catch (KeyNotFoundException ex)
             {
