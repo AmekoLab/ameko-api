@@ -645,6 +645,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
 
             order.OrderStatus = request.Status;
+            order.UpdatedAt = DateTime.UtcNow;
             await _unitOfWork.Orders.UpdateOrderAsync(order);
             await _unitOfWork.CommitAsync();
 
@@ -1412,19 +1413,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         //    order.PaymentStatus = PaymentStatus.Refunded;
         //}
 
-        public async Task ReleaseFundsForEligibleOrdersAsync(CancellationToken token = default)
+        public async Task<int> ReleaseFundsForEligibleOrdersAsync(CancellationToken token = default)
         {
             // 1. Xác định thời điểm hết hạn bảo hành (30 ngày trước)
             var warrantyThreshold = DateTime.UtcNow.AddDays(-_orderSettings.WarrantyPeriodDays);
 
             // 2. Lấy danh sách các đơn đủ điều kiện nhả tiền
-            // Điều kiện: Status=Completed, PaymentStatus=Paid (chưa Released), UpdatedAt <= 30 ngày trước
+            // Điều kiện: Status=Completed, PaymentStatus=Paid (chưa Released), UpdatedAt <= warrantyThreshold
             var eligibleOrders = await _unitOfWork.Orders
                 .GetOrdersEligibleForFundReleaseAsync(warrantyThreshold, token);
 
             if (!eligibleOrders.Any())
-                return;
+                return 0;
 
+            int released = 0;
             foreach (var order in eligibleOrders)
             {
                 try
@@ -1432,24 +1434,28 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     if (!order.ShopId.HasValue)
                         continue;
 
-                    // 3. Lấy thông tin Shop để get UserId
                     var shop = await _unitOfWork.Shops.GetByIdAsync(order.ShopId.Value, token);
                     if (shop == null)
                         continue;
 
                     var customer = await _unitOfWork.Users.GetByIdAsync(order.CustomerId);
 
-                    // 4. Nhả tiền (chuyển từ HeldBalance -> Balance)
-                    // ReleaseHeldMoneyAsync sẽ tự động:
-                    // - Update Wallet.HeldBalance và Wallet.Balance
-                    // - Tạo Payment log với Type=SalesReleased
                     decimal actualShopRevenue = ShopRevenueCalculator.CalculateShopRevenue(
                         order,
                         _orderSettings.ShopPayoutRate,
                         _orderSettings.SystemVoucherShopShareRate,
                         _orderSettings.SystemVoucherShopShareCap);
-                    decimal feeAmount = order.TotalAmount - actualShopRevenue;
-                    await _walletService.ReleaseHeldMoneyAsync(shop.UserId, order.Id, actualShopRevenue, feeAmount);
+                    // Clamp về 0 — có thể âm khi voucher system bù vượt TotalAmount
+                    decimal feeAmount = Math.Max(0, order.TotalAmount - actualShopRevenue);
+
+                    DateTime recognizedAt = (order.UpdatedAt ?? order.CreatedAt)
+                        .AddDays(_orderSettings.WarrantyPeriodDays);
+
+                    bool didRelease = await _walletService.ReleaseHeldMoneyAsync(shop.UserId, order.Id, actualShopRevenue, feeAmount, recognizedAt);
+
+                    // Chỉ mark Released và notify khi tiền thực sự được chuyển
+                    if (!didRelease)
+                        continue;
 
                     await _notificationService.SendNotificationAsync(
                         shop.UserId,
@@ -1459,14 +1465,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         order.Id.ToString(),
                         "Order");
 
-                    // 5. Đánh dấu đơn đã nhả tiền + ghi nhận thời điểm doanh thu cho kế toán
                     order.PaymentStatus = PaymentStatus.Released;
-                    order.RevenueRecognizedAt = DateTime.UtcNow;
+                    order.RevenueRecognizedAt = recognizedAt;
                     await _unitOfWork.Orders.UpdateOrderAsync(order, token);
 
-                    // 6. Cộng điểm uy tín sau bảo hành
                     int successPoints = _reputationSettings.PointsPerSuccessfulOrder;
-
                     if (customer != null)
                     {
                         int newCustomerScore = await _reputationService.AdjustReputationAsync(
@@ -1490,16 +1493,18 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         shop.Id,
                         successPoints,
                         $"Order #{order.Id} completed");
+
+                    // Commit mỗi order riêng lẻ — tránh một order lỗi kéo rollback toàn batch
+                    await _unitOfWork.CommitAsync();
+                    released++;
                 }
                 catch (Exception ex)
                 {
-                    // Log error để monitoring, nhưng không throw để tiếp tục xử lý order tiếp theo
                     System.Diagnostics.Debug.WriteLine($"Failed to release funds for order {order.Id}: {ex.Message}");
                 }
             }
 
-            // 6. Commit tất cả changes
-            await _unitOfWork.CommitAsync();
+            return released;
         }
 
         private async Task<CheckoutResponse> ProcessWalletCheckoutAsync(Guid userId, OrderGroup orderGroup, string successUrl)

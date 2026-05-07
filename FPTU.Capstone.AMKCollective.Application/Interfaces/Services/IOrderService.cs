@@ -50,7 +50,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task UpdateShippingAddressAsync(Guid userId, Guid orderId, DTOs.Order.UpdateShippingAddressRequest request, CancellationToken token = default);
 
         // BACKGROUND WORKER - Release held funds after warranty period
-        Task ReleaseFundsForEligibleOrdersAsync(CancellationToken token = default);
+        Task<int> ReleaseFundsForEligibleOrdersAsync(CancellationToken token = default);
         Task CancelAbandonedOrdersAsync(CancellationToken token = default);
         Task AutoCancelOrdersWithoutAssemblyAsync(CancellationToken token = default);
         
