@@ -435,10 +435,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                     RefundedOrders  = g.Count(o => o.OrderStatus == OrderStatus.Refunded
                                                 || o.PaymentStatus == PaymentStatus.Refunded),
                     GrossMerchandiseValue = g.Sum(o => o.TotalAmount),
-                    NetRevenue = g.Where(o => o.PaymentStatus == PaymentStatus.Paid
+                    NetRevenue = g.Where(o => (o.PaymentStatus == PaymentStatus.Paid || o.PaymentStatus == PaymentStatus.Released)
                                            && o.OrderStatus != OrderStatus.Cancelled
                                            && o.OrderStatus != OrderStatus.Refunded)
                                   .Sum(o => (decimal?)o.TotalAmount) ?? 0m,
+                    PlatformRevenue = g.Where(o => (o.PaymentStatus == PaymentStatus.Paid || o.PaymentStatus == PaymentStatus.Released)
+                                               && o.OrderStatus != OrderStatus.Cancelled
+                                               && o.OrderStatus != OrderStatus.Refunded)
+                                      .Sum(o => (decimal?)o.PlatformFeeAmount) ?? 0m,
                 })
                 .FirstOrDefaultAsync(token);
 

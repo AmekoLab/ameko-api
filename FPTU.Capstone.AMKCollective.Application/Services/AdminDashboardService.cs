@@ -31,6 +31,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 RefundedOrders        = stats.RefundedOrders,
                 GrossMerchandiseValue = stats.GrossMerchandiseValue,
                 NetRevenue            = stats.NetRevenue,
+                PlatformRevenue       = stats.PlatformRevenue,
                 ActiveBuyers          = stats.ActiveBuyers,
                 ActiveShops           = activeShops,
                 NewUsers              = newUsers,
