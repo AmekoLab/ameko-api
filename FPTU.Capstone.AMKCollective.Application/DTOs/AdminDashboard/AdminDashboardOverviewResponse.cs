@@ -12,6 +12,7 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.AdminDashboard
 
         public decimal GrossMerchandiseValue { get; set; }
         public decimal NetRevenue { get; set; }
+        public decimal PlatformRevenue { get; set; }
 
         public int ActiveBuyers { get; set; }
         public int ActiveShops { get; set; }

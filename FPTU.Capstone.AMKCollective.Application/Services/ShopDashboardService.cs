@@ -32,6 +32,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var repeatCustomers = customerOrderCountsInRange.Count(x => x.Value >= 2);
             var totalOrders = rangeOrders.Count;
             var totalRevenue = rangeOrders.Sum(o => o.TotalAmount);
+            var netRevenue = rangeOrders
+                .Where(o => (o.PaymentStatus == PaymentStatus.Paid || o.PaymentStatus == PaymentStatus.Released)
+                         && o.OrderStatus != OrderStatus.Cancelled
+                         && o.OrderStatus != OrderStatus.Refunded)
+                .Sum(o => o.TotalAmount - o.PlatformFeeAmount);
 
             return new ShopCustomerBehaviorOverviewResponse
             {
@@ -45,7 +50,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 AverageOrderValue = SafeAverage(totalRevenue, totalOrders),
                 PurchaseFrequency = SafeAverage(totalOrders, totalCustomers),
                 TotalOrders = totalOrders,
-                TotalRevenue = totalRevenue
+                TotalRevenue = totalRevenue,
+                NetRevenue = netRevenue
             };
         }
 
@@ -64,6 +70,11 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         firstOrderDates.TryGetValue(customerId, out var firstDate) &&
                         IsSameBucket(firstDate, g.Key, normalizedGranularity));
                     var returningCustomers = customerIds.Count - newCustomers;
+                    var netRevenue = g
+                        .Where(o => (o.PaymentStatus == PaymentStatus.Paid || o.PaymentStatus == PaymentStatus.Released)
+                                 && o.OrderStatus != OrderStatus.Cancelled
+                                 && o.OrderStatus != OrderStatus.Refunded)
+                        .Sum(o => o.TotalAmount - o.PlatformFeeAmount);
 
                     return new ShopCustomerTrendResponse
                     {
@@ -71,7 +82,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         NewCustomers = newCustomers,
                         ReturningCustomers = returningCustomers,
                         Orders = g.Count(),
-                        Revenue = g.Sum(x => x.TotalAmount)
+                        Revenue = g.Sum(x => x.TotalAmount),
+                        NetRevenue = netRevenue
                     };
                 })
                 .ToList();
@@ -86,7 +98,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                         NewCustomers = 0,
                         ReturningCustomers = 0,
                         Orders = 0,
-                        Revenue = 0
+                        Revenue = 0,
+                        NetRevenue = 0
                     }
                 };
             }

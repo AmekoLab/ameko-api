@@ -13,5 +13,6 @@ namespace FPTU.Capstone.AMKCollective.Application.DTOs.ShopDashboard
         public decimal PurchaseFrequency { get; set; }
         public int TotalOrders { get; set; }
         public decimal TotalRevenue { get; set; }
+        public decimal NetRevenue { get; set; }
     }
 }
