@@ -145,8 +145,16 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             return await _context.Transactions
                 .Include(t => t.RelatedOrder)
                 .Where(t => t.WalletId == walletId && t.CreatedAt >= fromUtc && t.CreatedAt < toUtc)
-                .OrderBy(t => t.CreatedAt)
-                .OrderByDescending(t => t.CreatedAt)
+                .OrderBy(t => t.CreatedAt)   // ASC để tính closingBalance — newest = last
+                .ToListAsync();
+        }
+
+        public async Task<List<Transaction>> GetByWalletIdInRangeDescAsync(Guid walletId, DateTime fromUtc, DateTime toUtc)
+        {
+            return await _context.Transactions
+                .Include(t => t.RelatedOrder)
+                .Where(t => t.WalletId == walletId && t.CreatedAt >= fromUtc && t.CreatedAt < toUtc)
+                .OrderByDescending(t => t.CreatedAt)  // DESC cho FE hiển thị mới nhất trước
                 .ToListAsync();
         }
 

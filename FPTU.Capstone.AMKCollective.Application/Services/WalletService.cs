@@ -267,22 +267,24 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
         }
 
-        public async Task ReleaseHeldMoneyAsync(Guid shopId, Guid orderId, decimal amount, decimal feeAmount = 0)
+        public async Task<bool> ReleaseHeldMoneyAsync(Guid shopId, Guid orderId, decimal amount, decimal feeAmount = 0, DateTime? recognizedAt = null)
         {
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(shopId);
-            if (wallet == null) return;
+            if (wallet == null) return false;
+
+            // Idempotency: skip nếu SalesRevenue transaction đã tồn tại cho order này
+            bool alreadyReleased = await _unitOfWork.Transactions
+                .ExistsByOrderAndTypeAsync(wallet.Id, orderId, TransactionType.SalesRevenue);
+            if (alreadyReleased) return false;
 
             // Release whatever is available — if HeldBalance < amount, a prior cancellation
             // already cleared it; release only what remains to avoid negative HeldBalance.
             decimal releaseAmount = Math.Min(amount, wallet.HeldBalance);
-            if (releaseAmount <= 0) return;
+            if (releaseAmount <= 0) return false;
 
             var (success, oldBal, oldHeld) = await _unitOfWork.Wallets.UpdateBalancesAsync(wallet.Id, releaseAmount, -releaseAmount);
-            if (!success) return;
+            if (!success) return false;
 
-            // releaseAmount = net shop nhận vào Balance
-            // feeAmount     = platform commission (đã trừ trước, lưu để tham khảo)
-            // grossAmount   = tiền khách đã trả gốc = releaseAmount + feeAmount
             decimal grossAmount = releaseAmount + feeAmount;
 
             var transaction = new Transaction
@@ -291,11 +293,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 IdempotencyKey = $"RELEASE_FUNDS_{orderId}",
                 WalletId = wallet.Id,
                 RelatedOrderId = orderId,
-                Amount = grossAmount,                       // tiền khách trả (gross)
-                FeeAmount = feeAmount,                      // phí hoa hồng sàn
-                // NetAmount = grossAmount - feeAmount = releaseAmount — tính tự động ở DTO
+                Amount = grossAmount,
+                FeeAmount = feeAmount,
                 BalanceBeforeTransaction = oldBal,
-                BalanceAfterTransaction = oldBal + releaseAmount, // Balance tăng đúng bằng net
+                BalanceAfterTransaction = oldBal + releaseAmount,
                 Direction = TransactionDirection.In,
                 Type = TransactionType.SalesRevenue,
                 HeldBalanceBeforeTransaction = oldHeld,
@@ -304,11 +305,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                     ? $"Partial release for order #{orderId} ({releaseAmount:N0}/{amount:N0} VND — remainder already cleared by prior cancellation)"
                     : $"Released revenue for order #{orderId}",
                 Currency = "VND",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = recognizedAt?.ToUniversalTime() ?? DateTime.UtcNow
             };
 
             await _unitOfWork.Transactions.AddAsync(transaction);
             await _unitOfWork.CommitAsync();
+            return true;
         }
 
         public async Task RefundToWalletAsync(Guid userId, decimal amount, string reason, decimal penaltyAmount = 0m)
@@ -922,7 +924,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var fromUtc = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
             var toUtc = fromUtc.AddMonths(1);
 
-            var transactions = await _unitOfWork.Transactions.GetByWalletIdInRangeAsync(wallet.Id, fromUtc, toUtc);
+            // ASC để tính closing balance — phần tử cuối là transaction mới nhất
+            var transactionsAsc = await _unitOfWork.Transactions.GetByWalletIdInRangeAsync(wallet.Id, fromUtc, toUtc);
+            // DESC để hiển thị cho FE — mới nhất trước
+            var transactions = await _unitOfWork.Transactions.GetByWalletIdInRangeDescAsync(wallet.Id, fromUtc, toUtc);
 
             // Opening balance = balance after the last transaction before this period.
             // If no prior transaction exists, opening = current balance - net delta of this period would be wrong;
@@ -938,9 +943,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             decimal closingBalance = openingBalance;
             decimal closingHeld = openingHeld;
-            if (transactions.Count > 0)
+            if (transactionsAsc.Count > 0)
             {
-                var last = transactions[transactions.Count - 1];
+                var last = transactionsAsc[transactionsAsc.Count - 1];
                 closingBalance = last.BalanceAfterTransaction;
                 closingHeld = last.HeldBalanceAfterTransaction;
             }
@@ -1194,6 +1199,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             };
 
             await _unitOfWork.Transactions.AddAsync(sysTx);
-        }       
+        }
+
     }
 }

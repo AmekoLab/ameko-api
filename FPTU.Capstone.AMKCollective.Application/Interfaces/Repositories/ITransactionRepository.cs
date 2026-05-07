@@ -24,10 +24,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         Task<List<Transaction>> GetByWalletIdAndTypeAsync(Guid walletId, TransactionType type);
 
         /// <summary>
-        /// Lấy toàn bộ transaction trong khoảng [from, to) — sort asc theo CreatedAt.
-        /// Dùng cho báo cáo statement theo kỳ.
+        /// Lấy toàn bộ transaction trong khoảng [from, to) — sort ASC theo CreatedAt.
+        /// Dùng để tính closingBalance (cần newest = last).
         /// </summary>
         Task<List<Transaction>> GetByWalletIdInRangeAsync(Guid walletId, DateTime fromUtc, DateTime toUtc);
+
+        /// <summary>
+        /// Lấy toàn bộ transaction trong khoảng [from, to) — sort DESC theo CreatedAt (mới nhất trước).
+        /// Dùng để hiển thị transaction list cho FE.
+        /// </summary>
+        Task<List<Transaction>> GetByWalletIdInRangeDescAsync(Guid walletId, DateTime fromUtc, DateTime toUtc);
 
         /// <summary>
         /// Lấy transaction gần nhất trước thời điểm <paramref name="beforeUtc"/> để tính số dư đầu kỳ.

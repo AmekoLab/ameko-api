@@ -500,15 +500,5 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 return ErrorResponse<object>(ex.Message);
             }
         }
-        // --- Helper: Get User ID ---
-        //private Guid GetCurrentUserId()
-        //{
-        //    var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
-        //    if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out Guid userId))
-        //    {
-        //        return userId;
-        //    }
-        //    throw new UnauthorizedAccessException("User ID not found in token");
-        //}
     }
 }

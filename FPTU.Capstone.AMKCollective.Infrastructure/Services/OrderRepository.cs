@@ -326,10 +326,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
         public async Task<List<Order>> GetOrdersEligibleForFundReleaseAsync(DateTime warrantyThreshold, CancellationToken token = default)
         {
             return await _context.Orders
+                .Include(o => o.OrderItems)
                 .Where(o => o.OrderStatus == OrderStatus.Completed
                           && o.PaymentStatus == PaymentStatus.Paid
-                          && o.UpdatedAt.HasValue
-                          && o.UpdatedAt.Value <= warrantyThreshold
+                          && (o.UpdatedAt ?? o.CreatedAt) <= warrantyThreshold
                           && !o.IsDeleted)
                 .ToListAsync(token);
         }
