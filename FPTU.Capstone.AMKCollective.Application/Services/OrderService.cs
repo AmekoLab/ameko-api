@@ -1172,7 +1172,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                                 _orderSettings.SystemVoucherShopShareCap);
                             decimal feeAmount = order.TotalAmount - shopRevenue;
                             order.PlatformFeeAmount = feeAmount;
-                            await _walletService.AddPendingSalesToWalletAsync(shopProfile.UserId, order.Id, shopRevenue, feeAmount);
+                            decimal systemVoucherShopShare = 0;
+                            if (order.SystemDiscountAmount > 0)
+                            {
+                                systemVoucherShopShare = Math.Min(
+                                    order.SystemDiscountAmount * _orderSettings.SystemVoucherShopShareRate,
+                                    _orderSettings.SystemVoucherShopShareCap);
+                            }
+                            await _walletService.AddPendingSalesToWalletAsync(shopProfile.UserId, order.Id, shopRevenue, feeAmount, systemVoucherShopShare);
                             repayNotifs.Add((shopProfile.UserId, order.Id));
                         }
                     }
@@ -1532,7 +1539,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                             _orderSettings.SystemVoucherShopShareCap);
                         decimal feeAmount = order.TotalAmount - shopRevenue;
                         order.PlatformFeeAmount = feeAmount;
-                        await _walletService.AddPendingSalesToWalletAsync(shopProfile.UserId, order.Id, shopRevenue, feeAmount);
+                        decimal systemVoucherShopShare = 0;
+                        if (order.SystemDiscountAmount > 0)
+                        {
+                            systemVoucherShopShare = Math.Min(
+                                order.SystemDiscountAmount * _orderSettings.SystemVoucherShopShareRate,
+                                _orderSettings.SystemVoucherShopShareCap);
+                        }
+                        await _walletService.AddPendingSalesToWalletAsync(shopProfile.UserId, order.Id, shopRevenue, feeAmount, systemVoucherShopShare);
                         newOrderNotifs.Add((shopProfile.UserId, order.Id));
                     }
                 }

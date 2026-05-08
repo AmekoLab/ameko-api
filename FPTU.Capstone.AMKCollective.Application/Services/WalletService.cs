@@ -226,7 +226,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await _unitOfWork.CommitAsync();
         }
 
-        public async Task AddPendingSalesToWalletAsync(Guid shopId, Guid orderId, decimal amount, decimal feeAmount = 0)
+        public async Task AddPendingSalesToWalletAsync(Guid shopId, Guid orderId, decimal amount, decimal feeAmount = 0, decimal systemVoucherDeduction = 0)
         {
             var wallet = await _unitOfWork.Wallets.GetByUserIdAsync(shopId);
             if (wallet == null) return;
@@ -243,6 +243,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // grossAmount = tiền khách thực trả = amount + feeAmount
             decimal grossAmount = amount + feeAmount;
 
+            string description = systemVoucherDeduction > 0
+                ? $"Pending sales revenue from order #{orderId} (Khách trả: {grossAmount:N0} | Phí HH: -{feeAmount:N0} | Voucher sàn: -{systemVoucherDeduction:N0} | Net: {amount:N0})"
+                : $"Pending sales revenue from order #{orderId} (Khách trả: {grossAmount:N0} | Phí HH: -{feeAmount:N0} | Net: {amount:N0})";
+
             var transaction = new Transaction
             {
                 TransactionCode = TransactionHelper.GenerateTxCode(),
@@ -258,7 +262,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 Type = TransactionType.SalesPending,
                 HeldBalanceBeforeTransaction = oldHeld,
                 HeldBalanceAfterTransaction = oldHeld + amount, // HeldBalance tăng đúng bằng net shop nhận
-                Description = $"Pending sales revenue from order #{orderId}",
+                Description = description,
                 Currency = "VND",
                 CreatedAt = DateTime.UtcNow
             };

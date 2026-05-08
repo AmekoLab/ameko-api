@@ -145,8 +145,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Update an existing Option (Update Rule, Tags, or Image).
         /// </summary>
         [HttpPut("options/{id}")]
-        [Authorize]
-                    // TODO: [Authorize(Roles = "Admin,Shop")]
+        [Authorize(Roles = "Admin,Shop")]
         [SwaggerOperation(Summary = "Update Kit Option", Description = "Updates the filter rules or image of an existing kit option.")]
         [SwaggerResponse(200, "Option updated successfully")]
         [SwaggerResponse(404, "Option not found")]
@@ -154,7 +153,9 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                await _service.UpdateOptionAsync(id, request);
+                var userId = GetCurrentUserId();
+                var isAdmin = User.IsInRole("Admin");
+                await _service.UpdateOptionAsync(id, request, userId, isAdmin);
                 return SuccessResponse("Update option successful");
             }
             catch (KeyNotFoundException ex)
@@ -268,8 +269,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// </ul>
         /// </remarks>
         [HttpPost("options")]
-        [Authorize] // [Fix #1] Chỉ Admin/Shop mới được tạo option
-        // TODO: [Authorize(Roles = "Admin")] — bật lại sau khi test xong
+        [Authorize(Roles = "Admin,Shop")]
         [SwaggerOperation(
     Summary = "Create Kit Option",
     Description = "Define a new selectable option slot for a keyboard kit."
@@ -279,7 +279,9 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                await _service.CreateOptionAsync(request);
+                var userId = GetCurrentUserId();
+                var isAdmin = User.IsInRole("Admin");
+                await _service.CreateOptionAsync(request, userId, isAdmin);
                 return SuccessResponse("Create option successful");
             }
             catch (Exception ex)
@@ -293,8 +295,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Delete a specific Option.
         /// </summary>
         [HttpDelete("options/{id}")]
-        [Authorize] // [Fix #1] Chỉ Admin/Shop mới được xóa option
-        // TODO: [Authorize(Roles = "Admin")] — bật lại sau khi test xong
+        [Authorize(Roles = "Admin,Shop")]
         [SwaggerOperation(
     Summary = "Delete Kit Option",
     Description = "Removes a configuration option from a kit."
@@ -304,7 +305,9 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                await _service.DeleteOptionAsync(id);
+                var userId = GetCurrentUserId();
+                var isAdmin = User.IsInRole("Admin");
+                await _service.DeleteOptionAsync(id, userId, isAdmin);
                 return SuccessResponse("Option deleted successfully");
             }
             catch (Exception ex)
@@ -321,8 +324,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// Useful for importing configuration from Excel/CSV.
         /// </remarks>
         [HttpPost("options/bulk")]
-        [Authorize] // [Fix #1] Chỉ Admin/Shop mới được bulk import
-        // TODO: [Authorize(Roles = "Admin")] — bật lại sau khi test xong
+        [Authorize(Roles = "Admin,Shop")]
         [SwaggerOperation(
     Summary = "Bulk Create Options",
     Description = "Import multiple kit options at once."
@@ -338,7 +340,9 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                     return ErrorResponse<string>("List is empty");
                 }
 
-                await _service.BulkCreateOptionsAsync(requests);
+                var userId = GetCurrentUserId();
+                var isAdmin = User.IsInRole("Admin");
+                await _service.BulkCreateOptionsAsync(requests, userId, isAdmin);
 
                 return SuccessResponse($"Bulk import successful: {requests.Count} items.");
             }
@@ -364,8 +368,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// File uploads are not supported here — use <c>POST /options</c> for individual options with images.
         /// </remarks>
         [HttpPost("options/batch")]
-        [Authorize]
-        // TODO: [Authorize(Roles = "Admin,Shop")]
+        [Authorize(Roles = "Admin,Shop")]
         [SwaggerOperation(
             Summary = "Batch Save Kit Options",
             Description = "Atomically replaces all existing options of a Base Kit with the provided list. Runs inside a transaction.")]
@@ -379,7 +382,9 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
                 if (items == null || items.Count == 0)
                     return ErrorResponse<string>("Payload is empty.");
 
-                await _service.BatchSaveOptionsAsync(items);
+                var userId = GetCurrentUserId();
+                var isAdmin = User.IsInRole("Admin");
+                await _service.BatchSaveOptionsAsync(items, userId, isAdmin);
                 return SuccessResponse($"Batch save successful: {items.Count} options.");
             }
             catch (ArgumentException ex)
@@ -433,8 +438,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         /// <b>Warning:</b> This deletes all links/options for the specified Kit. Use with caution.
         /// </remarks>
         [HttpDelete("config/{baseKitId}")]
-        [Authorize] // [Fix #1] Chỉ Admin mới được reset toàn bộ config kit
-        // TODO: [Authorize(Roles = "Admin")] — bật lại sau khi test xong
+        [Authorize(Roles = "Admin,Shop")]
         [SwaggerOperation(
     Summary = "Reset Builder Config",
     Description = "Resets the configuration of a base kit to its default state."
@@ -445,7 +449,9 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
         {
             try
             {
-                await _service.ResetBuilderConfigAsync(baseKitId);
+                var userId = GetCurrentUserId();
+                var isAdmin = User.IsInRole("Admin");
+                await _service.ResetBuilderConfigAsync(baseKitId, userId, isAdmin);
                 return SuccessResponse("Reset successfully");
             }
             catch (KeyNotFoundException)

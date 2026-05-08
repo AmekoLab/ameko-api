@@ -79,8 +79,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // POST: api/parts
         [HttpPost]
-        //TODO: uncomment sau khi test xong
-        //[Authorize(Roles = "Shop")] 
+        [Authorize(Roles = "Shop")]
         [SwaggerOperation(
     Summary = "Create Part (Shop/Admin)",
     Description = "Creates a new part/product listing."
@@ -104,8 +103,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // PUT: api/parts/{id}
         [HttpPut("{id}")]
-        //TODO: uncomment authorize sau khi test xong
-        //[Authorize(Roles = "Shop")] 
+        [Authorize(Roles = "Shop")]
         [SwaggerOperation(
     Summary = "Update Part (Shop/Admin)",
     Description = "Updates an existing part's information."
@@ -137,8 +135,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // DELETE: api/parts/{id}
         [HttpDelete("{id}")]
-        //TODO: uncomment sau khi test xong
-       // [Authorize(Roles = "Shop")] 
+        [Authorize(Roles = "Shop")]
         [SwaggerOperation(
     Summary = "Delete Part (Shop/Admin)",
     Description = "Soft deletes a part."
@@ -174,8 +171,7 @@ namespace FPTU.Capstone.AMKCollective.API.Controllers
 
         // PATCH: api/v1/parts/{id}/restore
         [HttpPatch("{id}/restore")]
-        //TODO: uncomment authorize sau khi test xong
-        // [Authorize(Roles = "Shop")] 
+        [Authorize(Roles = "Shop")]
         [SwaggerOperation(
             Summary = "Restore Deleted Part (Shop/Admin)",
             Description = "Restores a soft-deleted part and sets it back to active."
