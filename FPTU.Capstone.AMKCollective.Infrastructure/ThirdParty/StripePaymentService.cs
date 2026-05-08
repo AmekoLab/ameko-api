@@ -232,7 +232,7 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                     orderGroup.PaymentStatus = PaymentStatus.Paid;
 
                     // Thu thập thông tin shop TRƯỚC khi commit, để wallet call sau commit
-                    var shopPendingSales = new List<(Guid ShopUserId, Guid OrderId, decimal Amount, decimal FeeAmount)>();
+                    var shopPendingSales = new List<(Guid ShopUserId, Guid OrderId, decimal Amount, decimal FeeAmount, decimal SysVoucherDeduction)>();
                     if (orderGroup.Orders != null && orderGroup.Orders.Any())
                     {
                         foreach (var order in orderGroup.Orders)
@@ -253,7 +253,10 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
                                         _orderSettings.SystemVoucherShopShareCap);
                                     decimal feeAmount = order.TotalAmount - shopRevenue;
                                     order.PlatformFeeAmount = feeAmount;
-                                    shopPendingSales.Add((shopProfile.UserId, order.Id, shopRevenue, feeAmount));
+                                    decimal sysVoucherDeduction = order.SystemDiscountAmount > 0
+                                        ? Math.Min(order.SystemDiscountAmount * _orderSettings.SystemVoucherShopShareRate, _orderSettings.SystemVoucherShopShareCap)
+                                        : 0;
+                                    shopPendingSales.Add((shopProfile.UserId, order.Id, shopRevenue, feeAmount, sysVoucherDeduction));
                                 }
                             }
                         }
@@ -285,14 +288,14 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.ThirdParty
 
                     // [Fix #2] Sau commit mới cộng tiền vào ví Shop (tránh inconsistency)
                     // Nếu wallet call fail ở đây, order đã paid → có thể reconcile sau
-                    foreach (var (shopUserId, orderId, amount, feeAmt) in shopPendingSales)
+                    foreach (var (shopUserId, orderId, amount, feeAmt, sysVoucherDeduction) in shopPendingSales)
                     {
-                        await walletService.AddPendingSalesToWalletAsync(shopUserId, orderId, amount, feeAmt);
+                        await walletService.AddPendingSalesToWalletAsync(shopUserId, orderId, amount, feeAmt, sysVoucherDeduction);
                     }
 
                     // Notify shop: đơn hàng mới
                     var notificationService = scope.ServiceProvider.GetRequiredService<INotificationService>();
-                    foreach (var (shopUserId, orderId, _, _) in shopPendingSales)
+                    foreach (var (shopUserId, orderId, _, _, _) in shopPendingSales)
                     {
                         await notificationService.SendNotificationAsync(
                             shopUserId,

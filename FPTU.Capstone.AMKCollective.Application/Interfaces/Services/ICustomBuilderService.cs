@@ -15,13 +15,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<BuilderConfigResponse> GetBuilderConfigAsync(Guid baseKitId);
         Task<(IEnumerable<CompatiblePartResponse> Items, int TotalCount)> SearchPartsInBuilderAsync(GetCompatiblePartsRequest query);
         Task<bool> ValidateConfigurationAsync(Guid baseKitId, List<Guid> componentIds);//check before add to cart
-        Task CreateOptionAsync(CreateKitOptionRequest request);
-        Task DeleteOptionAsync(Guid id);
-        Task BulkCreateOptionsAsync(List<CreateKitOptionRequest> requests);
-        Task BatchSaveOptionsAsync(List<BatchKitOptionItem> items);
+        Task CreateOptionAsync(CreateKitOptionRequest request, Guid callerUserId, bool isAdmin);
+        Task DeleteOptionAsync(Guid id, Guid callerUserId, bool isAdmin);
+        Task BulkCreateOptionsAsync(List<CreateKitOptionRequest> requests, Guid callerUserId, bool isAdmin);
+        Task BatchSaveOptionsAsync(List<BatchKitOptionItem> items, Guid callerUserId, bool isAdmin);
         Task<string> UploadLayerImageAsync(IFormFile file);
 
-        Task ResetBuilderConfigAsync(Guid baseKitId);
+        Task ResetBuilderConfigAsync(Guid baseKitId, Guid callerUserId, bool isAdmin);
         Task<bool> IsMatchAsync(Guid baseKitId, Guid componentId);
 
         Task<BuilderStepResponse> RemovePartFromSessionAsync(Guid sessionId, string stepName, Guid? userId);
@@ -41,6 +41,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
 
         /// Lấy danh sách linh kiện có thể add-on tại vị trí trên bàn phím ảo.
         Task<AddonOptionsResponse> GetAddonOptionsAsync(Guid sessionId, string addonType, Guid? userId, string? searchTerm = null, int page = 1, int pageSize = 20);
-        Task UpdateOptionAsync(Guid id, UpdateKitOptionRequest request);
+        Task UpdateOptionAsync(Guid id, UpdateKitOptionRequest request, Guid callerUserId, bool isAdmin);
     }
 }

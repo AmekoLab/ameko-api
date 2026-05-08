@@ -74,8 +74,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var validIds = await _unitOfWork.KitDesignOptions.GetValidComponentIdsAsync(baseKitId, componentIds);
             return validIds.Count() == componentIds.Count;
         }
-        public async Task CreateOptionAsync(CreateKitOptionRequest request)
+        public async Task CreateOptionAsync(CreateKitOptionRequest request, Guid callerUserId, bool isAdmin)
         {
+            await EnsureKitOwnershipAsync(request.BaseKitId, callerUserId, isAdmin);
+
             // Ánh xạ dữ liệu cơ bản từ request sang entity
             var entity = _mapper.Map<KitDesignOption>(request);
 
@@ -83,7 +85,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             // XỬ LÝ ẢNH 3 TẦNG
             // ==========================================
 
-            // 1. ƯU TIÊN 1: Nếu có file mới -> Upload lên Cloudinary
+            // 1. Ưu TIÊN 1: Nếu có file mới -> Upload lên Cloudinary
             if (request.LayerImageFile != null && request.LayerImageFile.Length > 0)
             {
                 var fileUrl = await _storageService.UploadAsync(
@@ -113,10 +115,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await ReevaluateBuilderReadinessAsync(entity.BaseKitId);
         }
 
-        public async Task DeleteOptionAsync(Guid id)
+        public async Task DeleteOptionAsync(Guid id, Guid callerUserId, bool isAdmin)
         {
             var option = await _unitOfWork.KitDesignOptions.GetByIdAsync(id);
             if (option == null) throw new KeyNotFoundException("Kit design option not found.");
+
+            await EnsureKitOwnershipAsync(option.BaseKitId, callerUserId, isAdmin);
 
             await _unitOfWork.KitDesignOptions.DeleteAsync(id);
             await _unitOfWork.CommitAsync();
@@ -124,8 +128,16 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             await ReevaluateBuilderReadinessAsync(option.BaseKitId);
         }
 
-        public async Task BulkCreateOptionsAsync(List<CreateKitOptionRequest> requests)
+        public async Task BulkCreateOptionsAsync(List<CreateKitOptionRequest> requests, Guid callerUserId, bool isAdmin)
         {
+            if (!requests.Any()) return;
+
+            var distinctKitIds = requests.Select(r => r.BaseKitId).Distinct().ToList();
+            if (distinctKitIds.Count > 1)
+                throw new ArgumentException("All options in a bulk request must belong to the same BaseKitId.");
+
+            await EnsureKitOwnershipAsync(distinctKitIds[0], callerUserId, isAdmin);
+
             var entitiesToInsert = new List<KitDesignOption>();
             foreach (var req in requests)
             {
@@ -152,10 +164,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             }
         }
 
-        public async Task BatchSaveOptionsAsync(List<BatchKitOptionItem> items)
+        public async Task BatchSaveOptionsAsync(List<BatchKitOptionItem> items, Guid callerUserId, bool isAdmin)
         {
             if (items == null || items.Count == 0)
                 throw new ArgumentException("Batch list cannot be empty.");
+
+            await EnsureKitOwnershipAsync(items.First().BaseKitId, callerUserId, isAdmin);
 
             foreach (var item in items)
             {
@@ -208,10 +222,12 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             return await _storageService.UploadAsync(stream, file.FileName, "builder-layers");
         }
 
-        public async Task ResetBuilderConfigAsync(Guid baseKitId)
+        public async Task ResetBuilderConfigAsync(Guid baseKitId, Guid callerUserId, bool isAdmin)
         {
             bool exists = await _unitOfWork.Models.ExistsAsync(baseKitId);
             if (!exists) throw new KeyNotFoundException("Base Kit not found");
+
+            await EnsureKitOwnershipAsync(baseKitId, callerUserId, isAdmin);
 
             await _unitOfWork.KitDesignOptions.DeleteByBaseKitAsync(baseKitId);
             await _unitOfWork.CommitAsync();
@@ -297,9 +313,9 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (session == null) throw new KeyNotFoundException("Session expired or not found");
             if (session.UserId.HasValue && session.UserId != userId)
                 throw new UnauthorizedAccessException("Access denied to this session.");
-            // TODO (PRODUCTION): Bỏ comment để check expiry khi deploy thật
-            // if (session.ExpiresAt < DateTime.UtcNow)
-            //     throw new KeyNotFoundException("Session has expired. Please start a new session.");
+
+            if (session.ExpiresAt < DateTime.UtcNow)
+                throw new KeyNotFoundException("Session has expired. Please start a new session.");
 
             // 2. Lấy danh sách quy trình động từ BaseKit
             var workflow = GetWorkflowFromKit(session.BaseKit);
@@ -574,11 +590,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (session.UserId.HasValue && userId.HasValue && session.UserId != userId)
                 throw new UnauthorizedAccessException("Access denied to this session.");
 
-            // TODO: Tạm thời tắt check Hết hạn để code/test ở môi trường Dev
-            // if (session.ExpiresAt < DateTime.UtcNow)
-            // {
-            //     throw new KeyNotFoundException("Session expired");
-            // }
+            if (session.ExpiresAt < DateTime.UtcNow)
+                throw new KeyNotFoundException("Session expired");
 
             // 2. Lấy Workflow
             var workflow = GetWorkflowFromKit(session.BaseKit);
@@ -695,9 +708,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (session == null || session.UserId != userId)
                 return (false, null, "Builder session not found or access denied.");
 
-            // TODO (PRODUCTION): Bỏ comment để check expiry khi deploy thật
-            // if (session.ExpiresAt < DateTime.UtcNow)
-            //     return (false, null, "Builder session has expired. Please start a new session.");
+            if (session.ExpiresAt < DateTime.UtcNow)
+                return (false, null, "Builder session has expired. Please start a new session.");
 
             // SelectedItemsJson được serialize là Dictionary<string, SelectedPartResponse> — không phải List<SelectedPartDto>
             // Deserialization sai type cũ luôn trả về null → function luôn fail
@@ -710,6 +722,20 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var kitModel = session.BaseKit;
             if (kitModel == null)
                 return (false, null, "Could not find the base kit for this session.");
+
+            // Kiểm tra tồn kho của từng part được chọn trong session
+            var workflow = GetWorkflowFromKit(kitModel);
+            foreach (var step in workflow)
+            {
+                if (!selectionDict.TryGetValue(step.Step, out var selectedPart)) continue;
+
+                var component = await _unitOfWork.Models.GetByIdAsync(selectedPart.Id);
+                if (component == null)
+                    return (false, null, $"Component '{selectedPart.Name}' no longer exists. Please restart the builder.");
+
+                if (component.StockQuantity < selectedPart.Quantity)
+                    return (false, null, $"Component '{selectedPart.Name}' is out of stock (Available: {component.StockQuantity}, Required: {selectedPart.Quantity}). Please choose another component.");
+            }
 
             // Tính tổng tiền vật tư cơ bản
             decimal baseMaterialPrice = selectionDict.Values.Sum(p => p.Price * p.Quantity);
@@ -757,6 +783,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 throw new KeyNotFoundException($"Builder session with ID {request.SessionId} not found.");
             if (session.UserId.HasValue && session.UserId != userId)
                 throw new UnauthorizedAccessException("Access denied to this session.");
+            if (session.ExpiresAt < DateTime.UtcNow)
+                throw new KeyNotFoundException("Session has expired. Please start a new session.");
             if (session.BaseKit == null)
                 throw new InvalidOperationException("BaseKit information is missing for this session.");
 
@@ -866,6 +894,8 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             if (session == null) throw new KeyNotFoundException("Session expired or not found");
             if (session.UserId.HasValue && session.UserId != userId)
                 throw new UnauthorizedAccessException("Access denied to this session.");
+            if (session.ExpiresAt < DateTime.UtcNow)
+                throw new KeyNotFoundException("Session has expired. Please start a new session.");
             var currentSelection = JsonSerializer.Deserialize<Dictionary<string, SelectedPartResponse>>(session.SelectedItemsJson)
                                    ?? new Dictionary<string, SelectedPartResponse>();
 
@@ -953,11 +983,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             };
         }
 
-        public async Task UpdateOptionAsync(Guid id, UpdateKitOptionRequest request)
+        public async Task UpdateOptionAsync(Guid id, UpdateKitOptionRequest request, Guid callerUserId, bool isAdmin)
         {
             // 1. Tìm Option cũ trong DB
             var entity = await _unitOfWork.KitDesignOptions.GetByIdAsync(id);
             if (entity == null) throw new KeyNotFoundException("Kit Design Option not found");
+
+            await EnsureKitOwnershipAsync(entity.BaseKitId, callerUserId, isAdmin);
 
             // 2. Dùng AutoMapper đè dữ liệu mới vào entity cũ (tự động bỏ qua các trường null)
             _mapper.Map(request, entity);
@@ -979,6 +1011,19 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
         }
 
         // --- HELPER FUNCTIONS ---
+
+        // 0. Ownership guard: Admin bypass, Shop chỉ được thao tác trên kit thuộc shop mình
+        private async Task EnsureKitOwnershipAsync(Guid baseKitId, Guid callerUserId, bool isAdmin)
+        {
+            if (isAdmin) return;
+
+            var kit = await _unitOfWork.Models.GetByIdAsync(baseKitId);
+            if (kit == null) throw new KeyNotFoundException("Base Kit not found.");
+
+            // kit.Shop phải được Include bởi GetByIdAsync — nếu null thì deny (safe default)
+            if (kit.Shop?.UserId != callerUserId)
+                throw new UnauthorizedAccessException("You do not own this kit configuration.");
+        }
 
         // 1. Logic thứ tự các bước (Hard-code)
         //private (string Name, int Order) GetNextStepInfo(string currentStep)
