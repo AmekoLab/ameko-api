@@ -32,6 +32,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
                 GrossMerchandiseValue = stats.GrossMerchandiseValue,
                 NetRevenue            = stats.NetRevenue,
                 PlatformRevenue       = stats.PlatformRevenue,
+                ShopRevenue           = stats.ShopRevenue,
                 ActiveBuyers          = stats.ActiveBuyers,
                 ActiveShops           = activeShops,
                 NewUsers              = newUsers,

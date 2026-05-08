@@ -435,14 +435,24 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                     RefundedOrders  = g.Count(o => o.OrderStatus == OrderStatus.Refunded
                                                 || o.PaymentStatus == PaymentStatus.Refunded),
                     GrossMerchandiseValue = g.Sum(o => o.TotalAmount),
+
+                    //Số tính total revenue chỉ tính những đơn đã thanh toán thành công (Paid hoặc Released) và chưa bị hủy/hoàn tiền
                     NetRevenue = g.Where(o => (o.PaymentStatus == PaymentStatus.Paid || o.PaymentStatus == PaymentStatus.Released)
                                            && o.OrderStatus != OrderStatus.Cancelled
                                            && o.OrderStatus != OrderStatus.Refunded)
                                   .Sum(o => (decimal?)o.TotalAmount) ?? 0m,
+
+                    // Số tính platform revenue chỉ tính những đơn đã thanh toán thành công (Paid hoặc Released) và chưa bị hủy/hoàn tiền
                     PlatformRevenue = g.Where(o => (o.PaymentStatus == PaymentStatus.Paid || o.PaymentStatus == PaymentStatus.Released)
                                                && o.OrderStatus != OrderStatus.Cancelled
                                                && o.OrderStatus != OrderStatus.Refunded)
                                       .Sum(o => (decimal?)o.PlatformFeeAmount) ?? 0m,
+
+                    //Doanh thu của các shop sau khi trừ đi phí platform, chỉ tính những đơn đã thanh toán thành công (Paid hoặc Released) và chưa bị hủy/hoàn tiền
+                    ShopRevenue = g.Where(o => (o.PaymentStatus == PaymentStatus.Paid || o.PaymentStatus == PaymentStatus.Released)
+                                             && o.OrderStatus != OrderStatus.Cancelled
+                                             && o.OrderStatus != OrderStatus.Refunded)
+                                   .Sum(o => (decimal?)(o.TotalAmount - o.PlatformFeeAmount)) ?? 0m
                 })
                 .FirstOrDefaultAsync(token);
 
