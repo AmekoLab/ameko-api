@@ -392,10 +392,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         public async Task<List<Order>> GetShopOrdersForDashboardAsync(Guid shopId, DateTime? fromUtc, DateTime? toUtc, CancellationToken token = default)
         {
+            // Lọc theo shop, loại bỏ các đơn không hợp lệ (InCart, Cancelled, Refunded) để đảm bảo tính chính xác của dashboard stats.
             var query = _context.Orders
                 .AsNoTracking()
                 .Include(o => o.Customer)
-                .Where(o => o.ShopId == shopId && !o.IsDeleted && o.OrderStatus != OrderStatus.InCart);
+                .Where(o => o.ShopId == shopId && !o.IsDeleted && o.OrderStatus != OrderStatus.InCart && o.OrderStatus != OrderStatus.Refunded && o.OrderStatus != OrderStatus.Cancelled);
 
             if (fromUtc.HasValue)
                 query = query.Where(o => o.CreatedAt >= fromUtc.Value);

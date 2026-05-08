@@ -28,8 +28,10 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             var newCustomers = customerOrderCountsInRange.Keys.Count(customerId =>
                 firstOrderDates.TryGetValue(customerId, out var firstDate) &&
                 firstDate >= fromUtc && firstDate <= toUtc);
+
             var returningCustomers = totalCustomers - newCustomers;
             var repeatCustomers = customerOrderCountsInRange.Count(x => x.Value >= 2);
+            
             var totalOrders = rangeOrders.Count;
             var totalRevenue = rangeOrders.Sum(o => o.TotalAmount);
             var netRevenue = rangeOrders
