@@ -469,6 +469,42 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
             return stats;
         }
+
+        public async Task<List<AdminTopShopOrderItem>> GetTopShopsByOrderCountAsync(DateTime fromUtc, DateTime toUtc, int top, CancellationToken token = default)
+        {
+            var baseQuery = _context.Orders
+                .AsNoTracking()
+                .Where(o => !o.IsDeleted
+                         && o.ShopId.HasValue
+                         && o.OrderStatus != OrderStatus.InCart
+                         && o.OrderStatus != OrderStatus.Cancelled
+                         && o.OrderStatus != OrderStatus.Refunded
+                         && o.PaymentStatus != PaymentStatus.Refunded
+                         && o.CreatedAt >= fromUtc
+                         && o.CreatedAt <= toUtc);
+
+            var results = await baseQuery
+                .GroupBy(o => o.ShopId!.Value)
+                .Select(g => new { ShopId = g.Key, OrderCount = g.Count() })
+                .OrderByDescending(x => x.OrderCount)
+                .ThenBy(x => x.ShopId)
+                .Take(top)
+                .Join(
+                    _context.ShopProfiles.AsNoTracking().Where(s => !s.IsDeleted),
+                    x => x.ShopId,
+                    s => s.Id,
+                    (x, s) => new AdminTopShopOrderItem
+                    {
+                        ShopId = s.Id,
+                        ShopName = s.ShopName,
+                        OrderCount = x.OrderCount
+                    })
+                .OrderByDescending(x => x.OrderCount)
+                .ThenBy(x => x.ShopId)
+                .ToListAsync(token);
+
+            return results;
+        }
         public async Task<List<Guid>> GetPurchasedShopIdsByUserAsync(Guid userId, CancellationToken cancellationToken = default)
         {
             return await _context.Orders

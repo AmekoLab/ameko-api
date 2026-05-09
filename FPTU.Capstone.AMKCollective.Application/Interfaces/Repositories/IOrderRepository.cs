@@ -78,6 +78,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         /// Replaces loading all orders into memory for dashboard calculations.
         /// </summary>
         Task<OrderDashboardStats> GetOrderStatsForDashboardAsync(DateTime fromUtc, DateTime toUtc, CancellationToken token = default);
+        Task<List<AdminTopShopOrderItem>> GetTopShopsByOrderCountAsync(DateTime fromUtc, DateTime toUtc, int top, CancellationToken token = default);
         Task<List<Guid>> GetPurchasedShopIdsByUserAsync(Guid userId, CancellationToken cancellationToken = default);
     }
 }
