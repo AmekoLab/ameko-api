@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Application.DTOs.AdminDashboard;
+using FPTU.Capstone.AMKCollective.Application.DTOs.AdminDashboard;
 using FPTU.Capstone.AMKCollective.Application.DTOs.Order;
 using FPTU.Capstone.AMKCollective.Domain.Entities;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
@@ -65,7 +65,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories
         /// Lean shop-scoped order query for dashboard. Only includes Customer nav property.
         /// Pass null for fromUtc/toUtc to get all-time orders (used by churn analysis).
         /// </summary>
-        Task<List<Order>> GetShopOrdersForDashboardAsync(Guid shopId, DateTime? fromUtc, DateTime? toUtc, CancellationToken token = default);
+        Task<List<Order>> GetShopOrdersForDashboardAsync(Guid shopId, DateTime? fromUtc, DateTime? toUtc, bool includeCancelled = false, CancellationToken token = default);
 
         /// <summary>
         /// Returns the first order date per customer for a shop, computed entirely in DB.

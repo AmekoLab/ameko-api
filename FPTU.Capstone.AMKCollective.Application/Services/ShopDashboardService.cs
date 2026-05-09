@@ -212,7 +212,7 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
         public async Task<ShopConversionResponse> GetConversionSummaryAsync(Guid shopUserId, ShopBehaviorFilterRequest filter)
         {
-            var (_, fromUtc, toUtc, rangeOrders, _) = await LoadShopOrdersAsync(shopUserId, filter);
+            var (_, fromUtc, toUtc, rangeOrders, _) = await LoadShopOrdersAsync(shopUserId, filter, true);
 
             var totalOrders = rangeOrders.Count;
             var paidOrders = rangeOrders.Count(o => o.PaymentStatus == PaymentStatus.Paid || o.PaymentStatus == PaymentStatus.Released);
@@ -233,14 +233,14 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             };
         }
 
-        private async Task<(ShopProfile shop, DateTime fromUtc, DateTime toUtc, List<Order> rangeOrders, Dictionary<Guid, DateTime> firstOrderDates)> LoadShopOrdersAsync(Guid shopUserId, ShopBehaviorFilterRequest filter)
+        private async Task<(ShopProfile shop, DateTime fromUtc, DateTime toUtc, List<Order> rangeOrders, Dictionary<Guid, DateTime> firstOrderDates)> LoadShopOrdersAsync(Guid shopUserId, ShopBehaviorFilterRequest filter, bool includeCancelled = false)
         {
             var shop = await _unitOfWork.Shops.GetByUserIdAsync(shopUserId)
                 ?? throw new KeyNotFoundException("Shop profile not found.");
 
             var (fromUtc, toUtc) = ResolveDateRange(filter);
 
-            var rangeOrders = await _unitOfWork.Orders.GetShopOrdersForDashboardAsync(shop.Id, fromUtc, toUtc);
+            var rangeOrders = await _unitOfWork.Orders.GetShopOrdersForDashboardAsync(shop.Id, fromUtc, toUtc, includeCancelled);
             var firstOrderDates = await _unitOfWork.Orders.GetCustomerFirstOrderDatesAsync(shop.Id);
 
             return (shop, fromUtc, toUtc, rangeOrders, firstOrderDates);
