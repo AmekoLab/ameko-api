@@ -430,8 +430,14 @@ namespace FPTU.Capstone.AMKCollective.Tests
                 .ReturnsAsync(new ShopProfile { Id = shopId, UserId = shopUserId, ShopName = "Test Shop" });
 
             var orderRepo = new Mock<IOrderRepository>();
-            orderRepo.Setup(x => x.GetOrdersByShopIdAsync(shopId, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(orders);
+            orderRepo.Setup(x => x.GetShopOrdersForDashboardAsync(shopId, It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Guid sId, DateTime? f, DateTime? t, bool inc, CancellationToken ct) => 
+                {
+                    if (inc) return orders;
+                    return orders.Where(o => o.OrderStatus != OrderStatus.Cancelled && o.OrderStatus != OrderStatus.Refunded).ToList();
+                });
+            orderRepo.Setup(x => x.GetCustomerFirstOrderDatesAsync(shopId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Dictionary<Guid, DateTime>());
 
             uow.SetupGet(x => x.Shops).Returns(shopRepo.Object);
             uow.SetupGet(x => x.Orders).Returns(orderRepo.Object);
