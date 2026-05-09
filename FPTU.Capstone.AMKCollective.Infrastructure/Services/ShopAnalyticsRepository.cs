@@ -46,12 +46,27 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
             metrics.IssueRate = Math.Round((double)issueOrdersCount / totalOrders * 100, 2);
 
-            // 3. Tính Refund Rate - Tính theo số lượng đơn
-            var refundedCount = await _context.Orders
-                .Where(o => o.ShopId == shopId && o.OrderStatus == OrderStatus.Refunded && o.CreatedAt >= startDate && o.CreatedAt <= endDate)
-                .CountAsync();
+            // 3. Tính Refund Rate
+            // - OrderStatus.Refunded: warranty claim [OrderLevel] được hoàn tiền trực tiếp
+            // - OrderIssue.ReturnRequest + Completed: hàng trả về đã xử lý xong (hoàn ví), order status không đổi sang Returned
+            var directRefundOrderIds = await _context.Orders
+                .Where(o => o.ShopId == shopId && o.OrderStatus == OrderStatus.Refunded &&
+                            o.CreatedAt >= startDate && o.CreatedAt <= endDate)
+                .Select(o => o.Id)
+                .ToListAsync();
 
-            metrics.RefundRate = Math.Round((double)refundedCount / totalOrders * 100, 2);
+            var returnRefundOrderIds = await _context.OrderIssues
+                .Include(oi => oi.Order)
+                .Where(oi => oi.Order.ShopId == shopId &&
+                             oi.Type == OrderIssueType.ReturnRequest &&
+                             oi.Status == OrderIssueStatus.Completed &&
+                             oi.CreatedAt >= startDate && oi.CreatedAt <= endDate)
+                .Select(oi => oi.OrderId)
+                .Distinct()
+                .ToListAsync();
+
+            var totalRefundedOrders = directRefundOrderIds.Union(returnRefundOrderIds).Count();
+            metrics.RefundRate = Math.Round((double)totalRefundedOrders / totalOrders * 100, 2);
 
             // 4. Tính Repurchase Rate
             var customerGroups = await _context.Orders
@@ -89,26 +104,33 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
             metrics.AutoCancelRate = Math.Round((double)autoCancelledCount / totalOrders * 100, 2); // [MỚI THÊM]
 
-            // 7. Tính Avg Response Hours
-            var issuesWithResponseTimes = await _context.OrderIssues
+            // 7. Tính Avg Response Hours — tách 2 query để tránh correlated subquery không translate được
+            var issueData = await _context.OrderIssues
                 .Where(oi => oi.Order.ShopId == shopId && oi.CreatedAt >= startDate && oi.CreatedAt <= endDate)
-                .Select(oi => new
-                {
-                    IssueCreateTime = oi.CreatedAt,
-                    FirstReplyTime = _context.OrderIssueLogs
-                        .Where(log => log.OrderIssueId == oi.Id && log.CreatedAt > oi.CreatedAt)
-                        .OrderBy(log => log.CreatedAt)
-                        .Select(log => (DateTime?)log.CreatedAt)
-                        .FirstOrDefault()
-                })
-                .Where(x => x.FirstReplyTime.HasValue)
+                .Select(oi => new { oi.Id, oi.CreatedAt })
                 .ToListAsync();
 
-            if (issuesWithResponseTimes.Any())
+            if (issueData.Any())
             {
-                var avgHours = issuesWithResponseTimes
-                    .Average(x => (x.FirstReplyTime!.Value - x.IssueCreateTime).TotalHours);
-                metrics.AvgResponseHours = Math.Round(avgHours, 2);
+                var issueIdList = issueData.Select(i => i.Id).ToList();
+
+                var shopResponses = await _context.OrderIssueLogs
+                    .Where(log => issueIdList.Contains(log.OrderIssueId) &&
+                                  (log.Action == OrderIssueAction.ShopApprove ||
+                                   log.Action == OrderIssueAction.ShopReject ||
+                                   log.Action == OrderIssueAction.ShopReceivedReturn))
+                    .GroupBy(log => log.OrderIssueId)
+                    .Select(g => new { OrderIssueId = g.Key, FirstResponseAt = g.Min(l => l.CreatedAt) })
+                    .ToListAsync();
+
+                if (shopResponses.Any())
+                {
+                    var avgHours = issueData
+                        .Join(shopResponses, i => i.Id, r => r.OrderIssueId,
+                              (i, r) => (r.FirstResponseAt - i.CreatedAt).TotalHours)
+                        .Average();
+                    metrics.AvgResponseHours = Math.Round(avgHours, 2);
+                }
             }
 
             return metrics;
