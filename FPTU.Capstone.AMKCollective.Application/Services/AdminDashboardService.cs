@@ -86,6 +86,24 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
             };
         }
 
+        public async Task<AdminTopShopsByOrdersResponse> GetTopShopsByOrdersAsync(AdminDashboardFilterRequest filter, int top = 3)
+        {
+            if (top <= 0)
+            {
+                throw new ArgumentException("Top must be greater than 0.");
+            }
+
+            var (fromUtc, toUtc) = ResolveDateRange(filter);
+            var items = await _unitOfWork.Orders.GetTopShopsByOrderCountAsync(fromUtc, toUtc, top);
+
+            return new AdminTopShopsByOrdersResponse
+            {
+                FromUtc = fromUtc,
+                ToUtc = toUtc,
+                Items = items
+            };
+        }
+
         private static (DateTime fromUtc, DateTime toUtc) ResolveDateRange(AdminDashboardFilterRequest filter)
         {
             var nowUtc  = DateTime.UtcNow;

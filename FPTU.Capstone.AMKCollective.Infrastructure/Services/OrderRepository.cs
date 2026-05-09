@@ -392,10 +392,11 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
         public async Task<List<Order>> GetShopOrdersForDashboardAsync(Guid shopId, DateTime? fromUtc, DateTime? toUtc, CancellationToken token = default)
         {
+            // Lọc theo shop, loại bỏ các đơn không hợp lệ (InCart, Cancelled, Refunded) để đảm bảo tính chính xác của dashboard stats.
             var query = _context.Orders
                 .AsNoTracking()
                 .Include(o => o.Customer)
-                .Where(o => o.ShopId == shopId && !o.IsDeleted && o.OrderStatus != OrderStatus.InCart);
+                .Where(o => o.ShopId == shopId && !o.IsDeleted && o.OrderStatus != OrderStatus.InCart && o.OrderStatus != OrderStatus.Refunded && o.OrderStatus != OrderStatus.Cancelled);
 
             if (fromUtc.HasValue)
                 query = query.Where(o => o.CreatedAt >= fromUtc.Value);
@@ -467,6 +468,42 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
                 .CountAsync(token);
 
             return stats;
+        }
+
+        public async Task<List<AdminTopShopOrderItem>> GetTopShopsByOrderCountAsync(DateTime fromUtc, DateTime toUtc, int top, CancellationToken token = default)
+        {
+            var baseQuery = _context.Orders
+                .AsNoTracking()
+                .Where(o => !o.IsDeleted
+                         && o.ShopId.HasValue
+                         && o.OrderStatus != OrderStatus.InCart
+                         && o.OrderStatus != OrderStatus.Cancelled
+                         && o.OrderStatus != OrderStatus.Refunded
+                         && o.PaymentStatus != PaymentStatus.Refunded
+                         && o.CreatedAt >= fromUtc
+                         && o.CreatedAt <= toUtc);
+
+            var results = await baseQuery
+                .GroupBy(o => o.ShopId!.Value)
+                .Select(g => new { ShopId = g.Key, OrderCount = g.Count() })
+                .OrderByDescending(x => x.OrderCount)
+                .ThenBy(x => x.ShopId)
+                .Take(top)
+                .Join(
+                    _context.ShopProfiles.AsNoTracking().Where(s => !s.IsDeleted),
+                    x => x.ShopId,
+                    s => s.Id,
+                    (x, s) => new AdminTopShopOrderItem
+                    {
+                        ShopId = s.Id,
+                        ShopName = s.ShopName,
+                        OrderCount = x.OrderCount
+                    })
+                .OrderByDescending(x => x.OrderCount)
+                .ThenBy(x => x.ShopId)
+                .ToListAsync(token);
+
+            return results;
         }
         public async Task<List<Guid>> GetPurchasedShopIdsByUserAsync(Guid userId, CancellationToken cancellationToken = default)
         {

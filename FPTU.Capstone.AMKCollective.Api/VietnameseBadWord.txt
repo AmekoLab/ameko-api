@@ -252,6 +252,7 @@ thml
 diml
 dml
 hãm
+lol
 xàm lol
 xam lol
 xạo lol
@@ -313,6 +314,7 @@ ham lon
 củ lon
 cu lon
 ngu lon
+ngu
 tuổi lon
 tuoi lon
 mõm lon

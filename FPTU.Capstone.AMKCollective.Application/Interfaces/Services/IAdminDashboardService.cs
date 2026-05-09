@@ -7,5 +7,6 @@ namespace FPTU.Capstone.AMKCollective.Application.Interfaces.Services
         Task<AdminDashboardOverviewResponse> GetOverviewAsync(AdminDashboardFilterRequest filter);
         Task<AdminPaymentsHealthResponse> GetPaymentsHealthAsync(AdminDashboardFilterRequest filter);
         Task<AdminRiskOverviewResponse> GetRiskOverviewAsync(AdminDashboardFilterRequest filter);
+        Task<AdminTopShopsByOrdersResponse> GetTopShopsByOrdersAsync(AdminDashboardFilterRequest filter, int top = 3);
     }
 }
