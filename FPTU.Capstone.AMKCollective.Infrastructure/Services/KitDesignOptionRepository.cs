@@ -124,13 +124,16 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
 
             if (!string.IsNullOrEmpty(requiredTag))
             {
-                // Logic: Nếu bước trước yêu cầu tag "LAYOUT_65", 
-                // thì linh kiện bước này phải có chứa chuỗi "LAYOUT_65" trong cột Tags
-                // Hoặc linh kiện đó không có Tag (tương thích với tất cả)
-                query = query.Where(x =>
-                    string.IsNullOrEmpty(x.Tags) || // Linh kiện dễ tính, lắp đâu cũng được
-                    x.Tags.Contains(requiredTag)    // Hoặc phải khớp tag
-                );
+                // Fetch all options for this step, then filter in-memory
+                // to do EXACT comma-split matching instead of substring Contains.
+                // This prevents "grp-abc12" from matching "grp-abc123".
+                var allOptions = await query.ToListAsync();
+
+                return allOptions.Where(x =>
+                    string.IsNullOrEmpty(x.Tags) || // Universal part — compatible with everything
+                    x.Tags.Split(',', StringSplitOptions.TrimEntries)
+                           .Contains(requiredTag, StringComparer.OrdinalIgnoreCase)
+                ).ToList();
             }
 
             return await query.ToListAsync();
