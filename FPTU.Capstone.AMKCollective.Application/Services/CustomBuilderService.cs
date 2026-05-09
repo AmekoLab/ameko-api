@@ -208,8 +208,13 @@ namespace FPTU.Capstone.AMKCollective.Application.Services
 
             await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
+                // Step 1: Xóa toàn bộ options cũ của Kit này
                 await _unitOfWork.KitDesignOptions.DeleteByBaseKitAsync(baseKitId);
+
+                // Step 2: Insert tất cả options mới trong cùng transaction
                 await _unitOfWork.KitDesignOptions.CreateBatchAsync(newOptions);
+
+                // Step 3: SaveChanges để flush changes vào DB (transaction sẽ commit ở cuối ExecuteTransactionAsync)
                 await _unitOfWork.CommitAsync();
             });
 

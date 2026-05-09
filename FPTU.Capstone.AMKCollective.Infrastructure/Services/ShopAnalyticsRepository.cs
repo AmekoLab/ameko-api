@@ -1,4 +1,4 @@
-﻿using FPTU.Capstone.AMKCollective.Application.DTOs.Shop;
+using FPTU.Capstone.AMKCollective.Application.DTOs.Shop;
 using FPTU.Capstone.AMKCollective.Application.Interfaces.Repositories;
 using FPTU.Capstone.AMKCollective.Domain.Enums;
 using FPTU.Capstone.AMKCollective.Infrastructure.Data;
@@ -37,9 +37,27 @@ namespace FPTU.Capstone.AMKCollective.Infrastructure.Services
             }
 
             // 2. Tính Issue Rate
+            // FIX: Loại trừ các WarrantyClaim mà shop được phán là không có lỗi.
+            // Cụ thể, một WarrantyClaim bị loại khỏi issue rate khi:
+            //   - Status = Rejected       → Admin/System phán customer sai, shop vô tội
+            //   - Status = AutoCancelled  → Customer timeout không gửi hàng trả / shop không rep (case shop không rep đã bị penalty points riêng)
+            //   - Status = CancelledByUser→ Customer tự rút yêu cầu, shop không có lỗi gì
+            // Các ReturnRequest và CancelRequest vẫn đếm bình thường vì chúng phản ánh
+            // vấn đề thực của đơn hàng (shop giao sai/hàng lỗi/...).
             var issueOrdersCount = await _context.OrderIssues
                 .Include(oi => oi.Order)
-                .Where(oi => oi.Order.ShopId == shopId && oi.CreatedAt >= startDate && oi.CreatedAt <= endDate)
+                .Where(oi =>
+                    oi.Order.ShopId == shopId
+                    && oi.CreatedAt >= startDate
+                    && oi.CreatedAt <= endDate
+                    && !(
+                        // Loại trừ WarrantyClaim vô tội (shop không bị quy trách nhiệm)
+                        oi.Type == OrderIssueType.WarrantyClaim
+                        && (oi.Status == OrderIssueStatus.Rejected
+                         || oi.Status == OrderIssueStatus.AutoCancelled
+                         || oi.Status == OrderIssueStatus.CancelledByUser)
+                    )
+                )
                 .Select(oi => oi.OrderId)
                 .Distinct()
                 .CountAsync();
